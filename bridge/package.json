@@ -6,7 +6,7 @@
     "build": "node build.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node tests/test.js && node tests/sim.js | tail -1"
+    "test": "node tests/test.js && node tests/ddtest.js 200 && node tests/sim.js | tail -1"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

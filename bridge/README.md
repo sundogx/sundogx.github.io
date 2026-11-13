@@ -30,3 +30,7 @@ Open http://localhost:8787 (the Worker serves this folder too, so `config.js` ca
 ## Limits
 
 The free plan allows 100,000 Worker requests a day; 20 WebSocket messages count as one. A board uses about 80 messages. Tables unused for 3 days are deleted.
+
+## Double-dummy analysis
+
+The hand analysis runs DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to WebAssembly, from the npm package `@bridge-tools/dd` 0.2.2 (MIT). The files are in `js/wasm/` with their licence notes. `js/dds-worker.js` loads it in a Web Worker, one job per strain, and gives **every solve a fresh instance**: this build returns wrong numbers if an instance is reused or re-initialised. `js/par.js` turns a table into the par contract. `node tests/ddtest.js` checks the solver against a brute-force search on small endings.
