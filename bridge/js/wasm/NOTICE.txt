@@ -1,0 +1,5 @@
+compiled.js and compiled.wasm come from the npm package @bridge-tools/dd 0.2.2
+(https://github.com/aaron-hutton/bridge-tools, MIT license, see LICENSE-bridge-tools.txt).
+They are a WebAssembly build of DDS, the Double Dummy Solver by Bo Haglund and Soren Hein
+(https://github.com/dds-bridge/dds, Apache License 2.0).
+Attribution is kept in bridge.html in a comment above the embedded copy.

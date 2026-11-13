@@ -3,6 +3,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "bridge",
   "main": "src/worker.js",
+  // src/game.js is generated from the same js/ files the web page loads
+  "build": { "command": "node build.mjs", "watch_dir": ["js"] },
   "compatibility_date": "2025-10-01",
   "assets": { "directory": ".", "binding": "ASSETS" },
   "durable_objects": {

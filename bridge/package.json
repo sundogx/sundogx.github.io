@@ -3,8 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
+    "build": "node build.mjs",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node tests/test.js && node tests/sim.js | tail -1"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

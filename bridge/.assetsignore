@@ -1,7 +1,10 @@
 src/
+tests/
+js/dds-worker.js.map
 node_modules/
 .wrangler/
 package.json
 package-lock.json
 wrangler.jsonc
+build.mjs
 README.md
