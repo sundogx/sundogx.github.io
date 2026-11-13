@@ -120,6 +120,7 @@ function ntSystem(hand, seat, auction) {
     if (r === lvl + 'C') return L.H >= 4 ? say(lvl + 'H', 'showH') : L.S >= 4 ? say(lvl + 'S', 'showS') : say(lvl + 'D', 'noMajor');
     if (r === '2N') return oH >= 17 ? '3N' : 'P';
     if (r === '4N') return oH >= (one ? 17 : 21) ? '6N' : 'P';
+    if (one && (r === '3H' || r === '3S')) return L[r[1]] >= 3 ? '4' + r[1] : '3N'; // game-forcing: pick the game
     return 'P';
   }
   if (!isOpener && k === 3) {
@@ -664,24 +665,74 @@ function botPlay(t, seat) {
   return low(of(legal, pool[0]));
 }
 
-// Robot response to a claim: accept when the claim is no more than the sure winners
+// Robot response to a claim: how many of the remaining tricks the claimer's side is sure to take.
+// With 4 or fewer tricks left this is exact (every line of play is tried). With more it only counts
+// winners that can't be lost: cards in the hand on lead, side suits only once the opponents' trumps
+// are drawn, and nothing at all if the opponents are on lead with a trick to cash.
+function exactTricks(t, claimer) {
+  const c = t.contract, trump = c.strain === 'N' ? null : c.strain;
+  const rem = {}; for (const s of SEATS) rem[s] = remainingHand(t.hands, t.play, s).slice();
+  const cur = t.play.tricks.length && t.play.tricks[t.play.tricks.length - 1].cards.length < 4 ? t.play.tricks[t.play.tricks.length - 1].cards.slice() : [];
+  const ours = s => sameSide(s, claimer);
+  const beats = (x, y, led) => { // does card x beat card y (y currently winning)?
+    if (suitOf(x) === suitOf(y)) return rankOf(x) > rankOf(y);
+    if (trump && suitOf(x) === trump) return true;
+    return false;
+  };
+  function go(trick, turn) {
+    if (SEATS.every(s => !rem[s].length) && !trick.length) return 0;
+    let cards = rem[turn];
+    if (trick.length) { const f = cards.filter(x => suitOf(x) === suitOf(trick[0].card)); if (f.length) cards = f; }
+    const max = ours(turn);
+    let best = max ? -1 : 99;
+    for (const card of [...new Set(cards)]) {
+      const i = rem[turn].indexOf(card); rem[turn].splice(i, 1);
+      const nt = trick.concat([{ seat: turn, card }]);
+      let v;
+      if (nt.length === 4) {
+        let w = nt[0]; for (const pc of nt.slice(1)) if (beats(pc.card, w.card)) w = pc;
+        v = (ours(w.seat) ? 1 : 0) + go([], w.seat);
+      } else v = go(nt, nextSeat(turn));
+      rem[turn].splice(i, 0, card);
+      if (max ? v > best : v < best) best = v;
+    }
+    return best;
+  }
+  const turn = cur.length ? nextSeat(cur[cur.length - 1].seat) : playTurn(t.play, c);
+  return go(cur, turn);
+}
 function sureTricks(t, claimer) {
   const c = t.contract, play = t.play, hands = t.hands;
-  const a = remainingHand(hands, play, claimer), b = remainingHand(hands, play, partnerOf(claimer));
-  const opp = [...remainingHand(hands, play, nextSeat(claimer)), ...remainingHand(hands, play, partnerOf(nextSeat(claimer)))];
+  const left = remainingHand(hands, play, claimer).length;
+  if (left <= 4) return exactTricks(t, claimer);
+  const tr = play.tricks[play.tricks.length - 1];
+  if (tr && tr.cards.length && tr.cards.length < 4) return 0; // mid-trick: only exact endings are accepted
+  const leader = playTurn(play, c);
   const trump = c.strain === 'N' ? null : c.strain;
-  const oppTrumps = trump ? opp.filter(x => suitOf(x) === trump).length : 0;
+  const o1 = nextSeat(claimer), o2 = partnerOf(o1);
+  const oppHands = [remainingHand(hands, play, o1), remainingHand(hands, play, o2)];
+  const opp = [...oppHands[0], ...oppHands[1]];
+  const topIn = (cards, s) => Math.max(-1, ...cards.filter(x => suitOf(x) === s).map(rankOf));
+  if (!sameSide(leader, claimer)) return 0; // opponents on lead with 5+ tricks left: too many ways to go wrong
+  // our side is on lead: count winners in the hand on lead only (no reliance on entries to partner)
+  const mine = remainingHand(hands, play, leader);
+  const partner = remainingHand(hands, play, partnerOf(leader));
+  const winnersIn = s => {
+    // a card counts only if it beats every card the opponents AND partner hold in the suit,
+    // so partner can never be forced to overtake and strand the rest
+    const m = mine.filter(x => suitOf(x) === s), top = Math.max(topIn(opp, s), topIn(partner, s));
+    const tops = m.filter(x => rankOf(x) > top).length;
+    const oppLen = Math.max(...oppHands.map(h => h.filter(x => suitOf(x) === s).length));
+    return tops >= oppLen ? m.length : tops; // once the opponents are out of the suit, the rest are winners too
+  };
   let n = 0;
-  for (const s of SUITS) {
-    const ours = [...a, ...b].filter(x => suitOf(x) === s).sort((x, y) => rankOf(y) - rankOf(x));
-    const theirs = opp.filter(x => suitOf(x) === s);
-    const topOpp = theirs.length ? Math.max(...theirs.map(rankOf)) : -1;
-    const tops = ours.filter(x => rankOf(x) > topOpp).length;
-    const maxLen = Math.max(a.filter(x => suitOf(x) === s).length, b.filter(x => suitOf(x) === s).length);
-    if (oppTrumps && s !== trump) n += Math.min(tops, Math.min(maxLen, theirs.length ? 99 : maxLen));
-    else n += theirs.length === 0 ? maxLen : Math.min(tops === ours.length ? maxLen : tops, maxLen);
-  }
-  return Math.min(n, a.length);
+  if (trump) {
+    const trumpTops = winnersIn(trump);
+    const oppTrumpLen = Math.max(...oppHands.map(h => h.filter(x => suitOf(x) === trump).length));
+    n += trumpTops;
+    if (oppTrumpLen === 0 || trumpTops >= oppTrumpLen) for (const s of SUITS) if (s !== trump) n += winnersIn(s);
+  } else for (const s of SUITS) n += winnersIn(s);
+  return Math.min(n, left);
 }
 
 function simulateBoard(hands, dealer, vul) {
@@ -694,4 +745,4 @@ function simulateBoard(hands, dealer, vul) {
   const d = tricksWon(t.play, contract).decl;
   return { auction, contract, declTricks: d, scoreNS: scoreNS(contract, d, vul), tricks: t.play.tricks };
 }
-if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, sureTricks, shown };
+if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, sureTricks, exactTricks, shown };

@@ -138,6 +138,7 @@ const mayTake = (t, uid, seat) => {
 };
 const markLeft = (t, uid, seat) => { if (live(t) && uid) t.left = { ...(t.left || {}), [uid]: seat }; };
 const MAX_REQUESTS = 20;
+const MAX_SOCKETS = 200;
 const ACTIONS = {
   sit: (t, u, seat) => {
     if (!SEATS.includes(seat)) return false;
@@ -180,6 +181,7 @@ const ACTIONS = {
     if (!patch || typeof patch !== 'object') return false;
     const p = {};
     for (const k of ['locked', 'allowUndo', 'kibSee', 'undoAsk']) if (k in patch) p[k] = !!patch[k];
+    if (t.match && p.kibSee) delete p.kibSee; // onlookers could pass on hands the other room is about to play
     if ('boardLimit' in patch) { const v = +patch.boardLimit; if ([0, 5, 7, 10, 15].includes(v)) p.boardLimit = v; }
     if (!Object.keys(p).length) return false;
     const r = A.settings(t, p);
@@ -228,7 +230,7 @@ const ACTIONS = {
     r.need = r.need.filter(x => x !== s);
     if (r.need.length) return;
     t.undoReq = null;
-    return A.undo(t, r.by);
+    if (A.undo(t, r.by) === false) { G.takeError(); G.sysMsg(t, 'The undo is no longer possible, so play continues'); }
   },
   undoCancel: t => { const s = G.mySeat(t); if (!t.undoReq || t.undoReq.by !== s) return false; t.undoReq = null; G.sysMsg(t, `${G.SEAT_NAME[s]} withdrew the undo request`); },
   // Let a robot play for a player who lost their connection, until they come back.
@@ -256,7 +258,8 @@ function robotClaim(t) {
   const leader = G.turnSeat(t), decl = t.contract.declarer;
   if (!sameSideSeat(leader, decl)) return false;
   const done = G.completedTricks(t.play).length, left = 13 - done;
-  if (left < 2 || done < (t.robotClaimAt ?? -9) + 2) return false;
+  const lastAt = t.robotClaimAt && t.robotClaimAt.b === t.board ? t.robotClaimAt.d : -9;
+  if (left < 2 || done < lastAt + 2) return false;
   const trump = t.contract.strain === 'N' ? null : t.contract.strain;
   const o1 = SEATS[(SEATS.indexOf(leader) + 1) % 4], o2 = SEATS[(SEATS.indexOf(leader) + 3) % 4];
   const opp = [...G.remainingHand(t.hands, t.play, o1), ...G.remainingHand(t.hands, t.play, o2)];
@@ -264,7 +267,7 @@ function robotClaim(t) {
   const mine = G.remainingHand(t.hands, t.play, leader);
   const sure = mine.every(c => !opp.some(x => x[0] === c[0] && rankIx(x) > rankIx(c)) && (c[0] === trump || !oppTrumps));
   if (!sure) return false;
-  t.robotClaimAt = done;
+  t.robotClaimAt = { b: t.board, d: done };
   return A.claim(t, decl, left) !== false;
 }
 
@@ -278,15 +281,21 @@ function tidyPresence(t) {
     const o = t.seats[s];
     if (!o || o.kind !== 'human') { delete t.away[s]; delete t.subs[s]; }
   }
-  // A stand-in robot answers claims the way the table's robots do.
+  const human = s => { const o = t.seats[s]; return !!(o && o.kind === 'human'); };
+  // An undo request lapses if the person who asked, or one who has to agree, is no longer seated.
+  if (t.undoReq && (!human(t.undoReq.by) || t.undoReq.need.some(s => !human(s)))) {
+    t.undoReq = null; G.sysMsg(t, 'The undo request lapsed because a seat changed');
+  }
+  // A claim lapses if the claimer's seat is empty; a robot (table robot or stand-in) answers for its seat.
+  if (t.claim && !t.seats[G.controllerOf(t, t.claim.by)]) { t.claim = null; G.sysMsg(t, 'The claim lapsed because the claimer left. Play continues.'); }
   const c = t.claim;
   if (c) for (const s of c.need) {
-    const ctrl = G.controllerOf(t, s);
-    if (t.subs[ctrl] && !c.acc[s] && t.claim) {
+    const ctrl = G.controllerOf(t, s), o = t.seats[ctrl];
+    if ((t.subs[ctrl] || (o && o.kind === 'robot')) && !c.acc[s] && t.claim) {
       const ok = c.tricks === 0 || c.tricks <= G.sureTricks(t, c.by);
       G.setMe({ id: '' });
       A.respond(t, s, ok);
-      if (!ok) t.chat[t.chat.length - 1].text = `The robot playing for ${G.SEAT_NAME[s]} rejected the claim. Play continues.`;
+      if (!ok) t.chat[t.chat.length - 1].text = `The robot ${t.subs[ctrl] ? 'playing for' : 'at'} ${G.SEAT_NAME[s]} rejected the claim. Play continues.`;
     }
   }
 }
@@ -316,12 +325,14 @@ export class TableRoom extends DurableObject {
 
   // The other room of a team match sends its finished boards here.
   async setOther(history) {
+    if (!this.t) return;
     this.other = Array.isArray(history) ? history : [];
     await this.ctx.storage.put('other', this.other);
     this.broadcast();
   }
 
   async fetch(req) {
+    if (this.ctx.getWebSockets().length >= MAX_SOCKETS) return new Response('This table is full of onlookers. Try again later.', { status: 429 });
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     this.ctx.acceptWebSocket(server);
@@ -337,7 +348,12 @@ export class TableRoom extends DurableObject {
     if (m.type === 'hello') {
       const secret = String(m.secret || '');
       if (secret.length < 16) return;
-      const att = { uid: await idFromSecret(secret), name: cleanName(m.name) || 'Player' };
+      const prev = ws.deserializeAttachment() || {};
+      const now = Date.now();
+      if (prev.helloAt && now - prev.helloAt < 2000) return; // one hello every 2 seconds per connection
+      const att = { uid: await idFromSecret(secret), name: cleanName(m.name) || 'Player', helloAt: now };
+      if (prev.uid && prev.uid !== att.uid) { att.hl = 0; att.ol = 0; att.cl = 0; } // a new identity starts its sync from scratch
+      else { att.hl = prev.hl || 0; att.hb = prev.hb; att.ol = prev.ol || 0; att.ob = prev.ob; att.cl = prev.cl || 0; }
       ws.serializeAttachment(att);
       G.setMe({ id: att.uid });
       const seat = G.mySeat(this.t);
@@ -492,14 +508,25 @@ export class TableRoom extends DurableObject {
   viewFor(uid) {
     const t = this.t;
     G.setMe({ id: uid });
-    const { history, ...live } = t;
-    const v = structuredClone(live);
+    const { history, ...rest } = t;
+    const v = structuredClone(rest);
     delete v.seed; // the seed would reveal every deal of a team match
     const seated = SEATS.some(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === uid);
-    const hideDone = t.match && !seated && t.phase === 'done' && !this.other.some(h => h.board === t.board);
+    // Someone who stood up (or was removed) during this board still only sees what their seat could see,
+    // so they can't stand up, look at all four hands, and sit back down.
+    const leftSeat = !seated && live(t) && t.left && Object.hasOwn(t.left, uid) ? t.left[uid] : null;
+    const asSeen = leftSeat ? { ...t, seats: { ...t.seats, [leftSeat]: { kind: 'human', id: uid, name: '' } } } : t;
+    const onlooker = !seated && !leftSeat;
+    const otherHas = b => this.other.some(h => h.board === b);
+    // In a team match an onlooker only sees a board once both rooms have played it.
+    const hideBoard = t.match && onlooker && t.board && !otherHas(t.board);
+    if (hideBoard && live(t)) {
+      v.phase = 'auction'; v.auction = []; v.contract = null; v.play = { tricks: [] }; v.claim = null; v.undoReq = null; v.masked = true;
+    }
     if (v.hands) {
       for (const s of SEATS) {
-        if (!hideDone && G.canSee(t, s)) continue;
+        if (!hideBoard && G.canSee(asSeen, s)) continue;
+        if (hideBoard && live(t)) { v.hands[s] = Array.from({ length: 13 }, (_, i) => '?' + i); continue; }
         // Keep the cards already played (they're public) and replace the rest with blanks.
         const played = [];
         t.play.tricks.forEach(tr => tr.cards.forEach(pc => { if (pc.seat === s) played.push(pc.card); }));
@@ -507,14 +534,13 @@ export class TableRoom extends DurableObject {
         v.hands[s] = played.concat(Array.from({ length: left }, (_, i) => '?' + i));
       }
     }
-    const viewerSeated = seated;
-    if (viewerSeated) v.chat = v.chat.filter(m => !m.kib);
+    if (!onlooker) v.chat = v.chat.filter(m => !m.kib);
     if (t.host !== uid) delete v.requests; // only the host sees who asked for a seat
-    if (t.match) {
-      const mine = new Set(t.history.map(h => h.board));
-      this.otherVisible = this.other.filter(h => mine.has(h.board)); // never show a board you haven't played yet
-    }
-    return v;
+    // finished boards this viewer may see: in a team match, onlookers only get boards both rooms have played
+    const hist = t.match && onlooker ? history.filter(h => otherHas(h.board)) : history;
+    let other = null;
+    if (t.match) { const mine = new Set(history.map(h => h.board)); other = this.other.filter(h => mine.has(h.board)); } // never show a board you haven't played yet
+    return { v, hist, other };
   }
 
   sendTo(ws, msg) { try { ws.send(JSON.stringify(msg)); } catch (e) { } }
@@ -527,25 +553,31 @@ export class TableRoom extends DurableObject {
     for (const ws of sockets) { const a = ws.deserializeAttachment(); if (a && a.uid && !seated.has(a.uid)) viewers.add(a.uid); }
     // Each message carries the live board. Finished boards (which only ever get added) are sent
     // once per connection, so messages stay small however long the session runs.
-    const cache = new Map(), H = this.t.history;
+    const cache = new Map();
     for (const ws of sockets) {
       const a = ws.deserializeAttachment();
       if (!a || !a.uid) continue;
       if (!cache.has(a.uid)) {
-        const v = this.viewFor(a.uid), chat = v.chat; delete v.chat;
-        cache.set(a.uid, { head: JSON.stringify({ type: 'state', t: v, watchers: viewers.size }).slice(0, -1), chat });
+        const { v, hist, other } = this.viewFor(a.uid), chat = v.chat; delete v.chat;
+        cache.set(a.uid, { head: JSON.stringify({ type: 'state', t: v, watchers: viewers.size, now: Date.now() }).slice(0, -1), chat, hist, other });
       }
-      const c = cache.get(a.uid);
+      const c = cache.get(a.uid), H = c.hist;
       const cl = a.cl || 0, newChat = c.chat.filter(m => !m.n || m.n > cl);
       let extra = `,"chat":${JSON.stringify(newChat)},"chatFull":${cl ? 'false' : 'true'}`;
       const lastN = c.chat.length ? (c.chat[c.chat.length - 1].n || 0) : cl;
-      const hl = a.hl || 0;
-      if (hl !== H.length) { const from = hl < H.length ? hl : 0; extra += `,"histFrom":${from},"hist":${JSON.stringify(H.slice(from))}`; }
-      const ov = this.t.match ? (this.otherVisible || []) : null;
-      if (ov && (a.ol || 0) !== ov.length) extra += `,"other":${JSON.stringify(ov)}`;
+      const hl = a.hl || 0, hb = H.length ? H[H.length - 1].board : 0;
+      const histChanged = hl !== H.length || (a.hb ?? 0) !== hb;
+      if (histChanged) {
+        // send only the new boards if this connection's copy still lines up; otherwise resend them all
+        const from = hl && hl <= H.length && H[hl - 1].board === a.hb ? hl : 0;
+        extra += `,"histFrom":${from},"hist":${JSON.stringify(H.slice(from))}`;
+      }
+      const ov = c.other, ob = ov && ov.length ? ov[ov.length - 1].board : 0;
+      const otherChanged = !!ov && ((a.ol || 0) !== ov.length || (a.ob ?? 0) !== ob);
+      if (otherChanged) extra += `,"other":${JSON.stringify(ov)}`;
       try {
         ws.send(c.head + extra + '}');
-        if (hl !== H.length || (ov && (a.ol || 0) !== ov.length) || lastN !== cl) ws.serializeAttachment({ ...a, hl: H.length, ol: ov ? ov.length : 0, cl: lastN });
+        if (histChanged || otherChanged || lastN !== cl) ws.serializeAttachment({ ...a, hl: H.length, hb, ol: ov ? ov.length : 0, ob, cl: lastN });
       } catch (e) { }
     }
   }
@@ -575,9 +607,15 @@ export class Lobby extends DurableObject {
     if (this.made.size > 500) for (const [k, v] of this.made) if (!v.some(x => now - x < 3600e3)) this.made.delete(k);
     return true;
   }
-  async update(summary) { await this.ctx.storage.put('t:' + summary.code, summary); }
-  async remove(code) { await this.ctx.storage.delete('t:' + code); }
+  async update(summary) { this.listCache = null; await this.ctx.storage.put('t:' + summary.code, summary); }
+  async remove(code) { this.listCache = null; await this.ctx.storage.delete('t:' + code); }
   async list() {
+    if (this.listCache && Date.now() - this.listCache.at < 3000) return this.listCache.v;
+    const v = await this.readList();
+    this.listCache = { at: Date.now(), v };
+    return v;
+  }
+  async readList() {
     const all = await this.ctx.storage.list({ prefix: 't:' });
     const now = Date.now(), out = [], stale = [];
     for (const v of all.values()) (now - v.updatedAt < LOBBY_MAX_AGE_MS ? out : stale).push(v);

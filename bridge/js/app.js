@@ -60,6 +60,7 @@ const Net = {
         this.chat = (m.chatFull ? [] : this.chat).concat(m.chat || []).slice(-120); // only new chat lines arrive
         T = m.t; T.history = this.hist; T.otherHistory = this.other; T.chat = this.chat; watchers = m.watchers || 0;
         otherRoom = T.match ? { history: T.otherHistory || [] } : null;
+        if (typeof m.now === 'number') clockSkew = m.now - Date.now();
         if (first && this.onFirst) { const f = this.onFirst; this.onFirst = null; f(); }
         if (first) rememberTable(T);
         if (this.chatQueue && this.chatQueue.length && ws.readyState === 1) { this.chatQueue.forEach(c => ws.send(JSON.stringify(c))); this.chatQueue = []; }
@@ -133,19 +134,23 @@ let T = null;            // current table state
 let tKey = null;         // storage key of current table (null for practice)
 let pollTimer = null, lobbyTimer = null, robotTimer = null;
 let lastRenderedVersion = -1;
+let clockSkew = 0; // server time minus this device's time, for online tables
+const serverNow = () => Date.now() + (T && !T.local ? clockSkew : 0);
 let selLevel = null;
 let selCard = null;     // card picked (confirm-before-play, or keyboard) but not played yet
 let actChain = Promise.resolve();
 
 function toast(msg, ms = 2600) {
-  const d = document.createElement('div'); d.className = 'toast'; d.textContent = msg;
+  const d = document.createElement('div'); d.className = 'toast'; d.setAttribute('role', 'status'); d.textContent = msg;
   document.body.appendChild(d); setTimeout(() => d.remove(), ms);
 }
 
 async function act(fn) {
   actChain = actChain.then(async () => {
     let base = T;
-    const s = JSON.parse(JSON.stringify(base));
+    const { history, chat, ...rest } = base;
+    const s = structuredClone(rest);
+    s.history = history.slice(); s.chat = chat.slice();
     const r = fn(s);
     if (r === false) { if (base !== T) { T = base; render(); } return false; }
     s.version = (s.version || 0) + 1; s.updatedAt = Date.now();
@@ -227,7 +232,7 @@ function plateHTML(t, seat) {
     const lead = t.phase === 'play' && (!tr || tr.cards.length === 0 || tr.cards.length === 4);
     yt = t.phase === 'auction' ? 'Your bid' : seat !== mine ? (lead ? 'Lead from dummy' : 'Play from dummy') : lead ? 'Your lead' : 'Your play';
   }
-  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="yt">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || Date.now()}"></span>` : ''}</span>`;
+  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="yt">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
 }
 function seatBlock(t, seat, where) {
   const o = occupant(t, seat);
@@ -285,7 +290,7 @@ function renderFelt() {
     const open = SEATS.filter(s => !t.seats[s]).map(s => SEAT_NAME[s]);
     center = `<div class="waitmsg">${mine ? 'Waiting for ' + open.join(', ') + '.<br><span class="note" style="color:inherit;opacity:.8">Invite friends with code ' + t.id + ' or this page\'s link, or add robots.</span>' : 'Choose a seat to play, or watch from here.'}</div>`;
   } else if (t.phase === 'auction') {
-    center = auctionGridHTML(t);
+    center = t.masked ? '<div class="waitmsg">A board is in progress.<br><span class="note" style="color:inherit;opacity:.85">In a team match, onlookers see each board once both rooms have played it.</span></div>' : auctionGridHTML(t);
   } else if (t.phase === 'play' || t.phase === 'done') {
     const tricks = t.play.tricks;
     const tr = tricks[tricks.length - 1];
@@ -317,7 +322,8 @@ function renderFelt() {
   }
   if (t.phase === 'auction') {
     const ts = turnSeat(t);
-    if (!occupant(t, ts)) bn += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[ts]} is empty. Sit there or add a robot.</div>`;
+    if (t.masked) { /* nothing to show */ }
+    else if (!occupant(t, ts)) bn += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[ts]} is empty. Sit there or add a robot.</div>`;
     else bn += awayBanner(t);
     bn += undoBanner(t);
   }
@@ -397,13 +403,29 @@ function renderBidBox() {
   cf.classList.toggle('hidden', !pendingCall);
   cf.innerHTML = pendingCall ? `<button class="btn primary" data-confirmcall="1">${pendingCall === 'P' ? 'Pass' : pendingCall === 'X' ? 'Double' : pendingCall === 'XX' ? 'Redouble' : 'Bid ' + callText(pendingCall)}</button><button class="btn" data-cancelcall="1">Cancel</button>` : '';
 }
-function renderSide() {
+let sideSig = { a: '', c: '', r: '' }, ddVersion = 0;
+function renderSide(force) {
   const t = T;
+  const aSig = [t.id, t.board, t.phase, t.auction.length, t.contract ? contractText(t.contract) : '', completedTricks(t.play).length, !!t.masked].join('|');
+  if (force || aSig !== sideSig.a) { sideSig.a = aSig; renderAuctionPane(t); }
+  const lc = t.chat[t.chat.length - 1];
+  const cSig = [t.id, t.chat.length, lc ? (lc.n || lc.ts) + lc.text : ''].join('|');
+  if (force || cSig !== sideSig.c) { sideSig.c = cSig; renderChatPane(t); }
+  const lh = t.history[t.history.length - 1];
+  const rSig = [t.id, t.history.length, lh ? lh.board : 0, otherRoom ? otherRoom.history.length : 0, ddVersion, DD.failed].join('|');
+  if (force || rSig !== sideSig.r) { sideSig.r = rSig; renderResultsPane(t); }
+}
+function renderAuctionPane(t) {
+  if (t.masked) { $('pane-auction').innerHTML = '<p class="empty">In a team match, onlookers see each board once both rooms have played it.</p>'; return; }
   $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractText(t.contract)}</p>${tricksHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a yellow outline are alerted. Tap one to read the explanation.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
+}
+function renderChatPane(t) {
   const log = $('chatLog');
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
   log.innerHTML = t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '<div class="empty">No messages yet.</div>';
   if (atBottom) log.scrollTop = log.scrollHeight;
+}
+function renderResultsPane(t) {
   let ns = 0, ew = 0, imps = 0, impN = 0;
   t.history.forEach(h => { if (h.scoreNS > 0) ns += h.scoreNS; else ew -= h.scoreNS; requestDD(h.hands, false); });
   const sgn = v => (v > 0 ? '+' : '') + v;
@@ -456,7 +478,7 @@ function renderTop() {
   $('tCode').textContent = t.local ? '' : (t.private ? 'Private, code ' : 'Code ') + t.id;
   $('lastTrickBtn').disabled = !(t.play && completedTricks(t.play).length);
   $('lastTrickBtn').classList.toggle('hidden', $('lastTrickBtn').disabled);
-  const probe = JSON.parse(JSON.stringify(t));
+  const probe = { ...t, play: { ...t.play }, chat: [] };
   $('undoBtn').disabled = !(mine && !t.undoReq && (t.local || t.allowUndo !== false) && doUndo(probe, mine) !== false && (t.phase === 'auction' || t.phase === 'play'));
   $('settingsBtn').classList.toggle('hidden', !isHost(t));
   $('roomBtn').classList.toggle('hidden', !t.match);
@@ -469,20 +491,32 @@ function render() {
   if (!T) return;
   autoTab(T);
   if (selCard) { const ts = turnSeat(T); if (T.phase !== 'play' || !ts || !myLegal(T, ts).includes(selCard)) selCard = null; }
+  const ae = document.activeElement; let keep = null;
+  if (ae && ae !== document.body && ae.dataset) for (const a of ['play', 'level', 'strain', 'call', 'confirmcall', 'cancelcall', 'claim', 'next', 'record', 'review']) {
+    if (ae.dataset[a] !== undefined) { keep = `[data-${a}="${ae.dataset[a]}"]`; break; }
+  }
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
+  if (keep && (!document.activeElement || document.activeElement === document.body)) { const el = document.querySelector(keep); if (el) el.focus({ preventScroll: true }); }
   lastRenderedVersion = T.version;
   refreshOtherRoom();
-  if (T.hands && T.phase !== 'waiting' && SEATS.every(s => T.hands[s].every(c => c[0] !== '?'))) requestDD(T.hands, true, T.contract ? T.contract.strain : null);
+  if (T.hands && T.phase === 'done' && SEATS.every(s => T.hands[s].every(c => c[0] !== '?'))) requestDD(T.hands, true, T.contract ? T.contract.strain : null);
   const mt = isMyTurn(T); if (mt && !wasMyTurn) beep(); wasMyTurn = mt;
   updateTitle();
   scheduleRobot();
 }
 
 // ---------- modals ----------
+let modalReturn = null;
+function closeModal() {
+  $('modalRoot').innerHTML = ''; openRecord = null;
+  const r = modalReturn; modalReturn = null;
+  if (r && r.isConnected) r.focus({ preventScroll: true });
+}
 function modal(html) {
+  if (!$('modalRoot').firstChild) modalReturn = document.activeElement;
   $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box">${html}<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div></div></div>`;
   const m = $('modalRoot').firstChild;
-  m.addEventListener('click', e => { if (e.target === m || e.target.dataset.close) { $('modalRoot').innerHTML = ''; openRecord = null; } });
+  m.addEventListener('click', e => { if (e.target === m || e.target.dataset.close) closeModal(); });
   openRecord = null;
   const b = m.querySelector('button'); if (b) b.focus();
   return m;
@@ -538,6 +572,7 @@ const handsKey = h => SEATS.map(s => h[s].join('')).join('|');
 function ddEntry(h) { return DD.cache.get(handsKey(h)); }
 // Queue one job per strain; the contract's strain (if known) goes first.
 function requestDD(h, urgent, firstStrain) {
+  if (DD.failed && Date.now() - (DD.failedAt || 0) > 120e3) ddRetry();
   if (!h || DD.failed) return;
   const k = handsKey(h);
   let en = DD.cache.get(k);
@@ -562,7 +597,7 @@ function makeWorker() {
   w.job = null;
   w.onmessage = e => {
     const m = e.data, en = DD.cache.get(m.k);
-    if (m.done) { w.job = null; if (en) { en.strainsDone++; if (en.strainsDone === 5) en.done = true; } pumpDD(); }
+    if (m.done) { w.job = null; if (en) { en.strainsDone++; if (en.strainsDone === 5) { en.done = true; ddVersion++; } } pumpDD(); }
     else if (en) en.table[m.decl][m.st] = m.v;
     if (en) onDDUpdate(m.k);
   };
@@ -570,17 +605,24 @@ function makeWorker() {
     const j = w.job; w.job = null;
     try { w.terminate(); } catch (e) { }
     DD.workers = DD.workers.filter(x => x !== w);
-    if (j && !j.retried) { j.retried = true; DD.queue.unshift(j); pumpDD(); } else DD.failed = true;
+    if (j && !j.retried) { j.retried = true; DD.queue.unshift(j); pumpDD(); } else ddFail();
   };
   return w;
 }
+function ddFail() { // give up for now; try again when the connection returns or after two minutes
+  DD.failed = true; DD.failedAt = Date.now();
+  for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // so they are queued afresh later
+  DD.queue = [];
+}
+function ddRetry() { if (DD.failed) { DD.failed = false; DD.workers = []; if (T) renderSide(true); } }
+window.addEventListener('online', ddRetry);
 function pumpDD() {
   if (DD.failed) return;
   if (!DD.workers.length) {
     try {
       const n = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 1));
       for (let i = 0; i < n; i++) DD.workers.push(makeWorker());
-    } catch (err) { DD.failed = true; return; }
+    } catch (err) { ddFail(); return; }
   }
   for (const w of DD.workers) {
     if (w.job || !DD.queue.length) continue;
@@ -590,9 +632,11 @@ function pumpDD() {
 }
 let openRecord = null; // index of hand record currently shown
 let ddFrame = 0;
+const ddKeys = new Set();
 function onDDUpdate(k) { // many messages arrive per board; redraw at most once per frame
+  ddKeys.add(k);
   if (ddFrame) return;
-  ddFrame = requestAnimationFrame(() => { ddFrame = 0; redrawDD(k); });
+  ddFrame = requestAnimationFrame(() => { ddFrame = 0; const ks = [...ddKeys]; ddKeys.clear(); ks.forEach(redrawDD); });
 }
 function redrawDD(k) {
   if (!T) return;
@@ -610,6 +654,7 @@ function ddHTML(h) {
   if (DD.failed) return '<p class="note">Double-dummy analysis isn\'t available in this browser.</p>';
   const en = ddEntry(h.hands);
   if (!en) { requestDD(h.hands, true); return '<p class="note">Starting analysis…</p>'; }
+  if (!en.done && openRecord !== null && T.history[openRecord] === h) requestDD(h.hands, true);
   const cols = ['N', 'S', 'H', 'D', 'C'];
   const rows = ['N', 'S', 'E', 'W'].map(d => `<tr><th>${d}</th>${cols.map(c => { const v = en.table[d][c]; return `<td class="${v >= 7 ? 'mk' : ''}">${v === undefined ? '…' : v >= 7 ? v - 6 : '–'}</td>`; }).join('')}</tr>`).join('');
   const par = en.done ? parScore(en.table, h.vul) : null;
@@ -774,12 +819,17 @@ async function adoptIdentityFromLink() {
 }
 
 // ----- keep the phone's screen on while you're seated at a table -----
-let wakeLock = null, wakeWanted = false;
+let wakeLock = null, wakeWanted = false, wakePending = false;
 async function ensureWakeLock() {
   wakeWanted = !!(T && mySeat(T) && T.phase !== 'waiting');
   if (!wakeWanted) return releaseWakeLock();
-  if (wakeLock || document.hidden || !navigator.wakeLock) return;
-  try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch (e) { wakeLock = null; }
+  if (wakeLock || wakePending || document.hidden || !navigator.wakeLock) return;
+  wakePending = true;
+  try {
+    const l = await navigator.wakeLock.request('screen');
+    if (!wakeWanted) { l.release().catch(() => { }); return; } // left the table while waiting
+    wakeLock = l; l.addEventListener('release', () => { if (wakeLock === l) wakeLock = null; });
+  } catch (e) { wakeLock = null; } finally { wakePending = false; }
 }
 function releaseWakeLock() { wakeWanted = false; if (wakeLock) { wakeLock.release().catch(() => { }); wakeLock = null; } }
 document.addEventListener('visibilitychange', () => { if (!document.hidden && wakeWanted) ensureWakeLock(); });
@@ -882,7 +932,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (!T) return;
-  const onButton = tag === 'button' && (k === 'Enter' || k === ' ') && !pendingCall && !selCard;
+  const onButton = tag === 'button' && (k === 'Enter' || k === ' ') && (e.target.matches('[data-play]') || (!pendingCall && !selCard));
   if (T.phase === 'auction' && !$('bidArea').classList.contains('hidden')) {
     const legal = legalCalls(T.dealer, T.auction);
     if (k === 'Enter' && pendingCall && !onButton) { sendCall(pendingCall, true); e.preventDefault(); return; }
@@ -930,7 +980,7 @@ function showSettings() {
 // ---------- clocks ----------
 const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
 function tick() {
-  const now = Date.now();
+  const now = serverNow();
   document.querySelectorAll('.clk[data-since]').forEach(el => { el.textContent = mmss(now - +el.dataset.since); });
   document.querySelectorAll('.bclk[data-start]').forEach(el => {
     const lim = +el.dataset.limit * 60000, used = now - +el.dataset.start;
@@ -1016,7 +1066,7 @@ function autoTab(t) {
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { tabAuto = false; selectTab(b.dataset.tab); }));
 let resizeFrame = 0;
 window.addEventListener('resize', () => { if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; if (T) { renderFelt(); renderHand(); } }); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape') $('modalRoot').innerHTML = ''; });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('modalRoot').firstChild) closeModal(); });
 
 // ---------- lobby ----------
 async function loadMe() {
@@ -1039,9 +1089,9 @@ function needName() {
   return true;
 }
 $('practiceBtn').addEventListener('click', () => {
-  if (!me.name) me.name = $('nameInput').value.trim() || 'You';
+  const nm = me.name || $('nameInput').value.trim() || 'You';
   const t = newTable({ name: 'Practice', local: true });
-  t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: me.name }, W: { kind: 'robot' } };
+  t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: nm }, W: { kind: 'robot' } };
   startBoard(t);
   openTable(t);
 });
@@ -1095,7 +1145,7 @@ function showTableView() {
 }
 function openTable(t) { // practice
   Net.close();
-  T = t; tKey = null; lastRenderedVersion = -1; otherRoom = null; watchers = 0;
+  T = t; tKey = null; lastRenderedVersion = -1; otherRoom = null; watchers = 0; wasMyTurn = false; clockSkew = 0;
   showTableView(); render();
   history.replaceState(null, '', location.pathname);
 }
@@ -1106,6 +1156,8 @@ function openOnline(code) {
     $('felt').innerHTML = '<div class="pos-center"><div class="waitmsg">Connecting…</div></div>';
     $('myHand').innerHTML = ''; $('bidArea').classList.add('hidden'); $('modalRoot').innerHTML = '';
   }
+  wasMyTurn = false; $('alertChk').checked = false; $('alertText').classList.add('hidden');
+  setTimeout(() => { if (Net.code === code && !Net.gotState) toast('Still trying to reach the table. Check your connection.', 4000); }, 5000);
   Net.open(code, () => {
     lastRenderedVersion = -1; showTableView();
     history.replaceState(null, '', '#' + code);
@@ -1115,6 +1167,8 @@ function goHome() {
   releaseWakeLock();
   Net.close(); clearTimeout(robotTimer); robotTimer = null;
   T = null; tKey = null; DD.queue.length = 0; // stop analysing the table you left
+  for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // ...and let it start again if you come back
+  wasMyTurn = false; clockSkew = 0;
   $('tableView').classList.add('hidden'); $('home').classList.remove('hidden');
   history.replaceState(null, '', location.pathname);
   loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
