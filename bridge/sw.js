@@ -11,7 +11,8 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/')) return;
   const key = e.request.mode === 'navigate' ? './' : e.request;
   e.respondWith(fetch(e.request, { cache: 'no-cache' }).then(res => {
-    if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(key, copy)); }
+    // keep a copy for offline use (full responses only; stay alive until it is written)
+    if (res.status === 200) { const copy = res.clone(); e.waitUntil(caches.open(CACHE).then(c => c.put(key, copy)).catch(() => { })); }
     return res;
   }).catch(() => caches.match(key).then(r => r || Response.error())));
 });
