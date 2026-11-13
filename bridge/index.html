@@ -122,7 +122,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .felt {
   position: relative; background: var(--felt);
   border: 4px solid var(--felt-edge); border-radius: 12px; color: var(--felt-ink);
-  display: grid; grid-template-columns: minmax(70px, 1fr) minmax(170px, 1.6fr) minmax(70px, 1fr);
+  display: grid; grid-template-columns: minmax(70px, 1.5fr) minmax(170px, 1fr) minmax(70px, 1.5fr);
   grid-template-rows: auto minmax(240px, 1fr) auto; gap: 6px; padding: 10px; height: 530px;
 }
 .pos-top { grid-column: 2; grid-row: 1; justify-self: center; text-align: center; }
@@ -183,22 +183,19 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 html[data-deck="4"] .s-D { color: #e06500 !important; }
 html[data-deck="4"] .s-C { color: #12822e !important; }
 
+/* your hand and every face-up hand (dummy) use the same card size */
+:root { --cw: 64px; --ch: 92px; }
 /* dummy (and other visible hands) as columns of cards, one per suit */
 .dhand { display: flex; gap: 4px; align-items: flex-start; justify-content: center; margin-top: 2px; }
 .dcol { display: flex; flex-direction: column; }
-.dhand .card { width: 56px; height: 80px; }
-.dhand .card + .card { margin-top: -58px; }
-.dhand .card .cr { font-size: 19px; top: 3px; left: 4px; }
-.dhand .card .cs { font-size: 17px; top: 4px; left: auto; right: 4px; }
-.dhand .card .cb { font-size: 32px; }
-.dhand .card:not(:last-child) .cb { display: none; }
-.dhand.sm .card { width: 42px; height: 62px; }
-.dhand.sm .card + .card { margin-top: -42px; }
-.dhand.sm .card .cr { font-size: 15px; left: 3px; } .dhand.sm .card .cs { font-size: 13px; right: 3px; } .dhand.sm .card .cb { font-size: 24px; }
+.dhand .card { width: var(--cw); height: var(--ch); }
+.dhand .card + .card { margin-top: calc(28px - var(--ch)); }
+.dhand .card .cr { font-size: calc(var(--cw) * .36); top: 3px; left: 4px; }
+.dhand .card .cs { font-size: calc(var(--cw) * .32); top: 4px; left: auto; right: 4px; }
 .dhand .card.legal { cursor: pointer; }
-.dhand .card.legal:hover, .dhand .card.legal:focus-visible { outline: 3px solid var(--brass); outline-offset: -1px; z-index: 2; }
+.dhand .card.legal:hover, .dhand .card.legal:focus-visible { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass); outline: none; }
 .dhand .card.dim { background: #c4c4c4; cursor: default; }
-.dhand .card.sel { background: #fff3b0; outline: 3px solid var(--brass); outline-offset: -1px; z-index: 2; }
+.dhand .card.sel { background: #ffe680; box-shadow: inset 0 0 0 3px #b88a00; }
 
 /* trick counter */
 .tally { display: grid; grid-template-columns: auto auto; gap: 2px 6px; align-items: center; justify-content: end; margin-top: 3px; }
@@ -214,20 +211,18 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .card { width: 50px; height: 72px; border-radius: 5px; background: var(--card); color: var(--card-ink); border: 1px solid var(--card-line); font-family: var(--sans); font-weight: 700; position: relative; padding: 0; flex: none; }
 .card .cr { position: absolute; left: 4px; top: 2px; font-size: 19px; line-height: 1; }
 .card .cs { position: absolute; left: 4px; top: 22px; font-size: 19px; line-height: 1; }
-.card .cb { position: absolute; right: 5px; bottom: 4px; font-size: 26px; line-height: 1; }
+.card .cb { display: none; } /* one suit symbol per card */
 .card.red { color: var(--card-red); }
 
-.myhand { margin-top: 12px; height: 160px; position: relative; display: flex; justify-content: center; }
+.myhand { margin-top: 12px; height: 124px; position: relative; display: flex; justify-content: center; }
 .fan { display: flex; padding-top: 22px; }
-.fan .card { width: 84px; height: 122px; transition: transform .1s; box-shadow: -1px 0 0 #0003; }
-.fan .card .cr, .fan .card .cs { font-size: 32px; left: 6px; }
-.fan .card .cr { top: 4px; } .fan .card .cs { top: 36px; }
-.fan .card .cb { font-size: 52px; }
-.fan .card:not(:last-child) .cb { display: none; }
+.fan .card { width: var(--cw); height: var(--ch); transition: transform .1s; box-shadow: -1px 0 0 #0003; }
+.fan .card .cr, .fan .card .cs { font-size: calc(var(--cw) * .36); left: 5px; }
+.fan .card .cr { top: 4px; } .fan .card .cs { top: calc(var(--cw) * .36 + 6px); }
 .fan .card.legal { cursor: pointer; transform: translateY(-10px); }
-.fan .card.legal:hover, .fan .card.legal:focus-visible { transform: translateY(-20px); outline: 3px solid var(--brass); outline-offset: 0; z-index: 2; }
+.fan .card.legal:hover, .fan .card.legal:focus-visible { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass), -1px 0 0 #0003; outline: none; }
 .fan .card.dim { background: #c4c4c4; cursor: default; }
-.fan .card.sel { transform: translateY(-24px); outline: 3px solid var(--brass); outline-offset: 0; z-index: 3; }
+.fan .card.sel { background: #ffe680; box-shadow: inset 0 0 0 3px #b88a00, -1px 0 0 #0003; }
 @media (prefers-reduced-motion: reduce) { .fan .card { transition: none; } }
 
 /* auction grid */
@@ -336,15 +331,11 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .tslot .card .cr, .tslot .card .cs { font-size: 19px; left: 4px; } .tslot .card .cs { top: 22px; } .tslot .card .cb { font-size: 26px; }
   .tslot.top { transform: translate(-50%, calc(-100% - 2px)); } .tslot.bottom { transform: translate(-50%, 2px); }
   .tslot.left { transform: translate(calc(-100% - 26px), -50%); } .tslot.right { transform: translate(26px, -50%); }
-  .dhand .card { width: 44px; height: 64px; } .dhand .card + .card { margin-top: -45px; }
-  .dhand .card .cr { font-size: 16px; } .dhand .card .cs { font-size: 14px; } .dhand .card .cb { font-size: 24px; }
-  .fan .card { width: 64px; height: 94px; }
+  :root { --cw: 52px; --ch: 76px; }
   .tally { grid-template-columns: auto; justify-items: end; gap: 0; }
   .tally .pip { width: 5px; height: 8px; }
   .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
-  .fan .card .cr, .fan .card .cs { font-size: 25px; left: 5px; } .fan .card .cs { top: 28px; }
-  .fan .card .cb { font-size: 40px; }
-  .myhand { height: 134px; }
+  .myhand { height: 112px; }
   .rows { font-size: 14px; min-width: 0; padding: 4px 5px; }
   .plate .nm { max-width: 64px; }
   .pos-left, .pos-right { min-width: 0; max-width: 100%; }
@@ -366,7 +357,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .layout > div:first-child { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: "req req" "felt hand" "felt bid"; grid-template-rows: auto auto 1fr; gap: 0 10px; align-items: start; }
   #seatReqs { grid-area: req; }
   .felt { grid-area: felt; height: calc(100vh - 50px); min-height: 290px; padding: 6px; border-width: 3px; grid-template-rows: auto minmax(170px, 1fr) auto; }
-  .myhand { grid-area: hand; margin-top: 0; height: 128px; }
+  .myhand { grid-area: hand; margin-top: 0; height: 104px; }
   #bidArea { grid-area: bid; }
   .bbox { padding: 6px; } .bbox .lv, .bbox .st, .bbox .sp { gap: 4px; margin-bottom: 4px; } .bcard { font-size: 15px; padding: 5px 0; }
   .alertrow { margin-top: 4px; }
@@ -374,11 +365,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .tslot .card .cr, .tslot .card .cs { font-size: 20px; left: 4px; } .tslot .card .cs { top: 24px; } .tslot .card .cb { font-size: 28px; }
   .tslot.top { transform: translate(-50%, calc(-100% - 3px)); } .tslot.bottom { transform: translate(-50%, 3px); }
   .tslot.left { transform: translate(calc(-100% - 30px), -50%); } .tslot.right { transform: translate(30px, -50%); }
-  .dhand .card { width: 42px; height: 60px; } .dhand .card + .card { margin-top: -42px; }
-  .dhand .card .cr { font-size: 15px; } .dhand .card .cs { font-size: 13px; } .dhand .card .cb { font-size: 22px; }
+  :root { --cw: 52px; --ch: 76px; }
   .fan { padding-top: 18px; }
-  .fan .card { width: 64px; height: 94px; }
-  .fan .card .cr, .fan .card .cs { font-size: 25px; left: 5px; } .fan .card .cs { top: 28px; } .fan .card .cb { font-size: 40px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .tally .pip { width: 5px; height: 8px; }
   .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
@@ -2150,7 +2138,8 @@ function seatBlock(t, seat, where) {
     if (canSee(t, seat)) {
       const side = where !== 'top';
       const fw = $('felt').clientWidth || 800;
-      if (side && fw < 680) inner += rowsHTML(currentCards(t, seat), myLegal(t, seat), seat);
+      const cwid = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
+      if (side && (fw - 36) * 1.5 / 4 < 4 * cwid + 12) inner += rowsHTML(currentCards(t, seat), myLegal(t, seat), seat);
       else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side);
     }
     else { const n = currentCards(t, seat).length; inner += `<span class="backs" role="img" aria-label="${n} cards" title="${n} cards">${'<i></i>'.repeat(n)}</span>`; }
@@ -2272,8 +2261,7 @@ function renderHand() {
   const legal = mine ? myLegal(t, mine) : [];
   const myTurn = legal.length > 0;
   const w = el.clientWidth || 360;
-  const compact = window.innerWidth <= 560 || (window.innerHeight <= 520 && window.innerWidth > window.innerHeight);
-  const cw = compact ? 64 : 84;
+  const cw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
   el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
 }
