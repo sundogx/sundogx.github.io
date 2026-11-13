@@ -118,7 +118,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
   position: relative; background: var(--felt);
   border: 4px solid var(--felt-edge); border-radius: 12px; color: var(--felt-ink);
   display: grid; grid-template-columns: minmax(70px, 1fr) minmax(170px, 1.6fr) minmax(70px, 1fr);
-  grid-template-rows: auto minmax(190px, 1fr) auto; gap: 6px; padding: 10px; min-height: 420px;
+  grid-template-rows: auto minmax(240px, 1fr) auto; gap: 6px; padding: 10px; height: 530px;
 }
 .pos-top { grid-column: 2; grid-row: 1; justify-self: center; text-align: center; }
 .pos-left { grid-column: 1; grid-row: 2; align-self: center; }
@@ -154,11 +154,48 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 
 /* trick */
 .trick { position: absolute; inset: 0; }
-.tslot { position: absolute; transform: translate(-50%, -50%); }
-.tslot.top { left: 50%; top: 22%; } .tslot.bottom { left: 50%; top: 78%; }
-.tslot.left { left: 22%; top: 50%; } .tslot.right { left: 78%; top: 50%; }
-.tslot .card { cursor: default; }
+.trick.full { cursor: pointer; }
+.tslot { position: absolute; left: 50%; top: 50%; }
+.tslot.top { transform: translate(-50%, calc(-100% - 4px)); }
+.tslot.bottom { transform: translate(-50%, 4px); }
+.tslot.left { transform: translate(calc(-100% - 42px), -50%); }
+.tslot.right { transform: translate(42px, -50%); }
+.tslot .card { cursor: default; width: 76px; height: 110px; }
+.tslot .card .cr, .tslot .card .cs { font-size: 28px; left: 6px; }
+.tslot .card .cr { top: 4px; } .tslot .card .cs { top: 33px; }
+.tslot .card .cb { font-size: 44px; }
 .tslot .card.win { box-shadow: 0 0 0 4px var(--brass); }
+
+/* four-colour deck option */
+html[data-deck="4"] .s-D { color: #e06500 !important; }
+html[data-deck="4"] .s-C { color: #12822e !important; }
+
+/* dummy (and other visible hands) as columns of cards, one per suit */
+.dhand { display: flex; gap: 4px; align-items: flex-start; justify-content: center; margin-top: 2px; }
+.dcol { display: flex; flex-direction: column; }
+.dhand .card { width: 56px; height: 80px; }
+.dhand .card + .card { margin-top: -58px; }
+.dhand .card .cr { font-size: 19px; top: 3px; left: 4px; }
+.dhand .card .cs { font-size: 17px; top: 4px; left: auto; right: 4px; }
+.dhand .card .cb { font-size: 32px; }
+.dhand .card:not(:last-child) .cb { display: none; }
+.dhand.sm .card { width: 42px; height: 62px; }
+.dhand.sm .card + .card { margin-top: -42px; }
+.dhand.sm .card .cr { font-size: 15px; left: 3px; } .dhand.sm .card .cs { font-size: 13px; right: 3px; } .dhand.sm .card .cb { font-size: 24px; }
+.dhand .card.legal { cursor: pointer; }
+.dhand .card.legal:hover, .dhand .card.legal:focus-visible { outline: 3px solid var(--brass); outline-offset: -1px; z-index: 2; }
+.dhand .card.dim { background: #c4c4c4; cursor: default; }
+.dhand .card.sel { background: #fff3b0; outline: 3px solid var(--brass); outline-offset: -1px; z-index: 2; }
+
+/* trick counter */
+.tally { display: grid; grid-template-columns: auto auto; gap: 2px 6px; align-items: center; justify-content: end; margin-top: 3px; }
+.tally .pips { display: flex; gap: 2px; justify-content: flex-end; }
+.tally .pip { width: 7px; height: 11px; border-radius: 2px; border: 1px solid #ffffff99; }
+.tally .pip.on { background: #ffffff; border-color: #ffffff; }
+.tally .pip.need { border-style: dashed; }
+.tally .me { font-weight: 700; }
+.hstat { font-size: 13px; font-weight: 600; white-space: nowrap; background: #ffffffe6; color: #1b1b1b; border-radius: 5px; padding: 1px 7px; }
+.hstat .hred { color: var(--card-red); }
 
 /* cards */
 .card { width: 50px; height: 72px; border-radius: 5px; background: var(--card); color: var(--card-ink); border: 1px solid var(--card-line); font-family: var(--sans); font-weight: 700; position: relative; padding: 0; flex: none; }
@@ -177,6 +214,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .fan .card.legal { cursor: pointer; transform: translateY(-10px); }
 .fan .card.legal:hover, .fan .card.legal:focus-visible { transform: translateY(-20px); outline: 3px solid var(--brass); outline-offset: 0; z-index: 2; }
 .fan .card.dim { background: #c4c4c4; cursor: default; }
+.fan .card.sel { transform: translateY(-24px); outline: 3px solid var(--brass); outline-offset: 0; z-index: 3; }
 @media (prefers-reduced-motion: reduce) { .fan .card { transition: none; } }
 
 /* auction grid */
@@ -249,7 +287,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .bclk.over { color: var(--over); font-weight: 700; }
 .alertrow label.row { flex-wrap: nowrap; flex: none; }
 .topbar .more { display: contents; }
-#moreBtn { display: none; }
+#moreBtn, #sideBtn, .sidehead { display: none; }
 @media (max-width: 560px) {
   .topbar { gap: 6px; }
   .topbar .tt { font-size: 17px; flex-basis: 100%; margin-right: 0; }
@@ -272,10 +310,20 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .ttable td.w { font-weight: 700; text-decoration: underline; }
 
 @media (max-width: 560px) {
-  .felt { grid-template-columns: minmax(64px, .9fr) minmax(140px, 1.6fr) minmax(64px, .9fr); padding: 6px; border-width: 7px; min-height: 380px; }
+  .felt { grid-template-columns: minmax(64px, .9fr) minmax(140px, 1.6fr) minmax(64px, .9fr); padding: 6px; border-width: 4px; height: 470px; }
   .card { width: 40px; height: 58px; }
   .card .cr, .card .cs { font-size: 15px; left: 4px; } .card .cs { top: 18px; } .card .cb { font-size: 18px; }
+  .felt { grid-template-rows: auto minmax(190px, 1fr) auto; }
+  .tslot .card { width: 50px; height: 72px; }
+  .tslot .card .cr, .tslot .card .cs { font-size: 19px; left: 4px; } .tslot .card .cs { top: 22px; } .tslot .card .cb { font-size: 26px; }
+  .tslot.top { transform: translate(-50%, calc(-100% + 12px)); z-index: 1; } .tslot.bottom { transform: translate(-50%, -12px); z-index: 1; }
+  .tslot.left { transform: translate(calc(-100% - 4px), -50%); } .tslot.right { transform: translate(4px, -50%); }
+  .dhand .card { width: 44px; height: 64px; } .dhand .card + .card { margin-top: -45px; }
+  .dhand .card .cr { font-size: 16px; } .dhand .card .cs { font-size: 14px; } .dhand .card .cb { font-size: 24px; }
   .fan .card { width: 64px; height: 94px; }
+  .tally { grid-template-columns: auto; justify-items: end; gap: 0; }
+  .tally .pip { width: 5px; height: 8px; }
+  .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
   .fan .card .cr, .fan .card .cs { font-size: 25px; left: 5px; } .fan .card .cs { top: 28px; }
   .fan .card .cb { font-size: 40px; }
   .myhand { height: 134px; }
@@ -284,12 +332,45 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }
 }
+/* phone held sideways: table on the left, hand and bidding box on the right, sidebar slides in */
+@media (orientation: landscape) and (max-height: 520px) {
+  #tableView { padding: 4px 8px 8px; }
+  .topbar { margin-bottom: 4px; gap: 6px; }
+  .topbar .tt { font-size: 16px; }
+  #moreBtn, #sideBtn { display: inline-block; }
+  .topbar .more { display: none; }
+  .topbar.open .more { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+  .layout { grid-template-columns: 1fr; }
+  .layout > div:first-child { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: "req req" "felt hand" "felt bid"; grid-template-rows: auto auto 1fr; gap: 0 10px; align-items: start; }
+  #seatReqs { grid-area: req; }
+  .felt { grid-area: felt; height: calc(100vh - 50px); min-height: 290px; padding: 6px; border-width: 3px; grid-template-rows: auto minmax(170px, 1fr) auto; }
+  .myhand { grid-area: hand; margin-top: 0; height: 128px; }
+  #bidArea { grid-area: bid; }
+  .bbox { padding: 6px; } .bbox .lv, .bbox .st, .bbox .sp { gap: 4px; margin-bottom: 4px; } .bcard { font-size: 15px; padding: 5px 0; }
+  .alertrow { margin-top: 4px; }
+  .tslot .card { width: 54px; height: 78px; }
+  .tslot .card .cr, .tslot .card .cs { font-size: 20px; left: 4px; } .tslot .card .cs { top: 24px; } .tslot .card .cb { font-size: 28px; }
+  .tslot.top { transform: translate(-50%, calc(-100% - 3px)); } .tslot.bottom { transform: translate(-50%, 3px); }
+  .tslot.left { transform: translate(calc(-100% - 30px), -50%); } .tslot.right { transform: translate(30px, -50%); }
+  .dhand .card { width: 42px; height: 60px; } .dhand .card + .card { margin-top: -42px; }
+  .dhand .card .cr { font-size: 15px; } .dhand .card .cs { font-size: 13px; } .dhand .card .cb { font-size: 22px; }
+  .fan { padding-top: 18px; }
+  .fan .card { width: 64px; height: 94px; }
+  .fan .card .cr, .fan .card .cs { font-size: 25px; left: 5px; } .fan .card .cs { top: 28px; } .fan .card .cb { font-size: 40px; }
+  .corner { font-size: 11px; } .corner b { font-size: 13px; }
+  .tally .pip { width: 5px; height: 8px; }
+  .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
+  .side { position: fixed; top: 0; right: 0; bottom: 0; width: min(330px, 88vw); z-index: 15; transform: translateX(105%); transition: transform .2s; border-radius: 0; box-shadow: -4px 0 16px #0005; }
+  .side.open { transform: none; }
+  .sidehead { display: flex; justify-content: flex-end; padding: 6px 8px 0; }
+  .side .pane { max-height: calc(100vh - 90px); }
+}
 </style>
 </head>
 <body>
 
 <section id="home">
-  <div class="mast"><h1>Bridge table</h1><span class="suits">♠<span class="red">♥</span><span class="red">♦</span>♣</span><button class="btn small" style="margin-left:auto" data-contrast-toggle>High contrast: off</button></div>
+  <div class="mast"><h1>Bridge table</h1><span class="suits">♠<span class="red">♥</span><span class="red">♦</span>♣</span><button class="btn small" style="margin-left:auto" data-options="1">Options</button></div>
   <p class="lede">Sit down with three friends, or fill empty seats with robots. Tables you open here are visible to everyone using this app, unless you make them private.</p>
 
   <div class="block">
@@ -334,8 +415,9 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
     <button class="btn small" id="claimBtn">Claim</button>
     <span class="code" id="watchers"></span>
     <span class="code" id="connState" role="status"></span>
+    <button class="btn small" id="sideBtn" aria-expanded="false">Auction &amp; chat</button>
     <button class="btn small" id="moreBtn" aria-expanded="false" aria-controls="moreBox">More</button>
-    <span class="more" id="moreBox"><button class="btn small" id="contrastBtn2" data-contrast-toggle>High contrast: off</button>
+    <span class="more" id="moreBox"><button class="btn small" data-options="1">Options</button>
     <button class="btn small" id="soundBtn" aria-pressed="false">Sound off</button>
     <button class="btn small hidden" id="roomBtn"></button>
     <button class="btn small hidden" id="settingsBtn">Table settings</button>
@@ -356,7 +438,8 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
         </div>
       </div>
     </div>
-    <aside class="side">
+    <aside class="side" id="side">
+      <div class="sidehead"><button class="btn small" id="sideClose">Close</button></div>
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="auction" aria-selected="true">Auction</button>
         <button role="tab" data-tab="chat" aria-selected="false">Chat</button>
@@ -1608,19 +1691,20 @@ const UI_SUITS = ['S', 'H', 'C', 'D']; // alternate colours in hand display
 const isRed = s => s === 'H' || s === 'D';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const $ = id => document.getElementById(id);
-(function () {
-  const apply = on => {
-    if (on) document.documentElement.setAttribute('data-contrast', 'high'); else document.documentElement.removeAttribute('data-contrast');
-    document.querySelectorAll('[data-contrast-toggle]').forEach(b => { b.textContent = 'High contrast: ' + (on ? 'on' : 'off'); b.setAttribute('aria-pressed', on); });
-  };
-  let on = false; try { on = localStorage.getItem('bridge-contrast') === '1'; } catch (e) { }
-  apply(on);
-  document.addEventListener('click', e => {
-    if (!e.target.closest('[data-contrast-toggle]')) return;
-    on = !on; try { localStorage.setItem('bridge-contrast', on ? '1' : '0'); } catch (err) { }
-    apply(on);
-  });
+// display options, kept in this browser
+const Prefs = (() => {
+  let p = {};
+  try { p = JSON.parse(localStorage.getItem('bridge-prefs')) || {}; } catch (e) { }
+  try { if (p.contrast === undefined && localStorage.getItem('bridge-contrast') === '1') p.contrast = true; } catch (e) { }
+  return Object.assign({ contrast: false, deck4: false, hcp: true, confirm: false }, p);
 })();
+function savePrefs() { try { localStorage.setItem('bridge-prefs', JSON.stringify(Prefs)); } catch (e) { } }
+function applyPrefs() {
+  const r = document.documentElement;
+  if (Prefs.contrast) r.setAttribute('data-contrast', 'high'); else r.removeAttribute('data-contrast');
+  if (Prefs.deck4) r.setAttribute('data-deck', '4'); else r.removeAttribute('data-deck');
+}
+applyPrefs();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rid = n => Array.from({ length: n }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
 
@@ -1719,6 +1803,7 @@ let tKey = null;         // storage key of current table (null for practice)
 let pollTimer = null, lobbyTimer = null, robotTimer = null;
 let lastRenderedVersion = -1;
 let selLevel = null;
+let selCard = null;     // card picked (confirm-before-play, or keyboard) but not played yet
 let actChain = Promise.resolve();
 
 function toast(msg, ms = 2600) {
@@ -1951,7 +2036,7 @@ function scheduleRobot() {
   const o = occupant(T, controllerOf(T, ts));
   if (!o || o.kind !== 'robot' || !amDriver(T)) return;
   const tr = T.play && T.play.tricks[T.play.tricks.length - 1];
-  const pause = T.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? 1300 : 700);
+  const pause = T.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? TRICK_HOLD_MS + 500 : 700);
   robotTimer = setTimeout(async () => { robotTimer = null; await act(s => A.robotStep(s)); }, pause);
 }
 
@@ -1986,7 +2071,7 @@ function myLegal(t, seat) {
 }
 function cardHTML(c, cls = '', attrs = '') {
   const s = suitOf(c), r = rankLabel(c[1]);
-  return `<button class="card ${isRed(s) ? 'red' : ''} ${cls}" ${attrs} aria-label="${r} of ${({ S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' })[s]}"><span class="cr">${r}</span><span class="cs">${SYM[s]}</span><span class="cb">${SYM[s]}</span></button>`;
+  return `<button class="card ${isRed(s) ? 'red' : ''} s-${s} ${cls}" ${attrs} aria-label="${r} of ${({ S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' })[s]}"><span class="cr">${r}</span><span class="cs">${SYM[s]}</span><span class="cb">${SYM[s]}</span></button>`;
 }
 function rowsHTML(cards, legal = [], seat = '') {
   return `<div class="rows">${UI_SUITS.map(s => {
@@ -1994,7 +2079,24 @@ function rowsHTML(cards, legal = [], seat = '') {
     const ranks = cs.length ? cs.map(c => legal.includes(c)
       ? `<button class="rk play" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
       : `<button class="rk" disabled>${rankLabel(c[1])}</button>`).join('') : '<span class="void">–</span>';
-    return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''}">${SYM[s]}</span>${ranks}</div>`;
+    return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''} s-${s}">${SYM[s]}</span>${ranks}</div>`;
+  }).join('')}</div>`;
+}
+function handStatHTML(cards) {
+  const len = s => cards.filter(c => suitOf(c) === s).length;
+  return `<span class="hstat">${hcp(cards)} HCP · ${['S', 'H', 'D', 'C'].map(s => `<span class="${isRed(s) ? 'hred' : ''} s-${s}">${SYM[s]}</span>${len(s)}`).join(' ')}</span>`;
+}
+// a hand shown face up on the table: one column of overlapping cards per suit
+function colsHTML(cards, legal = [], seat = '', small = false) {
+  const any = legal.length > 0;
+  return `<div class="dhand ${small ? 'sm' : ''}">${UI_SUITS.map(s => {
+    const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
+    if (!cs.length) return '';
+    return `<div class="dcol">${cs.map(c => {
+      const ok = legal.includes(c);
+      const cls = (any ? (ok ? 'legal' : 'dim') : '') + (ok && c === selCard ? ' sel' : '');
+      return cardHTML(c, cls, ok ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"');
+    }).join('')}</div>`;
   }).join('')}</div>`;
 }
 function plateHTML(t, seat) {
@@ -2014,8 +2116,14 @@ function seatBlock(t, seat, where) {
   } else if (o.kind === 'robot' && !t.local && (!mine)) {
     inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Take seat</button></div>`;
   }
+  if (where === 'bottom' && seat === mine && Prefs.hcp && t.hands && (t.phase === 'auction' || t.phase === 'play')) inner += handStatHTML(t.hands[seat]);
   if (where !== 'bottom' && t.hands && t.phase !== 'waiting') {
-    if (canSee(t, seat)) inner += rowsHTML(currentCards(t, seat), myLegal(t, seat), seat);
+    if (canSee(t, seat)) {
+      const side = where !== 'top';
+      const fw = $('felt').clientWidth || 800;
+      if (side && fw < 680) inner += rowsHTML(currentCards(t, seat), myLegal(t, seat), seat);
+      else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side);
+    }
     else inner += `<span class="hiddenhand">${currentCards(t, seat).length} cards</span>`;
   }
   return `<div class="seat">${inner}</div>`;
@@ -2030,7 +2138,7 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const isBid = bidValue(a.call) >= 0;
     const red = isBid && isRed(a.call[1]);
     const al = a.alert && !hideAlert;
-    const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : red ? 'red' : 'blk';
+    const kind = (a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : red ? 'red' : 'blk') + (isBid ? ' s-' + a.call[1] : '');
     cells.push(`<div class="c ${kind} ${al ? 'alert' : ''}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${callText(a.call)}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
@@ -2043,8 +2151,7 @@ function renderFelt() {
   let html = '';
   if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}<br>${vulText(t.vul)}${t.phase !== 'done' && t.boardStart ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   if (t.contract && t.phase !== 'auction') {
-    const tw = tricksWon(t.play, t.contract);
-    html += `<div class="corner tr"><b>${contractText(t.contract).replace(' by ', '<br>by ')}</b><br>Declarer ${tw.decl}, defence ${tw.def}</div>`;
+    html += `<div class="corner tr"><b>${contractText(t.contract)}</b>${tallyHTML(t)}</div>`;
   }
   html += `<div class="pos-top">${seatBlock(t, o.top, 'top')}</div>`;
   html += `<div class="pos-left">${seatBlock(t, o.left, 'left')}</div>`;
@@ -2060,15 +2167,22 @@ function renderFelt() {
   } else if (t.phase === 'play' || t.phase === 'done') {
     const tricks = t.play.tricks;
     const tr = tricks[tricks.length - 1];
-    if (tr) {
-      const full = tr.cards.length === 4;
-      const win = full ? trickWinner(tr, t.contract.strain) : null;
-      center = `<div class="trick">${tr.cards.map(pc => {
+    const full = tr && tr.cards.length === 4;
+    const win = full ? trickWinner(tr, t.contract.strain) : null;
+    // a finished trick stays up for a moment (tap to clear it sooner), then the table clears for the next lead
+    let cleared = false;
+    if (full && t.phase === 'play') {
+      const key = t.id + ':' + t.board + ':' + tricks.length;
+      if (trickHold.key !== key) { trickHold.key = key; trickHold.until = Date.now() + TRICK_HOLD_MS; clearTimeout(trickHold.timer); trickHold.timer = setTimeout(() => { if (T) renderFelt(); }, TRICK_HOLD_MS + 20); }
+      cleared = Date.now() >= trickHold.until;
+    }
+    if (tr && !cleared) {
+      center = `<div class="trick ${full && t.phase === 'play' ? 'full' : ''}" ${full && t.phase === 'play' ? 'data-cleartrick="1" title="Tap to clear"' : ''}>${tr.cards.map(pc => {
         const pos = Object.keys(o).find(k => o[k] === pc.seat);
         return `<div class="tslot ${pos}">${cardHTML(pc.card, pc.seat === win ? 'win' : '', 'tabindex="-1"')}</div>`;
       }).join('')}</div>`;
     } else if (t.phase === 'play') {
-      center = `<div class="waitmsg">${SEAT_NAME[nextSeat(t.contract.declarer)]} to lead</div>`;
+      center = `<div class="waitmsg">${SEAT_NAME[win || nextSeat(t.contract.declarer)]} to lead</div>`;
     }
     const ts = turnSeat(t);
     if (t.phase === 'play' && !t.claim && ts && !occupant(t, controllerOf(t, ts))) center += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[controllerOf(t, ts)]} is empty. Sit there or add a robot.</div>`;
@@ -2084,6 +2198,16 @@ function renderFelt() {
   }
   html += `<div class="pos-center">${center}</div>`;
   $('felt').innerHTML = html;
+}
+const TRICK_HOLD_MS = 1200;
+const trickHold = { key: null, until: 0, timer: null };
+function tallyHTML(t) {
+  const c = t.contract, tw = tricksWon(t.play, c), mine = mySeat(t);
+  const need = c.level + 6, defNeed = 14 - need;
+  const weDecl = mine ? sameSide(mine, c.declarer) : null;
+  const pips = (n, goal) => `<span class="pips">${Array.from({ length: Math.max(goal, n) }, (_, i) => `<i class="pip ${i < n ? 'on' : 'need'}"></i>`).join('')}</span>`;
+  const row = (label, n, goal, me) => `<span class="${me ? 'me' : ''}">${label} ${n}/${goal}</span>${pips(n, goal)}`;
+  return `<div class="tally">${row(weDecl === null ? 'Declarer' : weDecl ? 'Us' : 'Them', tw.decl, need, weDecl === true)}${row(weDecl === null ? 'Defence' : weDecl ? 'Them' : 'Us', tw.def, defNeed, weDecl === false)}</div>`;
 }
 function claimBanner(t) {
   const c = t.claim, mine = mySeat(t);
@@ -2103,7 +2227,7 @@ function resultBanner(t) {
   return `<div class="banner"><h3>${h.contract ? contractText(h.contract) : 'Passed out'}</h3>
     ${h.contract ? `<div class="big">${resultText(h.contract, h.declTricks)}</div><div>${h.declTricks} tricks for declarer</div>` : ''}
     <div style="margin-top:4px">${label}: <b>${sideScore > 0 ? '+' : ''}${sideScore}</b></div>
-    <div class="row">${mine || t.local ? '<button class="btn primary" data-next="1">Next board</button>' : ''}<button class="btn" data-record="${t.history.length - 1}">Hand record</button></div></div>`;
+    <div class="row">${mine || t.local ? '<button class="btn primary" data-next="1">Next board</button>' : ''}<button class="btn" data-record="${t.history.length - 1}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn" data-review="${t.history.length - 1}">Review play</button>` : ''}</div></div>`;
 }
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
@@ -2112,9 +2236,10 @@ function renderHand() {
   const legal = myLegal(t, mine);
   const myTurn = legal.length > 0;
   const w = el.clientWidth || 360;
-  const cw = window.innerWidth <= 560 ? 64 : 84;
+  const compact = window.innerWidth <= 560 || (window.innerHeight <= 520 && window.innerWidth > window.innerHeight);
+  const cw = compact ? 64 : 84;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
-  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '', `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${mine}"` : 'tabindex="-1"'}`)).join('')}</div>`;
+  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${mine}"` : 'tabindex="-1"'}`)).join('')}</div>`;
 }
 function renderBidBox() {
   const t = T, mine = mySeat(t);
@@ -2127,7 +2252,7 @@ function renderBidBox() {
   $('bbLevels').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${selLevel === l ? 'sel' : ''}" data-level="${l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('');
   $('bbStrains').innerHTML = STRAINS.map(s => {
     const ok = selLevel && legal.includes(selLevel + s);
-    return `<button class="bcard ${isRed(s) ? 'red' : ''}" data-strain="${s}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
+    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s}" data-strain="${s}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
   }).join('');
   $('bbSpecial').innerHTML = `<button class="bcard pass" data-call="P">Pass</button><button class="bcard dbl" data-call="X" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl" data-call="XX" ${legal.includes('XX') ? '' : 'disabled'}>XX</button>`;
 }
@@ -2199,6 +2324,7 @@ function renderTop() {
 }
 function render() {
   if (!T) return;
+  if (selCard) { const ts = turnSeat(T); if (T.phase !== 'play' || !ts || !myLegal(T, ts).includes(selCard)) selCard = null; }
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
   lastRenderedVersion = T.version;
   refreshOtherRoom();
@@ -2230,8 +2356,8 @@ function showRecord(i) {
   if (h.tricks && h.tricks.length) {
     tt = `<h3 style="font-size:16px;margin-top:12px">Play</h3><table class="ttable"><tr><td></td>${SEATS.map(s => `<td>${s}</td>`).join('')}</tr>${h.tricks.map((tr, k) => {
       const w = tr.cards.length === 4 ? trickWinner(tr, h.contract.strain) : null;
-      return `<tr><td>${k + 1}</td>${SEATS.map(s => { const pc = tr.cards.find(x => x.seat === s); return `<td class="${s === w ? 'w' : ''} ${pc && isRed(suitOf(pc.card)) ? 'red' : ''}">${pc ? SYM[suitOf(pc.card)] + rankLabel(pc.card[1]) : ''}</td>`; }).join('')}</tr>`;
-    }).join('')}</table><p class="note">The underlined card won each trick.</p>`;
+      return `<tr><td>${k + 1}</td>${SEATS.map(s => { const pc = tr.cards.find(x => x.seat === s); return `<td class="${s === w ? 'w' : ''} ${pc && isRed(suitOf(pc.card)) ? 'red' : ''} ${pc ? 's-' + suitOf(pc.card) : ''}">${pc ? SYM[suitOf(pc.card)] + rankLabel(pc.card[1]) : ''}</td>`; }).join('')}</tr>`;
+    }).join('')}</table><p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>`;
   }
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
     <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractText(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
@@ -2509,6 +2635,9 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && wa
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => { });
 
 // ----- "More" menu on phones -----
+function setSide(open) { $('side').classList.toggle('open', open); $('sideBtn').setAttribute('aria-expanded', open); }
+$('sideBtn').addEventListener('click', () => setSide(!$('side').classList.contains('open')));
+$('sideClose').addEventListener('click', () => setSide(false));
 $('moreBtn').addEventListener('click', () => {
   const bar = document.querySelector('.topbar'), open = !bar.classList.contains('open');
   bar.classList.toggle('open', open); $('moreBtn').setAttribute('aria-expanded', open);
@@ -2565,6 +2694,62 @@ function playMark(t) { return [t.board, t.phase, t.auction.length, t.play.tricks
 
 function showWatchers() { $('watchers').textContent = watchers ? `${watchers} watching` : ''; }
 
+// ---------- display options ----------
+function showOptions() {
+  const opt = (k, label, note) => `<label class="row" style="gap:8px;margin-bottom:8px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" data-pref="${k}" ${Prefs[k] ? 'checked' : ''} style="margin-top:4px"> <span>${label}${note ? `<br><span class="note">${note}</span>` : ''}</span></label>`;
+  const m = modal(`<h3>Options</h3>
+    ${opt('contrast', 'High contrast', 'Black outlines and stronger colours.')}
+    ${opt('deck4', 'Four-colour deck', 'Clubs green and diamonds orange, so every suit has its own colour.')}
+    ${opt('hcp', 'Show my point count', 'High-card points and suit lengths under your name.')}
+    ${opt('confirm', 'Confirm before playing a card', 'The first tap raises a card, the second tap plays it.')}
+    <h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
+    <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble</td></tr>
+    <tr><td>Playing</td><td><b>←</b> <b>→</b> choose a card, <b>Enter</b> to play it</td></tr>
+    <tr><td>Anytime</td><td><b>L</b> last trick, <b>Esc</b> close a window</td></tr>
+    <tr><td>Replay</td><td><b>←</b> <b>→</b> step through the play</td></tr></table>`);
+  m.querySelectorAll('[data-pref]').forEach(cb => cb.addEventListener('change', () => {
+    Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (T) render();
+  }));
+}
+document.addEventListener('click', e => { if (e.target.closest('[data-options]')) showOptions(); });
+
+// ---------- keyboard ----------
+const sortForHand = cards => cards.slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if ($('modalRoot').firstChild) {
+    const rb = k === 'ArrowRight' ? 'fwd' : k === 'ArrowLeft' ? 'back' : null;
+    const btn = rb && document.querySelector(`#replayBox [data-rp="${rb}"]`);
+    if (btn) { btn.click(); e.preventDefault(); }
+    return;
+  }
+  if (!T) return;
+  const onButton = tag === 'button' && (k === 'Enter' || k === ' ');
+  if (T.phase === 'auction' && !$('bidArea').classList.contains('hidden')) {
+    const legal = legalCalls(T.dealer, T.auction);
+    if (/^[1-7]$/.test(k)) { if (STRAINS.some(s => legal.includes(k + s))) { selLevel = +k; renderBidBox(); } e.preventDefault(); return; }
+    const st = { c: 'C', d: 'D', h: 'H', s: 'S', n: 'N' }[k];
+    if (st && selLevel && legal.includes(selLevel + st)) { sendCall(selLevel + st); e.preventDefault(); return; }
+    if (k === 'p') { sendCall('P'); e.preventDefault(); return; }
+    if (k === 'x') { const c = legal.includes('X') ? 'X' : legal.includes('XX') ? 'XX' : null; if (c) sendCall(c); e.preventDefault(); return; }
+  }
+  if (T.phase === 'play' && !onButton) {
+    const ts = turnSeat(T), legal = ts ? myLegal(T, ts) : [];
+    if (legal.length && (k === 'ArrowLeft' || k === 'ArrowRight')) {
+      const order = sortForHand(legal);
+      let i = order.indexOf(selCard);
+      i = i < 0 ? (k === 'ArrowRight' ? 0 : order.length - 1) : (i + (k === 'ArrowRight' ? 1 : -1) + order.length) % order.length;
+      selCard = order[i]; renderHand(); renderFelt(); e.preventDefault(); return;
+    }
+    if (legal.length && (k === 'Enter' || k === ' ') && legal.includes(selCard)) { const c = selCard; selCard = null; doAct('card', ts, c); e.preventDefault(); return; }
+  }
+  if (k === 'Escape' && selCard) { selCard = null; renderHand(); renderFelt(); }
+  if (k === 'l' && !$('lastTrickBtn').disabled) showLastTrick();
+});
+
 // ---------- host settings ----------
 function showSettings() {
   const t = T;
@@ -2604,11 +2789,16 @@ function refreshOtherRoom() { }
 
 // ---------- event wiring ----------
 document.addEventListener('click', e => {
-  const b = e.target.closest('button, [data-alert], tr[data-record]'); if (!b || !T && !b.closest('#home')) return;
+  const b = e.target.closest('button, [data-alert], tr[data-record], [data-cleartrick]'); if (!b || !T && !b.closest('#home')) return;
   const d = b.dataset;
   if (d.sit) doAct('sit', d.sit);
   else if (d.robot) doAct('robot', d.robot);
-  else if (d.play) { const seat = d.seat, card = d.play; doAct('card', seat, card); }
+  else if (d.play) {
+    const seat = d.seat, card = d.play;
+    if (Prefs.confirm && selCard !== card) { selCard = card; renderHand(); renderFelt(); }
+    else { selCard = null; doAct('card', seat, card); }
+  }
+  else if (d.cleartrick) { trickHold.until = 0; renderFelt(); }
   else if (d.level) { selLevel = +d.level; renderBidBox(); }
   else if (d.strain) sendCall(selLevel + d.strain);
   else if (d.call) sendCall(d.call);
@@ -2616,6 +2806,7 @@ document.addEventListener('click', e => {
   else if (d.claim === 'no') doAct('respond', false);
   else if (d.claim === 'cancel') doAct('cancelClaim');
   else if (d.next) doAct('next');
+  else if (d.review !== undefined) { const h = T.history[+d.review]; showRecord(+d.review); if (h && h.tricks && h.tricks.length) startReplay(h); }
   else if (d.record !== undefined) showRecord(+d.record);
   else if (d.alert) toast(`Alert: ${d.alert}`, 4000);
   else if (d.sub) doAct('sub', d.sub);
@@ -2648,7 +2839,7 @@ document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click
   document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
   ['auction', 'chat', 'results'].forEach(n => $('pane-' + n).classList.toggle('hidden', n !== b.dataset.tab));
 }));
-window.addEventListener('resize', () => { if (T) renderHand(); });
+window.addEventListener('resize', () => { if (T) { renderFelt(); renderHand(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('modalRoot').innerHTML = ''; });
 
 // ---------- lobby ----------
