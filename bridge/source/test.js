@@ -1,0 +1,26 @@
+const E=require('./engine.js');const a=(x,y,m)=>{if(x!==y){console.log('FAIL',m,x,'!=',y);process.exitCode=1}};
+const C=(level,strain,doubled,declarer='S')=>({level,strain,doubled,declarer});
+a(E.scoreContract(C(4,'S',0),10,'None'),420,'4S=');a(E.scoreContract(C(4,'S',0),10,'NS'),620,'4S= v');
+a(E.scoreContract(C(3,'N',0),9,'None'),400,'3NT=');a(E.scoreContract(C(3,'N',0),10,'None'),430,'3NT+1');
+a(E.scoreContract(C(2,'S',1),8,'None'),470,'2SX=');a(E.scoreContract(C(1,'N',1),7,'NS'),380,'1NTX= v');
+a(E.scoreContract(C(1,'C',2),7,'None'),230,'1CXX=');a(E.scoreContract(C(6,'H',0),12,'NS'),1430,'6H= v');
+a(E.scoreContract(C(7,'N',0),13,'None'),1520,'7NT=');a(E.scoreContract(C(2,'D',0),8,'None'),90,'2D=');
+a(E.scoreContract(C(4,'S',1),6,'None'),-800,'4SX-4 nv');a(E.scoreContract(C(4,'S',1),7,'NS'),-800,'4SX-3 v');
+a(E.scoreContract(C(4,'S',2),9,'None'),-200,'4SXX-1');a(E.scoreContract(C(4,'S',0),8,'NS'),-200,'4S-2 v');
+a(E.scoreContract(C(2,'H',1),9,'NS'),870,'2HX+1 v');a(E.scoreContract(C(3,'D',1),9,'None'),470,'3DX= nv');
+// auction
+let auc=[{call:'1S',by:'N'},{call:'X',by:'E'},{call:'P',by:'S'}];
+a(E.legalCalls('N',auc).includes('XX'),false,'S cant XX? actually W turn');
+a(E.auctionTurn('N',auc),'W','turn');
+auc.push({call:'2H',by:'W'},{call:'P',by:'N'},{call:'P',by:'E'},{call:'P',by:'S'});
+a(E.auctionOver(auc),true,'over');const fc=E.finalContract(auc);a(fc.declarer,'W','decl');a(fc.level,2,'lvl');
+let po=[{call:'P'},{call:'P'},{call:'P'},{call:'P'}];a(E.auctionOver(po),true,'passout');a(E.finalContract(po),null,'po');
+a(E.auctionOver([{call:'1C',by:'N'},{call:'P'},{call:'P'}]),false,'not over');
+let d=[{call:'1H',by:'N'},{call:'P',by:'E'},{call:'2H',by:'S'},{call:'X',by:'W'}];
+a(E.legalCalls('N',d).includes('XX'),true,'N can XX');
+let fc2=E.finalContract([{call:'1H',by:'N'},{call:'P',by:'E'},{call:'4H',by:'S'},{call:'X',by:'W'},{call:'P',by:'N'},{call:'P',by:'E'},{call:'P',by:'S'}]);
+a(fc2.declarer,'N','first to bid');a(fc2.doubled,1,'dbl');
+const h=E.deal();a(Object.values(h).flat().length,52,'deal');a(new Set(Object.values(h).flat()).size,52,'uniq');
+a(E.trickWinner({cards:[{seat:'N',card:'SA'},{seat:'E',card:'H2'},{seat:'S',card:'SK'},{seat:'W',card:'D3'}]},'H'),'E','ruff');
+a(E.trickWinner({cards:[{seat:'N',card:'S2'},{seat:'E',card:'H2'},{seat:'S',card:'SK'},{seat:'W',card:'SA'}]},'N'),'W','nt');
+console.log('done');

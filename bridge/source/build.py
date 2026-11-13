@@ -1,0 +1,5 @@
+t=open('template.html').read()
+e=open('engine.js').read();b=open('bots.js').read()
+d=open('dds.js').read()
+t=t.replace('/*ENGINE*/',e).replace('/*BOTS*/',b).replace('/*DDS*/',d)
+open('bridge.html','w').write(t)
