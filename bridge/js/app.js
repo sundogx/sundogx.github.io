@@ -478,7 +478,7 @@ function showLastTrick() {
 }
 function showRecord(i) {
   const h = T.history[i]; if (!h) return;
-  const hand = s => `<div><div class="lbl">${SEAT_NAME[s]} (${hcp(h.hands[s])})</div>${rowsHTML(h.hands[s])}</div>`;
+  const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s])}</div>`;
   let tt = '';
   if (h.tricks && h.tricks.length) {
     tt = `<h3 style="font-size:16px;margin-top:12px">Play</h3><table class="ttable"><tr><td></td>${SEATS.map(s => `<td>${s}</td>`).join('')}</tr>${h.tricks.map((tr, k) => {
