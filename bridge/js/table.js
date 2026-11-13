@@ -202,7 +202,12 @@ function doUndo(t, seat) {
 
 function canSee(t, seat) {
   const mine = mySeat(t);
-  if (!mine) return t.kibSee !== false || t.phase === 'done';
+  if (!mine) {
+    if (t.kibSee !== false || t.phase === 'done') return true;
+    // dummy is face up for everyone once the opening lead is made, except in a team match
+    // (there an onlooker could pass on cards the other room hasn't played yet)
+    return !t.match && t.phase === 'play' && seat === dummySeat(t) && t.play.tricks.length > 0;
+  }
   if (seat === mine || t.phase === 'done') return true;
   if (t.phase === 'play') {
     const dummyUp = t.play.tricks.length > 0;

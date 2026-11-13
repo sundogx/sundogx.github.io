@@ -61,6 +61,7 @@ const Net = {
         otherRoom = T.match ? { history: T.otherHistory || [] } : null;
         if (first && this.onFirst) { const f = this.onFirst; this.onFirst = null; f(); }
         if (first) rememberTable(T);
+        if (this.chatQueue && this.chatQueue.length && ws.readyState === 1) { this.chatQueue.forEach(c => ws.send(JSON.stringify(c))); this.chatQueue = []; }
         if (this.pending) { const p = this.pending; this.pending = null; if (p.mark === playMark(T) && ws.readyState === 1) ws.send(JSON.stringify(p.msg)); else toast('The table moved on while you were reconnecting, so your move wasn\'t sent.'); }
         render();
       } else if (m.type === 'error') toast(m.msg);
@@ -81,12 +82,13 @@ const Net = {
   send(msg) {
     if (this.ws && this.ws.readyState === 1) { this.ws.send(JSON.stringify(msg)); return true; }
     // Hold one move made while reconnecting; it's sent if the table hasn't changed in the meantime.
+    if (msg.type === 'act' && msg.name === 'chat' && T && !T.local) { (this.chatQueue = this.chatQueue || []).push(msg); if (this.chatQueue.length > 10) this.chatQueue.shift(); toast('Reconnecting. Your message will be sent as soon as the connection is back.'); return false; }
     if (msg.type === 'act' && T && !T.local) { this.pending = { msg, mark: playMark(T) }; toast('Reconnecting. Your move will be sent as soon as the connection is back.'); return false; }
     toast('Not connected yet. Your move wasn\'t sent, so try again in a moment.');
     return false;
   },
   close() {
-    const ws = this.ws; this.ws = null; this.code = null; this.pending = null; clearInterval(this.pingTimer); setConn('');
+    const ws = this.ws; this.ws = null; this.code = null; this.pending = null; this.chatQueue = []; clearInterval(this.pingTimer); setConn('');
     if (ws) try { ws.close(1000); } catch (e) { }
   },
 };
@@ -1070,6 +1072,11 @@ function openTable(t) { // practice
 }
 function openOnline(code) {
   clearTimeout(robotTimer); robotTimer = null;
+  if (T && !T.local) { // leaving another online table, e.g. switching team-match rooms
+    T = null; selCard = null; pendingCall = null; selLevel = null;
+    $('felt').innerHTML = '<div class="pos-center"><div class="waitmsg">Connecting…</div></div>';
+    $('myHand').innerHTML = ''; $('bidArea').classList.add('hidden'); $('modalRoot').innerHTML = '';
+  }
   Net.open(code, () => {
     lastRenderedVersion = -1; showTableView();
     history.replaceState(null, '', '#' + code);
