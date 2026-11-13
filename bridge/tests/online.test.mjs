@@ -62,19 +62,17 @@ const ctrl = s => s === dummy ? d : s;
 const cnt = () => ((T().play || {}).tricks || []).reduce((n, t) => n + t.cards.length, 0);
 const played = () => new Set(((T().play || {}).tricks || []).flatMap(t => t.cards.map(c => c.card)));
 const waitCnt = async (n, ms) => { for (let i = 0; i < ms / 50; i++) { if (cnt() > n) return true; await sleep(50); } return false; };
-let stuck = 0;
-while (T().phase === 'play' && cnt() < 52) {
-  const n = cnt(), tr = T().play.tricks, last = tr[tr.length - 1];
-  const cands = last && last.cards.length < 4 ? [order[(order.indexOf(last.cards[last.cards.length - 1].seat) + 1) % 4]] : order;
-  const ps = played(); let moved = false;
-  for (const s of cands) {
-    let h = by[ctrl(s)].t().hands[s].filter(x => !x.startsWith('?') && !ps.has(x));
-    if (last && last.cards.length < 4) { const f = h.filter(x => x[0] === last.cards[0].card[0]); if (f.length) h = f; }
-    for (const card of h) { by[ctrl(s)].act('card', s, card); if (await waitCnt(n, 800)) { moved = true; break; } }
-    if (moved) break;
-  }
-  if (!moved && ++stuck > 3) break;
-  if (moved) stuck = 0;
+// Play it out. The shared rules engine says whose turn it is, so every card is one round trip.
+import { createRequire } from 'node:module';
+const { playTurn } = createRequire(import.meta.url)('../js/engine.js');
+for (let guard = 0; guard < 80 && T().phase === 'play' && cnt() < 52; guard++) {
+  const n = cnt(), seat = playTurn(T().play, T().contract), who = ctrl(seat);
+  const tr = T().play.tricks, last = tr[tr.length - 1];
+  const ps = played();
+  let h = by[who].t().hands[seat].filter(x => !x.startsWith('?') && !ps.has(x));
+  if (last && last.cards.length < 4) { const f = h.filter(x => x[0] === last.cards[0].card[0]); if (f.length) h = f; }
+  by[who].act('card', seat, h[0]);
+  if (!(await waitCnt(n, 3000))) break;
 }
 await sleep(500);
 check(cnt() === 52 && T().phase === 'done', 'all 52 cards played and the board finishes (played ' + cnt() + ', phase ' + T().phase + ')');
