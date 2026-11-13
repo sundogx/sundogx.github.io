@@ -92,6 +92,11 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .mast { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
 .mast h1 { font-size: 34px; letter-spacing: -.01em; }
 .mast .suits { font-family: var(--serif); font-size: 26px; letter-spacing: 4px; }
+.hero { text-align: center; padding: 22px 16px; }
+.hero .note { margin: 8px 0 0; }
+.btn.big { font-size: 19px; padding: 12px 28px; border-radius: 8px; }
+.more-opts { margin-top: 10px; }
+.more-opts summary { cursor: pointer; color: var(--ink-soft); font-size: 14px; }
 .lede { color: var(--ink-soft); margin: -12px 0 24px; max-width: 60ch; }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .block { background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
@@ -124,6 +129,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .pos-left { grid-column: 1; grid-row: 2; align-self: center; }
 .pos-right { grid-column: 3; grid-row: 2; align-self: center; justify-self: end; text-align: right; }
 .pos-center { grid-column: 2; grid-row: 2; position: relative; }
+.pos-center[data-lasttrick] { cursor: pointer; }
 .pos-bottom { grid-column: 2; grid-row: 3; justify-self: center; text-align: center; }
 .corner { font-size: 12px; line-height: 1.35; grid-row: 1; }
 .corner.tl { grid-column: 1; }
@@ -136,11 +142,18 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .plate.vul { border: 3px solid #ff3b30; }
 .plate.turn { background: var(--brass); color: #000; border-color: #000; }
 .plate.vul.turn { border-color: #ff3b30; }
+.plate .yt { font-weight: 700; background: #000; color: var(--brass); border-radius: 4px; padding: 0 6px; font-size: 12px; }
+.plate.act { animation: myturn 1.4s ease-in-out infinite; }
+@keyframes myturn { 0%, 100% { box-shadow: 0 0 0 0 #f2b70599; } 50% { box-shadow: 0 0 0 7px #f2b70500; } }
+@media (prefers-reduced-motion: reduce) { .plate.act { animation: none; box-shadow: 0 0 0 3px #f2b705aa; } }
 .plate .nm { overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
 .plate .bot { font-size: 11px; opacity: .75; }
 .sitbtns { display: flex; gap: 4px; justify-content: inherit; }
 .sitbtns .btn { background: #ffffffcc; color: #000; border-color: #00000040; }
 .hiddenhand { font-size: 12px; opacity: .7; }
+.backs { display: inline-flex; padding-top: 2px; }
+.backs i { width: 18px; height: 26px; border-radius: 3px; border: 1.5px solid #fff; background: repeating-linear-gradient(45deg, #2c4f9e 0 3px, #4167c4 3px 6px); box-shadow: 0 1px 2px #0005; }
+.backs i + i { margin-left: -12px; }
 
 /* compact (suit rows) hand */
 .rows { background: #fff; color: #000; border: var(--bw) solid var(--bcard-line); border-radius: 8px; padding: 5px 8px; font-family: var(--serif); font-size: 15px; text-align: left; min-width: 96px; }
@@ -238,10 +251,12 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .bbox .sp { grid-template-columns: 2fr 1fr 1fr; margin-bottom: 0; }
 .bcard { border: var(--bw) solid var(--bcard-line); border-radius: 6px; background: #fff; color: var(--card-ink); font-family: var(--serif); font-weight: 700; font-size: 18px; padding: 7px 0; }
 .bcard.red { color: var(--card-red); }
-.bcard.sel { background: var(--brass); }
+.bcard.sel { background: var(--brass); color: #000; box-shadow: 0 0 0 3px #000 inset; }
 .bcard.pass { background: var(--pass); color: #fff; }
 .bcard.dbl { background: var(--dbl); color: #fff; }
 .bcard.rdbl { background: var(--rdbl); color: #fff; }
+.confirmrow { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
+.confirmrow .btn { min-width: 110px; font-size: 16px; }
 .alertrow { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
 .alertrow input[type=text] { padding: 5px 8px; }
 
@@ -250,6 +265,9 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .banner h3 { font-size: 18px; margin-bottom: 4px; }
 .banner .big { font-family: var(--serif); font-size: 26px; font-weight: 600; }
 .banner .row { justify-content: center; margin-top: 10px; }
+.announce { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: #fff; color: #1b1b1b; border-radius: 10px; padding: 10px 18px; text-align: center; box-shadow: 0 4px 14px #0004; white-space: nowrap; }
+.announce .note { color: #555; }
+.announce .ac { font-size: 24px; font-weight: 700; margin: 2px 0; }
 .waitmsg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; font-family: var(--serif); font-size: 17px; width: 90%; }
 
 /* sidebar */
@@ -316,8 +334,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .felt { grid-template-rows: auto minmax(190px, 1fr) auto; }
   .tslot .card { width: 50px; height: 72px; }
   .tslot .card .cr, .tslot .card .cs { font-size: 19px; left: 4px; } .tslot .card .cs { top: 22px; } .tslot .card .cb { font-size: 26px; }
-  .tslot.top { transform: translate(-50%, calc(-100% + 12px)); z-index: 1; } .tslot.bottom { transform: translate(-50%, -12px); z-index: 1; }
-  .tslot.left { transform: translate(calc(-100% - 4px), -50%); } .tslot.right { transform: translate(4px, -50%); }
+  .tslot.top { transform: translate(-50%, calc(-100% - 2px)); } .tslot.bottom { transform: translate(-50%, 2px); }
+  .tslot.left { transform: translate(calc(-100% - 26px), -50%); } .tslot.right { transform: translate(26px, -50%); }
   .dhand .card { width: 44px; height: 64px; } .dhand .card + .card { margin-top: -45px; }
   .dhand .card .cr { font-size: 16px; } .dhand .card .cs { font-size: 14px; } .dhand .card .cb { font-size: 24px; }
   .fan .card { width: 64px; height: 94px; }
@@ -329,6 +347,10 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .myhand { height: 134px; }
   .rows { font-size: 14px; min-width: 0; padding: 4px 5px; }
   .plate .nm { max-width: 64px; }
+  .pos-left, .pos-right { min-width: 0; max-width: 100%; }
+  .pos-left .seat, .pos-right .seat { max-width: 100%; }
+  .pos-left .plate, .pos-right .plate { flex-wrap: wrap; white-space: normal; row-gap: 0; padding: 2px 6px; }
+  .rows .rk { padding: 1px 2px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }
 }
@@ -371,32 +393,32 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 
 <section id="home">
   <div class="mast"><h1>Bridge table</h1><span class="suits">♠<span class="red">♥</span><span class="red">♦</span>♣</span><button class="btn small" style="margin-left:auto" data-options="1">Options</button></div>
-  <p class="lede">Sit down with three friends, or fill empty seats with robots. Tables you open here are visible to everyone using this app, unless you make them private.</p>
-
-  <div class="block">
-    <h2>Your name</h2>
-    <div class="row"><input type="text" id="nameInput" maxlength="20" placeholder="How others will see you" style="max-width:280px"><button class="btn" id="saveName">Save name</button></div>
-    <p class="note" id="storageNote"></p>
-    <div class="row" style="margin-top:6px"><button class="btn small" id="otherDeviceBtn">Play as me on another device</button></div>
+  <div class="block hero">
+    <button class="btn primary big" id="practiceBtn">Practice with robots</button>
+    <p class="note">You sit South with three robots. Nothing is shared.</p>
   </div>
 
   <div class="block">
-    <h2>Play</h2>
-    <div class="row" style="margin-bottom:10px">
-      <button class="btn primary" id="practiceBtn">Practice with robots</button>
-      <span class="note">You sit South with three robots. Nothing is shared.</span>
-    </div>
-    <div class="row">
-      <input type="text" id="tableName" maxlength="30" placeholder="Table name, e.g. Tuesday four" style="max-width:280px">
-      <label class="row note" style="gap:6px"><input type="checkbox" id="privateChk"> Private</label>
-      <label class="row note" style="gap:6px"><input type="checkbox" id="matchChk"> Team match (two rooms)</label>
-      <button class="btn primary" id="createBtn">Open a table</button>
-    </div>
-    <p class="note">Private tables don't appear in the list. Share the 5-letter code instead. A team match opens two rooms that play the same deals, with teams swapping directions between them, scored in IMPs.</p>
-    <div class="row" style="margin-top:6px">
+    <h2>Play with friends</h2>
+    <div class="row" style="margin-bottom:8px"><input type="text" id="nameInput" maxlength="20" placeholder="Your name" style="max-width:220px"><button class="btn" id="saveName">Save name</button></div>
+    <p class="note" id="storageNote"></p>
+    <div class="row" style="margin-bottom:8px">
       <input type="text" id="codeInput" maxlength="5" placeholder="Table code" style="max-width:140px;text-transform:uppercase">
       <button class="btn" id="joinCodeBtn">Join with code</button>
     </div>
+    <div class="row">
+      <input type="text" id="tableName" maxlength="30" placeholder="New table name (optional)" style="max-width:260px">
+      <button class="btn primary" id="createBtn">Open a table</button>
+    </div>
+    <details class="more-opts">
+      <summary>More options</summary>
+      <div class="row" style="margin-top:8px">
+        <label class="row note" style="gap:6px"><input type="checkbox" id="privateChk"> Private</label>
+        <label class="row note" style="gap:6px"><input type="checkbox" id="matchChk"> Team match (two rooms)</label>
+      </div>
+      <p class="note">Private tables don't appear in the list. Share the 5-letter code instead. A team match opens two rooms that play the same deals, with teams swapping directions between them, scored in IMPs.</p>
+      <div class="row"><button class="btn small" id="otherDeviceBtn">Play as me on another device</button></div>
+    </details>
   </div>
 
   <div class="block">
@@ -434,7 +456,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
           <div class="lv" id="bbLevels"></div>
           <div class="st" id="bbStrains"></div>
           <div class="sp" id="bbSpecial"></div>
-          <div class="alertrow"><label class="row" style="gap:6px"><input type="checkbox" id="alertChk"> Alert</label><input type="text" id="alertText" maxlength="60" placeholder="Explain your call to the opponents" disabled></div>
+          <div class="confirmrow hidden" id="bbConfirm"></div>
+          <div class="alertrow"><label class="row" style="gap:6px"><input type="checkbox" id="alertChk"> Alert</label><input type="text" id="alertText" class="hidden" maxlength="60" placeholder="Explain your call to the opponents"></div>
         </div>
       </div>
     </div>
@@ -1696,7 +1719,7 @@ const Prefs = (() => {
   let p = {};
   try { p = JSON.parse(localStorage.getItem('bridge-prefs')) || {}; } catch (e) { }
   try { if (p.contrast === undefined && localStorage.getItem('bridge-contrast') === '1') p.contrast = true; } catch (e) { }
-  return Object.assign({ contrast: false, deck4: false, hcp: true, confirm: false }, p);
+  return Object.assign({ contrast: false, deck4: false, hcp: true, confirm: false, confirmBid: false, speed: 'normal' }, p);
 })();
 function savePrefs() { try { localStorage.setItem('bridge-prefs', JSON.stringify(Prefs)); } catch (e) { } }
 function applyPrefs() {
@@ -2036,7 +2059,7 @@ function scheduleRobot() {
   const o = occupant(T, controllerOf(T, ts));
   if (!o || o.kind !== 'robot' || !amDriver(T)) return;
   const tr = T.play && T.play.tricks[T.play.tricks.length - 1];
-  const pause = T.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? TRICK_HOLD_MS + 500 : 700);
+  const m = speedMult(), pause = T.phase === 'auction' ? 650 * m : (tr && tr.cards.length === 4 ? trickHoldMs() + 500 * m : 700 * m);
   robotTimer = setTimeout(async () => { robotTimer = null; await act(s => A.robotStep(s)); }, pause);
 }
 
@@ -2103,9 +2126,15 @@ function plateHTML(t, seat) {
   const o = occupant(t, seat);
   const vul = t.board && isVul(t.vul, seat);
   const turn = turnSeat(t) === seat && !t.claim;
-  const you = mySeat(t) === seat;
+  const mine = mySeat(t), you = mine === seat;
   const tag = seat === dummySeat(t) && t.phase === 'play' ? ' <span class="bot">dummy</span>' : '';
-  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${awayTag(t, seat)}${turn && t.phase !== 'done' ? ` <span class="clk" data-since="${t.lastActAt || Date.now()}"></span>` : ''}</span>`;
+  let yt = '';
+  if (turn && mine && controllerOf(t, seat) === mine && (t.phase === 'auction' || t.phase === 'play')) {
+    const tr = t.phase === 'play' && t.play.tricks[t.play.tricks.length - 1];
+    const lead = t.phase === 'play' && (!tr || tr.cards.length === 0 || tr.cards.length === 4);
+    yt = t.phase === 'auction' ? 'Your bid' : seat !== mine ? (lead ? 'Lead from dummy' : 'Play from dummy') : lead ? 'Your lead' : 'Your play';
+  }
+  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="yt">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || Date.now()}"></span>` : ''}</span>`;
 }
 function seatBlock(t, seat, where) {
   const o = occupant(t, seat);
@@ -2124,7 +2153,7 @@ function seatBlock(t, seat, where) {
       if (side && fw < 680) inner += rowsHTML(currentCards(t, seat), myLegal(t, seat), seat);
       else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side);
     }
-    else inner += `<span class="hiddenhand">${currentCards(t, seat).length} cards</span>`;
+    else { const n = currentCards(t, seat).length; inner += `<span class="backs" role="img" aria-label="${n} cards" title="${n} cards">${'<i></i>'.repeat(n)}</span>`; }
   }
   return `<div class="seat">${inner}</div>`;
 }
@@ -2149,7 +2178,7 @@ function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ?
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   let html = '';
-  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}<br>${vulText(t.vul)}${t.phase !== 'done' && t.boardStart ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
+  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}<br>${vulText(t.vul)}${t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   if (t.contract && t.phase !== 'auction') {
     html += `<div class="corner tr"><b>${contractText(t.contract)}</b>${tallyHTML(t)}</div>`;
   }
@@ -2173,7 +2202,7 @@ function renderFelt() {
     let cleared = false;
     if (full && t.phase === 'play') {
       const key = t.id + ':' + t.board + ':' + tricks.length;
-      if (trickHold.key !== key) { trickHold.key = key; trickHold.until = Date.now() + TRICK_HOLD_MS; clearTimeout(trickHold.timer); trickHold.timer = setTimeout(() => { if (T) renderFelt(); }, TRICK_HOLD_MS + 20); }
+      if (trickHold.key !== key) { trickHold.key = key; trickHold.until = Date.now() + trickHoldMs(); clearTimeout(trickHold.timer); trickHold.timer = setTimeout(() => { if (T) renderFelt(); }, trickHoldMs() + 20); }
       cleared = Date.now() >= trickHold.until;
     }
     if (tr && !cleared) {
@@ -2182,7 +2211,10 @@ function renderFelt() {
         return `<div class="tslot ${pos}">${cardHTML(pc.card, pc.seat === win ? 'win' : '', 'tabindex="-1"')}</div>`;
       }).join('')}</div>`;
     } else if (t.phase === 'play') {
-      center = `<div class="waitmsg">${SEAT_NAME[win || nextSeat(t.contract.declarer)]} to lead</div>`;
+      if (!tricks.some(x => x.cards.length)) {
+        const ld = nextSeat(t.contract.declarer);
+        center = `<div class="announce"><div class="note">The contract is</div><div class="ac">${contractText(t.contract)}</div><div>${ld === mine ? '<b>You</b> lead' : SEAT_NAME[ld] + ' leads'}</div></div>`;
+      } else center = `<div class="waitmsg">${SEAT_NAME[win || nextSeat(t.contract.declarer)]} to lead</div>`;
     }
     const ts = turnSeat(t);
     if (t.phase === 'play' && !t.claim && ts && !occupant(t, controllerOf(t, ts))) center += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[controllerOf(t, ts)]} is empty. Sit there or add a robot.</div>`;
@@ -2196,10 +2228,13 @@ function renderFelt() {
     else center += awayBanner(t);
     center += undoBanner(t);
   }
-  html += `<div class="pos-center">${center}</div>`;
+  const lastOK = t.phase === 'play' && completedTricks(t.play).length > 0;
+  html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}</div>`;
   $('felt').innerHTML = html;
 }
 const TRICK_HOLD_MS = 1200;
+const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1;
+const trickHoldMs = () => T && T.local ? Math.round(TRICK_HOLD_MS * speedMult()) : TRICK_HOLD_MS;
 const trickHold = { key: null, until: 0, timer: null };
 function tallyHTML(t) {
   const c = t.contract, tw = tricksWon(t.play, c), mine = mySeat(t);
@@ -2231,30 +2266,36 @@ function resultBanner(t) {
 }
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
-  if (!t.hands || t.phase === 'waiting' || !mine) { el.innerHTML = !mine && t.hands ? '' : ''; return; }
-  const cards = currentCards(t, mine).slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
-  const legal = myLegal(t, mine);
+  const seat = mine || orient(t).bottom; // spectators see the bottom seat here when allowed
+  if (!t.hands || t.phase === 'waiting' || (!mine && !canSee(t, seat))) { el.innerHTML = ''; return; }
+  const cards = currentCards(t, seat).slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
+  const legal = mine ? myLegal(t, mine) : [];
   const myTurn = legal.length > 0;
   const w = el.clientWidth || 360;
   const compact = window.innerWidth <= 560 || (window.innerHeight <= 520 && window.innerWidth > window.innerHeight);
   const cw = compact ? 64 : 84;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
-  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${mine}"` : 'tabindex="-1"'}`)).join('')}</div>`;
+  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
 }
 function renderBidBox() {
   const t = T, mine = mySeat(t);
   const show = t.phase === 'auction' && mine && turnSeat(t) === mine;
   $('bidArea').classList.toggle('hidden', !show);
-  if (!show) { selLevel = null; return; }
+  if (!show) { selLevel = null; pendingCall = null; $('bbConfirm').classList.add('hidden'); return; }
   const legal = legalCalls(t.dealer, t.auction);
   const minLevel = [1, 2, 3, 4, 5, 6, 7].find(l => STRAINS.some(s => legal.includes(l + s)));
   if (selLevel && !STRAINS.some(s => legal.includes(selLevel + s))) selLevel = null;
   $('bbLevels').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${selLevel === l ? 'sel' : ''}" data-level="${l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('');
   $('bbStrains').innerHTML = STRAINS.map(s => {
     const ok = selLevel && legal.includes(selLevel + s);
-    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s}" data-strain="${s}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
+    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s} ${ok && pendingCall === selLevel + s ? 'sel' : ''}" data-strain="${s}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
   }).join('');
-  $('bbSpecial').innerHTML = `<button class="bcard pass" data-call="P">Pass</button><button class="bcard dbl" data-call="X" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl" data-call="XX" ${legal.includes('XX') ? '' : 'disabled'}>XX</button>`;
+  const ps = c => pendingCall === c ? 'sel' : '';
+  $('bbSpecial').innerHTML = `<button class="bcard pass ${ps('P')}" data-call="P">Pass</button><button class="bcard dbl ${ps('X')}" data-call="X" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl ${ps('XX')}" data-call="XX" ${legal.includes('XX') ? '' : 'disabled'}>XX</button>`;
+  if (pendingCall && !legal.includes(pendingCall)) pendingCall = null;
+  const cf = $('bbConfirm');
+  cf.classList.toggle('hidden', !pendingCall);
+  cf.innerHTML = pendingCall ? `<button class="btn primary" data-confirmcall="1">${pendingCall === 'P' ? 'Pass' : pendingCall === 'X' ? 'Double' : pendingCall === 'XX' ? 'Redouble' : 'Bid ' + callText(pendingCall)}</button><button class="btn" data-cancelcall="1">Cancel</button>` : '';
 }
 function renderSide() {
   const t = T;
@@ -2312,18 +2353,21 @@ const cShort = c => c ? `${c.level}${SYM[c.strain]}${c.doubled ? 'X'.repeat(c.do
 function renderTop() {
   const t = T, mine = mySeat(t);
   $('tName').textContent = t.name;
-  $('tCode').textContent = t.local ? 'Practice' : (t.private ? 'Private, code ' : 'Code ') + t.id;
+  $('tCode').textContent = t.local ? '' : (t.private ? 'Private, code ' : 'Code ') + t.id;
   $('lastTrickBtn').disabled = !(t.play && completedTricks(t.play).length);
+  $('lastTrickBtn').classList.toggle('hidden', $('lastTrickBtn').disabled);
   const probe = JSON.parse(JSON.stringify(t));
   $('undoBtn').disabled = !(mine && (t.local || t.allowUndo !== false) && doUndo(probe, mine) !== false && (t.phase === 'auction' || t.phase === 'play'));
   $('settingsBtn').classList.toggle('hidden', !isHost(t));
   $('roomBtn').classList.toggle('hidden', !t.match);
   if (t.match) $('roomBtn').textContent = `Go to ${t.match.room === 'Open' ? 'Closed' : 'Open'} room`;
-  $('undoBtn').classList.toggle('hidden', !t.local && t.allowUndo === false);
+  $('undoBtn').classList.toggle('hidden', $('undoBtn').disabled || (!t.local && t.allowUndo === false));
   $('claimBtn').disabled = !(mine && t.phase === 'play' && !t.claim && mine !== dummySeat(t) && t.play.tricks.length > 0);
+  $('claimBtn').classList.toggle('hidden', $('claimBtn').disabled);
 }
 function render() {
   if (!T) return;
+  autoTab(T);
   if (selCard) { const ts = turnSeat(T); if (T.phase !== 'play' || !ts || !myLegal(T, ts).includes(selCard)) selCard = null; }
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
   lastRenderedVersion = T.version;
@@ -2702,14 +2746,17 @@ function showOptions() {
     ${opt('deck4', 'Four-colour deck', 'Clubs green and diamonds orange, so every suit has its own colour.')}
     ${opt('hcp', 'Show my point count', 'High-card points and suit lengths under your name.')}
     ${opt('confirm', 'Confirm before playing a card', 'The first tap raises a card, the second tap plays it.')}
+    ${opt('confirmBid', 'Confirm before bidding', 'Pick a call, then press the Bid button (or Enter) to make it.')}
+    <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
     <h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
-    <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble</td></tr>
+    <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble, <b>Enter</b> to confirm</td></tr>
     <tr><td>Playing</td><td><b>←</b> <b>→</b> choose a card, <b>Enter</b> to play it</td></tr>
     <tr><td>Anytime</td><td><b>L</b> last trick, <b>Esc</b> close a window</td></tr>
     <tr><td>Replay</td><td><b>←</b> <b>→</b> step through the play</td></tr></table>`);
   m.querySelectorAll('[data-pref]').forEach(cb => cb.addEventListener('change', () => {
-    Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (T) render();
+    Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (T) render();
   }));
+  $('optSpeed').addEventListener('change', e => { Prefs.speed = e.target.value; savePrefs(); });
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-options]')) showOptions(); });
 
@@ -2730,7 +2777,9 @@ document.addEventListener('keydown', e => {
   const onButton = tag === 'button' && (k === 'Enter' || k === ' ');
   if (T.phase === 'auction' && !$('bidArea').classList.contains('hidden')) {
     const legal = legalCalls(T.dealer, T.auction);
-    if (/^[1-7]$/.test(k)) { if (STRAINS.some(s => legal.includes(k + s))) { selLevel = +k; renderBidBox(); } e.preventDefault(); return; }
+    if (k === 'Enter' && pendingCall && !onButton) { sendCall(pendingCall, true); e.preventDefault(); return; }
+    if (k === 'Escape' && pendingCall) { pendingCall = null; renderBidBox(); e.preventDefault(); return; }
+    if (/^[1-7]$/.test(k)) { if (STRAINS.some(s => legal.includes(k + s))) { selLevel = +k; pendingCall = null; renderBidBox(); } e.preventDefault(); return; }
     const st = { c: 'C', d: 'D', h: 'H', s: 'S', n: 'N' }[k];
     if (st && selLevel && legal.includes(selLevel + st)) { sendCall(selLevel + st); e.preventDefault(); return; }
     if (k === 'p') { sendCall('P'); e.preventDefault(); return; }
@@ -2789,7 +2838,7 @@ function refreshOtherRoom() { }
 
 // ---------- event wiring ----------
 document.addEventListener('click', e => {
-  const b = e.target.closest('button, [data-alert], tr[data-record], [data-cleartrick]'); if (!b || !T && !b.closest('#home')) return;
+  const b = e.target.closest('button, [data-alert], tr[data-record], [data-cleartrick], [data-lasttrick]'); if (!b || !T && !b.closest('#home')) return;
   const d = b.dataset;
   if (d.sit) doAct('sit', d.sit);
   else if (d.robot) doAct('robot', d.robot);
@@ -2799,7 +2848,10 @@ document.addEventListener('click', e => {
     else { selCard = null; doAct('card', seat, card); }
   }
   else if (d.cleartrick) { trickHold.until = 0; renderFelt(); }
-  else if (d.level) { selLevel = +d.level; renderBidBox(); }
+  else if (d.lasttrick) showLastTrick();
+  else if (d.level) { selLevel = +d.level; pendingCall = null; renderBidBox(); }
+  else if (d.confirmcall) { if (pendingCall) sendCall(pendingCall, true); }
+  else if (d.cancelcall) { pendingCall = null; renderBidBox(); }
   else if (d.strain) sendCall(selLevel + d.strain);
   else if (d.call) sendCall(d.call);
   else if (d.claim === 'yes') doAct('respond', true);
@@ -2814,12 +2866,15 @@ document.addEventListener('click', e => {
   else if (d.undoreply) doAct('undoReply', d.undoreply === 'yes');
   else if (d.undocancel) doAct('undoCancel');
 });
-function sendCall(call) {
+let pendingCall = null; // call picked but not yet confirmed (confirm-bid option)
+function sendCall(call, confirmed) {
+  if (Prefs.confirmBid && !confirmed) { pendingCall = call; renderBidBox(); return; }
+  pendingCall = null;
   const alert = $('alertChk').checked ? ($('alertText').value.trim() || 'Alerted, no explanation given') : null;
-  selLevel = null; $('alertChk').checked = false; $('alertText').value = ''; $('alertText').disabled = true;
+  selLevel = null; $('alertChk').checked = false; $('alertText').value = ''; $('alertText').classList.add('hidden');
   doAct('call', call, alert);
 }
-$('alertChk').addEventListener('change', () => { $('alertText').disabled = !$('alertChk').checked; if ($('alertChk').checked) $('alertText').focus(); });
+$('alertChk').addEventListener('change', () => { $('alertText').classList.toggle('hidden', !$('alertChk').checked); if ($('alertChk').checked) $('alertText').focus(); });
 $('lastTrickBtn').addEventListener('click', showLastTrick);
 $('undoBtn').addEventListener('click', () => doAct('undo'));
 $('claimBtn').addEventListener('click', showClaimDialog);
@@ -2835,10 +2890,22 @@ $('soundBtn').addEventListener('click', () => { soundOn = !soundOn; $('soundBtn'
 $('chatSend').addEventListener('click', sendChat);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 function sendChat() { const v = $('chatInput').value.trim(); if (!v) return; $('chatInput').value = ''; doAct('chat', v); }
-document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => {
-  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
-  ['auction', 'chat', 'results'].forEach(n => $('pane-' + n).classList.toggle('hidden', n !== b.dataset.tab));
-}));
+function selectTab(name) {
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.tab === name));
+  ['auction', 'chat', 'results'].forEach(n => $('pane-' + n).classList.toggle('hidden', n !== name));
+}
+const currentTab = () => (document.querySelector('.tabs button[aria-selected=true]') || {}).dataset?.tab;
+let tabAuto = true, tabPhaseKey = null;
+function autoTab(t) {
+  const key = t.id + ':' + t.board + ':' + t.phase;
+  if (key === tabPhaseKey) return;
+  if (!tabPhaseKey || !tabPhaseKey.startsWith(t.id + ':' + t.board + ':')) tabAuto = true; // new board
+  tabPhaseKey = key;
+  if (!tabAuto) return;
+  const want = t.phase === 'auction' ? 'chat' : t.phase === 'play' ? 'auction' : null;
+  if (want && currentTab() !== 'results') selectTab(want);
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { tabAuto = false; selectTab(b.dataset.tab); }));
 window.addEventListener('resize', () => { if (T) { renderFelt(); renderHand(); } });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('modalRoot').innerHTML = ''; });
 
