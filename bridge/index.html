@@ -161,6 +161,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .rows .s { width: 16px; display: inline-block; }
 .rows .rk { border: none; background: none; padding: 1px 3px; border-radius: 4px; font: inherit; font-weight: 600; color: inherit; }
 .rows .rk.play { background: var(--brass); }
+.rows .rk.play.sel { background: #b88a00; color: #fff; }
 .rows .rk.play:hover { background: #ffb800; }
 .rows .rk:disabled { opacity: 1; cursor: default; }
 .rows .void { opacity: .45; }
@@ -168,12 +169,14 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 /* trick */
 .trick { position: absolute; inset: 0; }
 .trick.full { cursor: pointer; }
+.bwrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; z-index: 3; width: min(270px, 98%); }
+.bwrap .banner { position: static; transform: none; width: auto; }
 .tslot { position: absolute; left: 50%; top: 50%; }
 .tslot.top { transform: translate(-50%, calc(-100% - 4px)); }
 .tslot.bottom { transform: translate(-50%, 4px); }
 .tslot.left { transform: translate(calc(-100% - 42px), -50%); }
 .tslot.right { transform: translate(42px, -50%); }
-.tslot .card { cursor: default; width: 76px; height: 110px; }
+.tslot .card { cursor: default; width: 76px; height: 110px; pointer-events: none; }
 .tslot .card .cr, .tslot .card .cs { font-size: 28px; left: 6px; }
 .tslot .card .cr { top: 4px; } .tslot .card .cs { top: 33px; }
 .tslot .card .cb { font-size: 44px; }
@@ -2002,7 +2005,8 @@ function doUndo(t, seat) {
     if (flat.length) {
       let i = flat.length - 1;
       while (i >= 0 && controllerOf(t, flat[i].seat) !== seat) { if (!isRobotCtrl(flat[i].seat)) return false; i--; }
-      if (i >= 0) {
+      if (i < 0) return false; // you haven't played a card yet: nothing of yours to take back (never reopen the auction mid-play)
+      {
       const keep = flat.slice(0, i);
       const tricks = [];
       keep.forEach(pc => { let tr = tricks[tricks.length - 1]; if (!tr || tr.cards.length === 4) { tr = { leader: pc.seat, cards: [] }; tricks.push(tr); } tr.cards.push(pc); });
@@ -2088,7 +2092,7 @@ function rowsHTML(cards, legal = [], seat = '') {
   return `<div class="rows">${UI_SUITS.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
     const ranks = cs.length ? cs.map(c => legal.includes(c)
-      ? `<button class="rk play" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
+      ? `<button class="rk play ${c === selCard ? 'sel' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
       : `<button class="rk" disabled>${rankLabel(c[1])}</button>`).join('') : '<span class="void">–</span>';
     return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''} s-${s}">${SYM[s]}</span>${ranks}</div>`;
   }).join('')}</div>`;
@@ -2129,7 +2133,7 @@ function seatBlock(t, seat, where) {
   const mine = mySeat(t);
   let inner = plateHTML(t, seat);
   if (!o) {
-    inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Sit here</button>${mine || t.local ? `<button class="btn small" data-robot="${seat}">Add robot</button>` : ''}</div>`;
+    inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Sit here</button>${mine || t.local || isHost(t) ? `<button class="btn small" data-robot="${seat}">Add robot</button>` : ''}</div>`;
   } else if (o.kind === 'robot' && !t.local && (!mine)) {
     inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Take seat</button></div>`;
   }
@@ -2176,7 +2180,7 @@ function renderFelt() {
   html += `<div class="pos-right">${seatBlock(t, o.right, 'right')}</div>`;
   html += `<div class="pos-bottom">${seatBlock(t, o.bottom, 'bottom')}</div>`;
 
-  let center = '';
+  let center = '', bn = '';
   if (t.phase === 'waiting') {
     const open = SEATS.filter(s => !t.seats[s]).map(s => SEAT_NAME[s]);
     center = `<div class="waitmsg">${mine ? 'Waiting for ' + open.join(', ') + '.<br><span class="note" style="color:inherit;opacity:.8">Invite friends with code ' + t.id + ' or this page\'s link, or add robots.</span>' : 'Choose a seat to play, or watch from here.'}</div>`;
@@ -2190,7 +2194,7 @@ function renderFelt() {
     // a finished trick stays up for a moment (tap to clear it sooner), then the table clears for the next lead
     let cleared = false;
     if (full && t.phase === 'play') {
-      const key = t.id + ':' + t.board + ':' + tricks.length;
+      const key = t.id + ':' + t.board + ':' + tricks.length + ':' + tr.cards.map(pc => pc.card).join('');
       if (trickHold.key !== key) { trickHold.key = key; trickHold.until = Date.now() + trickHoldMs(); clearTimeout(trickHold.timer); trickHold.timer = setTimeout(() => { if (T) renderFelt(); }, trickHoldMs() + 20); }
       cleared = Date.now() >= trickHold.until;
     }
@@ -2206,19 +2210,19 @@ function renderFelt() {
       } else center = `<div class="waitmsg">${SEAT_NAME[win || nextSeat(t.contract.declarer)]} to lead</div>`;
     }
     const ts = turnSeat(t);
-    if (t.phase === 'play' && !t.claim && ts && !occupant(t, controllerOf(t, ts))) center += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[controllerOf(t, ts)]} is empty. Sit there or add a robot.</div>`;
-    if (t.claim) center += claimBanner(t);
-    center += awayBanner(t) + undoBanner(t);
-    if (t.phase === 'done') center += resultBanner(t);
+    if (t.phase === 'play' && !t.claim && ts && !occupant(t, controllerOf(t, ts))) bn += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[controllerOf(t, ts)]} is empty. Sit there or add a robot.</div>`;
+    if (t.claim) bn += claimBanner(t);
+    bn += awayBanner(t) + undoBanner(t);
+    if (t.phase === 'done') bn += resultBanner(t);
   }
   if (t.phase === 'auction') {
     const ts = turnSeat(t);
-    if (!occupant(t, ts)) center += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[ts]} is empty. Sit there or add a robot.</div>`;
-    else center += awayBanner(t);
-    center += undoBanner(t);
+    if (!occupant(t, ts)) bn += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[ts]} is empty. Sit there or add a robot.</div>`;
+    else bn += awayBanner(t);
+    bn += undoBanner(t);
   }
   const lastOK = t.phase === 'play' && completedTricks(t.play).length > 0;
-  html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}</div>`;
+  html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}${bn ? `<div class="bwrap">${bn}</div>` : ''}</div>`;
   $('felt').innerHTML = html;
 }
 const TRICK_HOLD_MS = 1200;
@@ -2226,7 +2230,10 @@ const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1
 const trickHoldMs = () => T && T.local ? Math.round(TRICK_HOLD_MS * speedMult()) : TRICK_HOLD_MS;
 const trickHold = { key: null, until: 0, timer: null };
 function tallyHTML(t) {
-  const c = t.contract, tw = tricksWon(t.play, c), mine = mySeat(t);
+  const c = t.contract, mine = mySeat(t);
+  let tw = tricksWon(t.play, c);
+  const last = t.phase === 'done' && t.history[t.history.length - 1];
+  if (last && last.contract && last.declTricks != null) tw = { decl: last.declTricks, def: 13 - last.declTricks };
   const need = c.level + 6, defNeed = 14 - need;
   const weDecl = mine ? sameSide(mine, c.declarer) : null;
   const pips = (n, goal) => `<span class="pips">${Array.from({ length: Math.max(goal, n) }, (_, i) => `<i class="pip ${i < n ? 'on' : 'need'}"></i>`).join('')}</span>`;
@@ -2251,7 +2258,7 @@ function resultBanner(t) {
   return `<div class="banner"><h3>${h.contract ? contractText(h.contract) : 'Passed out'}</h3>
     ${h.contract ? `<div class="big">${resultText(h.contract, h.declTricks)}</div><div>${h.declTricks} tricks for declarer</div>` : ''}
     <div style="margin-top:4px">${label}: <b>${sideScore > 0 ? '+' : ''}${sideScore}</b></div>
-    <div class="row">${mine || t.local ? '<button class="btn primary" data-next="1">Next board</button>' : ''}<button class="btn" data-record="${t.history.length - 1}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn" data-review="${t.history.length - 1}">Review play</button>` : ''}</div></div>`;
+    <div class="row">${mine || t.local || isHost(t) ? '<button class="btn primary" data-next="1">Next board</button>' : ''}<button class="btn" data-record="${t.history.length - 1}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn" data-review="${t.history.length - 1}">Review play</button>` : ''}</div></div>`;
 }
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
@@ -2345,7 +2352,7 @@ function renderTop() {
   $('lastTrickBtn').disabled = !(t.play && completedTricks(t.play).length);
   $('lastTrickBtn').classList.toggle('hidden', $('lastTrickBtn').disabled);
   const probe = JSON.parse(JSON.stringify(t));
-  $('undoBtn').disabled = !(mine && (t.local || t.allowUndo !== false) && doUndo(probe, mine) !== false && (t.phase === 'auction' || t.phase === 'play'));
+  $('undoBtn').disabled = !(mine && !t.undoReq && (t.local || t.allowUndo !== false) && doUndo(probe, mine) !== false && (t.phase === 'auction' || t.phase === 'play'));
   $('settingsBtn').classList.toggle('hidden', !isHost(t));
   $('roomBtn').classList.toggle('hidden', !t.match);
   if (t.match) $('roomBtn').textContent = `Go to ${t.match.room === 'Open' ? 'Closed' : 'Open'} room`;
@@ -2762,7 +2769,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   if (!T) return;
-  const onButton = tag === 'button' && (k === 'Enter' || k === ' ');
+  const onButton = tag === 'button' && (k === 'Enter' || k === ' ') && !pendingCall && !selCard;
   if (T.phase === 'auction' && !$('bidArea').classList.contains('hidden')) {
     const legal = legalCalls(T.dealer, T.auction);
     if (k === 'Enter' && pendingCall && !onButton) { sendCall(pendingCall, true); e.preventDefault(); return; }
@@ -2836,7 +2843,7 @@ document.addEventListener('click', e => {
     else { selCard = null; doAct('card', seat, card); }
   }
   else if (d.cleartrick) { trickHold.until = 0; renderFelt(); }
-  else if (d.lasttrick) showLastTrick();
+  else if (d.lasttrick) { if (!e.target.closest('.bwrap, .announce')) showLastTrick(); }
   else if (d.level) { selLevel = +d.level; pendingCall = null; renderBidBox(); }
   else if (d.confirmcall) { if (pendingCall) sendCall(pendingCall, true); }
   else if (d.cancelcall) { pendingCall = null; renderBidBox(); }

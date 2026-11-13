@@ -1097,7 +1097,8 @@ function doUndo(t, seat) {
     if (flat.length) {
       let i = flat.length - 1;
       while (i >= 0 && controllerOf(t, flat[i].seat) !== seat) { if (!isRobotCtrl(flat[i].seat)) return false; i--; }
-      if (i >= 0) {
+      if (i < 0) return false; // you haven't played a card yet: nothing of yours to take back (never reopen the auction mid-play)
+      {
       const keep = flat.slice(0, i);
       const tricks = [];
       keep.forEach(pc => { let tr = tricks[tricks.length - 1]; if (!tr || tr.cards.length === 4) { tr = { leader: pc.seat, cards: [] }; tricks.push(tr); } tr.cards.push(pc); });
