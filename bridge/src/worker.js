@@ -9,6 +9,8 @@ const { SEATS, A } = G;
 const IDLE_DELETE_MS = 3 * 24 * 3600e3; // tables nobody has touched for 3 days are deleted
 const LOBBY_MAX_AGE_MS = 12 * 3600e3;   // the lobby lists tables active in the last 12 hours
 const MAX_MSG = 4000;
+const MAX_BOARDS = 100;                  // finished boards kept per table (keeps the stored record far below the size limit)
+const histSig = h => h.length + ':' + (h.length ? h[h.length - 1].board : 0);
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
@@ -61,6 +63,9 @@ const handle = async (req, env) => {
     if (path === '/api/tables' && req.method === 'POST') {
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
+      if (!body || typeof body !== 'object') return json({ error: 'bad request' }, 400);
+      const ip = req.headers.get('cf-connecting-ip') || 'local';
+      if (!(await lobbyStub(env).allowCreate(ip))) return json({ error: 'too many tables, try again later' }, 429);
       const secret = String(body.secret || '');
       const name = cleanName(body.name);
       if (secret.length < 16 || !name) return json({ error: 'name required' }, 400);
@@ -79,12 +84,13 @@ const handle = async (req, env) => {
       };
 
       if (body.match) {
-        const seed = 'm' + G.rid(10);
+        const seed = 'm' + [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, '0')).join('');
         const closedCode = G.rid(5), openCode = G.rid(5);
         const base = tableName || 'Team match';
         const closed = G.newTable({ name: base + ', Closed room', priv });
         const open = G.newTable({ name: base + ', Open room', priv });
         closed.id = closedCode; open.id = openCode;
+        closed.kibSee = open.kibSee = false; // onlookers could pass on hands the other room is about to play
         closed.seed = open.seed = seed;
         open.match = { id: open.id, room: 'Open', otherCode: closed.id };
         closed.match = { id: open.id, room: 'Closed', otherCode: open.id };
@@ -121,21 +127,35 @@ const handle = async (req, env) => {
 // ---------------- one bridge table ----------------
 // Server-side checks on top of the shared rules. The acting person's seat always comes from
 // their identity, never from the message, so nobody can bid or play for someone else.
+const live = t => t.phase === 'auction' || t.phase === 'play';
+// Once a board is under way nobody may take a different seat, or they could look at more than one hand.
+const mayTake = (t, uid, seat) => {
+  if (!live(t)) return true;
+  const mine = SEATS.find(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === uid);
+  if (mine && mine !== seat) return false;
+  const prev = t.left && Object.hasOwn(t.left, uid) ? t.left[uid] : null;
+  return !prev || prev === seat;
+};
+const markLeft = (t, uid, seat) => { if (live(t) && uid) t.left = { ...(t.left || {}), [uid]: seat }; };
+const MAX_REQUESTS = 20;
 const ACTIONS = {
   sit: (t, u, seat) => {
     if (!SEATS.includes(seat)) return false;
+    if (!mayTake(t, u.uid, seat)) return G.fail('A board is in progress. You can only sit in your own seat until it ends.');
     const o = t.seats[seat];
     // Locked table: ask the host instead of sitting straight down.
     if (t.locked && t.host !== u.uid && !(o && o.kind === 'human')) {
       if (G.mySeat(t)) return false;
+      if (Object.keys(t.requests || {}).length >= MAX_REQUESTS) return false;
       t.requests = { ...(t.requests || {}), [u.uid]: { name: u.name, seat, at: Date.now() } };
       return 'requested';
     }
     return A.sit(t, seat);
   },
   grant: (t, u, uid) => {
-    const r = t.requests && t.requests[uid];
+    const r = typeof uid === 'string' && t.requests && Object.hasOwn(t.requests, uid) ? t.requests[uid] : null;
     if (t.host !== u.uid || !r) return false;
+    if (!mayTake(t, uid, r.seat)) return G.fail('A board is in progress. That player can only take their own seat until it ends.');
     const o = t.seats[r.seat];
     if (o && o.kind === 'human') return false;
     for (const s of SEATS) { const x = t.seats[s]; if (x && x.kind === 'human' && x.id === uid) t.seats[s] = null; }
@@ -145,12 +165,17 @@ const ACTIONS = {
     if (SEATS.every(s => t.seats[s]) && t.board === 0) G.startBoard(t);
   },
   decline: (t, u, uid) => {
-    if (t.host !== u.uid || !t.requests || !t.requests[uid]) return false;
+    if (t.host !== u.uid || typeof uid !== 'string' || !t.requests || !Object.hasOwn(t.requests, uid)) return false;
     delete t.requests[uid];
   },
   robot: (t, u, seat) => SEATS.includes(seat) && (G.mySeat(t) || t.host === u.uid) ? A.robot(t, seat) : false,
-  standUp: t => A.standUp(t),
-  kick: (t, u, seat) => SEATS.includes(seat) ? A.kick(t, seat) : false,
+  standUp: (t, u) => { const s = G.mySeat(t), r = A.standUp(t); if (r !== false) markLeft(t, u.uid, s); return r; },
+  kick: (t, u, seat) => {
+    if (!SEATS.includes(seat)) return false;
+    const o = t.seats[seat], r = A.kick(t, seat);
+    if (r !== false && o && o.kind === 'human') markLeft(t, o.id, seat);
+    return r;
+  },
   settings: (t, u, patch) => {
     if (!patch || typeof patch !== 'object') return false;
     const p = {};
@@ -161,7 +186,8 @@ const ACTIONS = {
     if (r !== false && 'undoAsk' in p) G.sysMsg(t, p.undoAsk ? 'Undo now needs the opponents\' agreement' : 'Undo no longer needs the opponents\' agreement');
     return r;
   },
-  redeal: t => A.redeal(t),
+  // A redeal is only for a board nobody has bid on, and never in a team match (its deals are fixed).
+  redeal: t => (t.seed || t.auction.length) ? false : A.redeal(t),
   call: (t, u, call, alert) => {
     const s = G.mySeat(t); if (!s || typeof call !== 'string') return false;
     return A.call(t, s, call, alert ? String(alert).slice(0, 60) : null);
@@ -209,6 +235,8 @@ const ACTIONS = {
   sub: (t, u, seat) => {
     const mine = G.mySeat(t), o = t.seats[seat];
     if (!mine || !SEATS.includes(seat) || seat === mine || !o || o.kind !== 'human' || !(t.away && t.away[seat])) return false;
+    // an opponent has to wait a little in case the page was only refreshed
+    if (!sameSideSeat(seat, mine) && t.host !== u.uid && Date.now() - t.away[seat] < 30e3) return G.fail('Give them half a minute to come back first.');
     if (t.subs && t.subs[seat]) return false;
     t.subs = { ...(t.subs || {}), [seat]: true };
     G.sysMsg(t, `A robot is playing for ${G.SEAT_NAME[seat]} until ${o.name} comes back`);
@@ -245,6 +273,7 @@ function tidyPresence(t) {
   // an undo request lapses as soon as anyone bids or plays
   if (t.undoReq && t.undoReq.mark !== progressMark(t)) t.undoReq = null;
   t.away = t.away || {}; t.subs = t.subs || {};
+  if (!live(t) && t.left) t.left = {};
   for (const s of SEATS) {
     const o = t.seats[s];
     if (!o || o.kind !== 'human') { delete t.away[s]; delete t.subs[s]; }
@@ -269,7 +298,7 @@ export class TableRoom extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       this.t = (await ctx.storage.get('t')) || null;
       if (this.t && !this.t.history) this.t.history = (await ctx.storage.get('h')) || [];
-      this.savedBoards = this.t ? this.t.history.length : 0;
+      this.savedSig = this.t ? histSig(this.t.history) : '';
       this.other = (await ctx.storage.get('other')) || [];
     });
     // Keep-alive pings are answered without waking the object.
@@ -329,7 +358,7 @@ export class TableRoom extends DurableObject {
     const u = ws.deserializeAttachment() || {};
     if (!u.uid || m.type !== 'act') return;
     if (!this.allow(u.uid, m.name === 'chat')) { this.sendTo(ws, { type: 'error', msg: 'Slow down a little, then try again.' }); return; }
-    const fn = ACTIONS[m.name];
+    const fn = typeof m.name === 'string' && Object.hasOwn(ACTIONS, m.name) ? ACTIONS[m.name] : null;
     if (!fn) return;
     const args = Array.isArray(m.args) ? m.args.slice(0, 3) : [];
     await this.apply(u, t => fn(t, u, ...args), ws);
@@ -357,8 +386,10 @@ export class TableRoom extends DurableObject {
 
   // Run one action on a copy of the table; keep it only if the rules accepted it.
   async apply(u, run, ws, exclude) {
-    const t = structuredClone(this.t);
-    const boardsBefore = t.history.length;
+    const { history: oldHistory, ...rest } = this.t;   // the history only ever grows, so it is copied, not deep-cloned
+    const t = structuredClone(rest);
+    t.history = oldHistory.slice();
+    const sigBefore = histSig(oldHistory);
     G.setMe({ id: u.uid || '', name: u.name || '' });
     let r;
     try { r = run(t); } catch (e) { console.error(e); r = false; }
@@ -370,11 +401,19 @@ export class TableRoom extends DurableObject {
     t.chatN = t.chatN || 0;
     for (const m of t.chat) if (!m.n) m.n = ++t.chatN;
     t.version = (t.version || 0) + 1; t.updatedAt = Date.now();
+    if (t.history.length > MAX_BOARDS) t.history.splice(0, t.history.length - MAX_BOARDS);
+    const prev = this.t;
     this.t = t;
-    await this.save();
+    try { await this.save(); }
+    catch (e) { // keep memory and storage in step: the move did not happen
+      console.error('save failed', e);
+      this.t = prev;
+      if (ws) this.sendTo(ws, { type: 'error', msg: 'Could not save that move. Please try again.' });
+      return false;
+    }
     this.broadcast(exclude);
     this.reportLobby();
-    if (t.match && t.history.length !== boardsBefore) {
+    if (t.match && histSig(t.history) !== sigBefore) {
       tableStub(this.env, t.match.otherCode).setOther(t.history).catch(e => console.error(e));
     }
     await this.scheduleRobot();
@@ -391,16 +430,17 @@ export class TableRoom extends DurableObject {
     if (b.tokens < 1) return false;
     b.tokens -= 1;
     if (isChat) { b.chat = b.chat.filter(x => now - x < 10000); if (b.chat.length >= 5) return false; b.chat.push(now); }
-    if (this.rate.size > 200) this.rate.clear();
+    if (this.rate.size > 200) for (const k of [...this.rate.keys()].slice(0, 100)) this.rate.delete(k);
     return true;
   }
 
   // The finished boards are written only when one is added; the rest of the table is small.
   async save() {
     const t = this.t, { history, ...rest } = t;
-    const puts = { t: rest };
-    if (history.length !== this.savedBoards) { puts.h = history; this.savedBoards = history.length; }
+    const puts = { t: rest }, sig = histSig(history);
+    if (sig !== this.savedSig) puts.h = history;
     await this.ctx.storage.put(puts);
+    this.savedSig = sig;
   }
 
   robotPending() {
@@ -425,7 +465,7 @@ export class TableRoom extends DurableObject {
   async alarm() {
     if (!this.t) return;
     if (this.robotPending()) {
-      await this.apply({}, t => {
+      const ok = await this.apply({}, t => {
         const ts = G.turnSeat(t), o = G.occupant(t, G.controllerOf(t, ts));
         if (robotClaim(t)) return;
         if (o.kind === 'robot') return A.robotStep(t);
@@ -433,6 +473,8 @@ export class TableRoom extends DurableObject {
         if (t.phase === 'auction') { const r = G.botCall(t.hands[ts], ts, t.dealer, t.auction); return A.call(t, ts, r.call, r.alert); }
         return A.card(t, ts, G.botPlay(t, ts));
       });
+      this.botFails = ok ? 0 : (this.botFails || 0) + 1;
+      if (!ok) await this.ctx.storage.setAlarm(Date.now() + (this.botFails < 5 ? 2000 : IDLE_DELETE_MS)); // retry a few times, then leave it to the players
       return;
     }
     const idle = Date.now() - (this.t.updatedAt || 0);
@@ -453,9 +495,11 @@ export class TableRoom extends DurableObject {
     const { history, ...live } = t;
     const v = structuredClone(live);
     delete v.seed; // the seed would reveal every deal of a team match
+    const seated = SEATS.some(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === uid);
+    const hideDone = t.match && !seated && t.phase === 'done' && !this.other.some(h => h.board === t.board);
     if (v.hands) {
       for (const s of SEATS) {
-        if (G.canSee(t, s)) continue;
+        if (!hideDone && G.canSee(t, s)) continue;
         // Keep the cards already played (they're public) and replace the rest with blanks.
         const played = [];
         t.play.tricks.forEach(tr => tr.cards.forEach(pc => { if (pc.seat === s) played.push(pc.card); }));
@@ -463,7 +507,7 @@ export class TableRoom extends DurableObject {
         v.hands[s] = played.concat(Array.from({ length: left }, (_, i) => '?' + i));
       }
     }
-    const viewerSeated = SEATS.some(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === uid);
+    const viewerSeated = seated;
     if (viewerSeated) v.chat = v.chat.filter(m => !m.kib);
     if (t.host !== uid) delete v.requests; // only the host sees who asked for a seat
     if (t.match) {
@@ -521,6 +565,16 @@ export class TableRoom extends DurableObject {
 
 // ---------------- list of public tables ----------------
 export class Lobby extends DurableObject {
+  // At most 20 new tables an hour from one address.
+  allowCreate(ip) {
+    this.made = this.made || new Map();
+    const now = Date.now();
+    const recent = (this.made.get(ip) || []).filter(x => now - x < 3600e3);
+    if (recent.length >= 20) { this.made.set(ip, recent); return false; }
+    recent.push(now); this.made.set(ip, recent);
+    if (this.made.size > 500) for (const [k, v] of this.made) if (!v.some(x => now - x < 3600e3)) this.made.delete(k);
+    return true;
+  }
   async update(summary) { await this.ctx.storage.put('t:' + summary.code, summary); }
   async remove(code) { await this.ctx.storage.delete('t:' + code); }
   async list() {

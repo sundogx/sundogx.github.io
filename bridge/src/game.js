@@ -6,6 +6,7 @@ let lastError = null;
 const toast = msg => { lastError = msg; };
 const rid = n => Array.from({ length: n }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
 export function setMe(m) { me = { id: m.id || '', name: m.name || '' }; lastError = null; }
+export function fail(msg) { toast(msg); return false; }
 export function takeError() { const e = lastError; lastError = null; return e; }
 
 
@@ -37,11 +38,22 @@ function sortHand(cards) {
   });
 }
 
-function seededRand(str) { // mulberry32 seeded from a string
-  let h = 1779033703 ^ str.length;
-  for (let i = 0; i < str.length; i++) { h = Math.imul(h ^ str.charCodeAt(i), 3432918353); h = h << 13 | h >>> 19; }
-  let a = h >>> 0;
-  return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+function seededRand(str) { // sfc32 with a 128-bit state, seeded from a string (cyrb128 hash)
+  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
+  for (let i = 0; i < str.length; i++) {
+    const k = str.charCodeAt(i);
+    h1 = h2 ^ Math.imul(h1 ^ k, 597399067); h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+    h3 = h4 ^ Math.imul(h3 ^ k, 951274213); h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+  }
+  h1 = Math.imul(h3 ^ h1 >>> 18, 597399067); h2 = Math.imul(h4 ^ h2 >>> 22, 2869860233);
+  h3 = Math.imul(h1 ^ h3 >>> 17, 951274213); h4 = Math.imul(h2 ^ h4 >>> 19, 2716044179);
+  let a = (h1 ^ h2 ^ h3 ^ h4) >>> 0, b = (h2 ^ h1) >>> 0, c = (h3 ^ h1) >>> 0, d = (h4 ^ h1) >>> 0;
+  return () => {
+    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
+    let t = (a + b | 0) + d | 0;
+    d = d + 1 | 0; a = b ^ b >>> 9; b = c + (c << 3) | 0; c = c << 21 | c >>> 11; c = c + t | 0;
+    return (t >>> 0) / 4294967296;
+  };
 }
 function deal(rand = Math.random) {
   const deck = [];
