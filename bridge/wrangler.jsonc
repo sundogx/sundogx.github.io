@@ -4,7 +4,7 @@
   "name": "bridge",
   "main": "src/worker.js",
   "compatibility_date": "2025-10-01",
-  "assets": { "directory": "..", "binding": "ASSETS" },
+  "assets": { "directory": ".", "binding": "ASSETS" },
   "durable_objects": {
     "bindings": [
       { "name": "TABLE", "class_name": "TableRoom" },

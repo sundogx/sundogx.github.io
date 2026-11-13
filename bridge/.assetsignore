@@ -1,2 +1,7 @@
-server/
+src/
+node_modules/
+.wrangler/
+package.json
+package-lock.json
+wrangler.jsonc
 README.md
