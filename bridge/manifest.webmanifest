@@ -1,0 +1,15 @@
+{
+  "name": "Bridge table",
+  "short_name": "Bridge",
+  "description": "Play bridge with friends or robots.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#e6ebe6",
+  "theme_color": "#1e5a44",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

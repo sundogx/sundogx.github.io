@@ -1,0 +1,17 @@
+{
+  // Cloudflare settings for the bridge server. You don't need to change anything here.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bridge",
+  "main": "src/worker.js",
+  "compatibility_date": "2025-10-01",
+  "assets": { "directory": "..", "binding": "ASSETS" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "TABLE", "class_name": "TableRoom" },
+      { "name": "LOBBY", "class_name": "Lobby" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["TableRoom", "Lobby"] }
+  ]
+}
