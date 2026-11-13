@@ -32,7 +32,7 @@ async function idFromSecret(secret) {
 
 // ---------- connection to the server ----------
 const Net = {
-  ws: null, code: null, retry: 0, gotState: false, pingTimer: null, onFirst: null, hist: [], other: [], chat: [],
+  ws: null, code: null, retry: 0, gotState: false, pingTimer: null, lastMsg: 0, onFirst: null, hist: [], other: [], chat: [],
   open(code, onFirst) {
     this.close();
     this.code = code; this.retry = 0; this.gotState = false; this.onFirst = onFirst;
@@ -44,12 +44,13 @@ const Net = {
     this.ws = ws;
     this.hist = []; this.other = []; this.chat = [];
     ws.onopen = () => {
-      this.retry = 0; setConn('');
+      this.retry = 0; this.lastMsg = Date.now(); setConn('');
       ws.send(JSON.stringify({ type: 'hello', secret: me.secret, name: me.name }));
       clearInterval(this.pingTimer);
-      this.pingTimer = setInterval(() => { if (ws.readyState === 1) ws.send('ping'); }, 25000);
+      this.pingTimer = setInterval(() => this.check(ws), 25000);
     };
     ws.onmessage = e => {
+      if (this.ws === ws) this.lastMsg = Date.now();
       if (e.data === 'pong' || this.ws !== ws) return;
       let m; try { m = JSON.parse(e.data); } catch (err) { return; }
       if (m.type === 'state') {
@@ -79,6 +80,19 @@ const Net = {
       setTimeout(() => { if (this.ws === ws) this.connect(); }, wait);
     };
   },
+  // Ping; if nothing has come back for a while the connection is dead even though it says it is open, so start a new one.
+  check(ws = this.ws) {
+    if (!ws || this.ws !== ws) return;
+    if (ws.readyState === 1) {
+      if (Date.now() - this.lastMsg > 60000) { this.reconnect(); return; }
+      ws.send('ping');
+    }
+  },
+  reconnect() {
+    const old = this.ws; if (!old || !this.code) return;
+    this.ws = null; clearInterval(this.pingTimer); try { old.close(); } catch (e) { }
+    setConn('Reconnecting…'); this.retry = 0; this.connect();
+  },
   send(msg) {
     if (this.ws && this.ws.readyState === 1) { this.ws.send(JSON.stringify(msg)); return true; }
     // Hold one move made while reconnecting; it's sent if the table hasn't changed in the meantime.
@@ -92,6 +106,9 @@ const Net = {
     if (ws) try { ws.close(1000); } catch (e) { }
   },
 };
+// After a phone sleeps or changes network, check the connection as soon as the page is back.
+document.addEventListener('visibilitychange', () => { if (!document.hidden && Net.ws && Net.ws.readyState === 1 && Date.now() - Net.lastMsg > 30000) Net.reconnect(); });
+window.addEventListener('online', () => { if (Net.ws && Net.code) Net.reconnect(); });
 let watchers = 0;
 function setConn(text) { const el = $('connState'); if (el) el.textContent = text; }
 
@@ -549,7 +566,12 @@ function makeWorker() {
     else if (en) en.table[m.decl][m.st] = m.v;
     if (en) onDDUpdate(m.k);
   };
-  w.onerror = () => { DD.failed = true; };
+  w.onerror = () => { // drop this worker, retry its job once on a new one, and give up only if that fails too
+    const j = w.job; w.job = null;
+    try { w.terminate(); } catch (e) { }
+    DD.workers = DD.workers.filter(x => x !== w);
+    if (j && !j.retried) { j.retried = true; DD.queue.unshift(j); pumpDD(); } else DD.failed = true;
+  };
   return w;
 }
 function pumpDD() {
@@ -567,7 +589,12 @@ function pumpDD() {
   }
 }
 let openRecord = null; // index of hand record currently shown
-function onDDUpdate(k) {
+let ddFrame = 0;
+function onDDUpdate(k) { // many messages arrive per board; redraw at most once per frame
+  if (ddFrame) return;
+  ddFrame = requestAnimationFrame(() => { ddFrame = 0; redrawDD(k); });
+}
+function redrawDD(k) {
   if (!T) return;
   if (openRecord !== null && T.history[openRecord] && handsKey(T.history[openRecord].hands) === k) {
     const el = $('ddBox'); if (el) el.innerHTML = ddHTML(T.history[openRecord]);
@@ -739,8 +766,9 @@ async function adoptIdentityFromLink() {
   if (!m) return;
   history.replaceState(null, '', location.pathname);
   if (m[1] === me.secret) return;
+  if (me.secret && !confirm('This link will make this device play as a different player, and you will lose your current seats and recent tables on this device. Continue?')) return;
   me.secret = m[1]; me.id = await idFromSecret(me.secret);
-  if (m[2]) me.name = decodeURIComponent(m[2]).slice(0, 20);
+  if (m[2]) { try { me.name = decodeURIComponent(m[2]).replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 20); } catch (e) { /* keep the old name */ } }
   saveMe(); $('nameInput').value = me.name || '';
   toast(`This device now plays as ${me.name || 'you'}`);
 }
@@ -986,7 +1014,8 @@ function autoTab(t) {
   if (want && currentTab() !== 'results') selectTab(want);
 }
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { tabAuto = false; selectTab(b.dataset.tab); }));
-window.addEventListener('resize', () => { if (T) { renderFelt(); renderHand(); } });
+let resizeFrame = 0;
+window.addEventListener('resize', () => { if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; if (T) { renderFelt(); renderHand(); } }); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') $('modalRoot').innerHTML = ''; });
 
 // ---------- lobby ----------
@@ -1085,16 +1114,24 @@ function openOnline(code) {
 function goHome() {
   releaseWakeLock();
   Net.close(); clearTimeout(robotTimer); robotTimer = null;
-  T = null; tKey = null;
+  T = null; tKey = null; DD.queue.length = 0; // stop analysing the table you left
   $('tableView').classList.add('hidden'); $('home').classList.remove('hidden');
   history.replaceState(null, '', location.pathname);
-  loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(loadLobby, 10000);
+  loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
 }
 function leaveTable() {
-  if (T && !T.local && mySeat(T)) doAct('standUp');
+  if (T && !T.local && mySeat(T)) {
+    if (Net.ws && Net.ws.readyState === 1) doAct('standUp');
+    else toast('You are offline, so your seat stays reserved until you reconnect or the table notices you are away.');
+  }
   setTimeout(goHome, T && !T.local ? 150 : 0);
 }
 
+window.addEventListener('hashchange', async () => {
+  await adoptIdentityFromLink();
+  const code = location.hash.slice(1).toUpperCase();
+  if (/^[A-Z]{5}$/.test(code) && me.name && Net.code !== code) openOnline(code);
+});
 (async function init() {
   await loadMe();
   await adoptIdentityFromLink();
@@ -1102,5 +1139,5 @@ function leaveTable() {
   if (/^[A-Z]{5}$/.test(code) && me.name) openOnline(code);
   else if (/^[A-Z]{5}$/.test(code)) $('codeInput').value = code;
   loadLobby();
-  lobbyTimer = setInterval(loadLobby, 10000);
+  lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
 })();
