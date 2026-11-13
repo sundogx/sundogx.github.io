@@ -180,14 +180,17 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 @media (prefers-reduced-motion: reduce) { .fan .card { transition: none; } }
 
 /* auction grid */
-.agrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px 6px; font-size: 18px; text-align: center; }
-.agrid .h { font-size: 15px; opacity: .8; padding-bottom: 2px; border-bottom: 1px solid currentColor; }
-.agrid .h.vul { color: var(--vul); font-weight: 700; }
-.felt .agrid .h.vul { color: #ff8a80; }
-.agrid .c { padding: 1px 0; border-radius: 4px; font-family: var(--serif); font-weight: 600; }
+.agrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; font-size: 18px; text-align: center; background: #ffffff; color: #1b1b1b; padding: 6px; border-radius: 8px; border: 1px solid #00000026; }
+.agrid .h { font-size: 15px; font-weight: 600; padding: 3px 0; background: #e6ebe7; color: #1b1b1b; border-radius: 4px; }
+.agrid .h.vul { background: #d32f2f; color: #ffffff; }
+.agrid .c { padding: 2px 0; border-radius: 4px; font-family: var(--serif); font-weight: 700; }
+.agrid .c.blk { color: #111111; }
+.agrid .c.red { color: #d32f2f; }
+.agrid .c.cx { color: #d32f2f; }
+.agrid .c.cxx { color: #1f5fae; }
+.agrid .c.cp { color: #2e7d4f; }
 .agrid .c.alert { box-shadow: inset 0 0 0 2px #f4c430; cursor: help; }
-.felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 96%); background: #000000cc; color: #fff; padding: 8px; border-radius: 8px; }
-.felt .agrid .red { color: #ff8a80; }
+.felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 96%); box-shadow: 0 4px 14px #0004; }
 
 /* bidding box: styled after physical bidding cards */
 .bbox { margin: 0 auto; max-width: 520px; background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 10px; }
@@ -217,7 +220,6 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .tabs button { border: none; background: none; padding: 10px 0; border-bottom: 3px solid transparent; }
 .tabs button[aria-selected=true] { border-bottom-color: var(--ink); font-weight: 700; }
 .pane { padding: 12px; max-height: 460px; overflow: auto; }
-.pane .agrid .red { color: var(--card-red); }
 .chatlog { display: flex; flex-direction: column; gap: 6px; min-height: 120px; max-height: 340px; overflow: auto; margin-bottom: 8px; }
 .msg { font-size: 14px; }
 .msg .who { font-weight: 600; }
@@ -2028,7 +2030,8 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const isBid = bidValue(a.call) >= 0;
     const red = isBid && isRed(a.call[1]);
     const al = a.alert && !hideAlert;
-    cells.push(`<div class="c ${red ? 'red' : ''} ${al ? 'alert' : ''}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${callText(a.call)}</div>`);
+    const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : red ? 'red' : 'blk';
+    cells.push(`<div class="c ${kind} ${al ? 'alert' : ''}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${callText(a.call)}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
