@@ -6,6 +6,26 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 - **The tables** run on a Cloudflare Worker (`src/worker.js`, configured in `wrangler.jsonc`). Each table is a Durable Object that deals, checks every bid and play, runs the robots, and sends each player only their own cards, over a WebSocket. Nothing uses Claude's artifact storage.
 - `config.js` holds the Worker's address (`window.BRIDGE_API`). Practice with robots works without it.
 
+## How the code is laid out
+
+| File | What it does |
+|---|---|
+| `index.html`, `style.css` | The page's markup and styles. |
+| `js/engine.js` | Cards, the auction, legal plays, trick winners, scoring. |
+| `js/bots.js` | Robot bidding and card play, and how robots answer claims. |
+| `js/table.js` | The table itself: seats, the actions (bid, play, claim, undo…), who may see which hands. |
+| `js/par.js` | The par contract from a double-dummy table. |
+| `js/net.js` | The WebSocket connection to a table on the server (reconnects, held moves). |
+| `js/analysis.js` | Runs the double-dummy solver in background workers; hand-record analysis and PBN export. |
+| `js/app.js` | Everything on screen: drawing the table, bidding box, options, keyboard, lobby. |
+| `js/dds-worker.js`, `js/wasm/` | The WebAssembly solver (see below). |
+| `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
+| `src/game.js` | **Generated** by `build.mjs` from `js/engine.js`, `js/bots.js` and `js/table.js`, so the server runs exactly the same rules and robots as the page. Don't edit it; `npm run dev` and `npm run deploy` rebuild it. |
+| `sw.js` | Service worker: caches the app so practice works offline. Bump `CACHE` and keep `CORE` in step when files are added. |
+| `tests/` | `npm test` (rules and robots), `node tests/ddtest.js` (solver), `BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs` (a running server). |
+
+The page's scripts are plain scripts that share globals, loaded in the order above. Practice games run entirely in the page; online tables run on the server, which sends each person only the cards they may see.
+
 ## Deploy the server (once)
 
 You need a free Cloudflare account (dash.cloudflare.com/sign-up) and Node.js.
