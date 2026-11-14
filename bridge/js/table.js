@@ -9,7 +9,7 @@ function newTable({ name, priv, local }) {
     seats: { N: null, E: null, S: null, W: null },
     board: 0, dealer: 'N', vul: 'None', hands: null, auction: [], contract: null,
     play: { tricks: [] }, phase: 'waiting', claim: null, history: [], chat: [],
-    host: me.id, locked: false, allowUndo: true, kibSee: true,
+    host: me.id, locked: false, allowUndo: true, kibSee: false,
     boardLimit: 0, lastActAt: Date.now(), boardStart: null, seed: null, match: null,
   };
 }
@@ -44,7 +44,7 @@ function startBoard(t) {
   t.vul = boardVul(t.board);
   t.hands = t.seed ? deal(seededRand(t.seed + ':' + t.board)) : deal();
   t.auction = []; t.contract = null; t.play = { tricks: [] }; t.claim = null;
-  t.boardStart = Date.now(); t.lastActAt = Date.now();
+  t.boardStart = Date.now(); t.lastActAt = Date.now(); t.timeUp = false;
   t.phase = 'auction';
 }
 function finishBoard(t, declTricks) {
@@ -212,6 +212,7 @@ function canSee(t, seat) {
   if (t.phase === 'play') {
     const dummyUp = t.play.tricks.length > 0;
     if (seat === dummySeat(t) && dummyUp) return true;
+    if (mine === dummySeat(t) && seat === t.contract.declarer && dummyUp) return true; // dummy watches partner play
     if (t.claim && t.claim.by === seat && t.claim.need.includes(mine)) return true;
     if (t.claim && t.claim.by === seat && sameSide(seat, mine)) return true;
   }

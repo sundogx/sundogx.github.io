@@ -129,20 +129,26 @@ const handle = async (req, env) => {
 // their identity, never from the message, so nobody can bid or play for someone else.
 const live = t => t.phase === 'auction' || t.phase === 'play';
 // Once a board is under way nobody may take a different seat, or they could look at more than one hand.
-const mayTake = (t, uid, seat) => {
-  if (!live(t)) return true;
+// Returns why someone may not take a seat right now, or null if they may.
+const seatBlock = (t, uid, seat) => {
+  if (!live(t)) return null;
   const mine = SEATS.find(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === uid);
-  if (mine && mine !== seat) return false;
+  if (mine && mine !== seat) return 'A board is in progress. You can only sit in your own seat until it ends.';
   const prev = t.left && Object.hasOwn(t.left, uid) ? t.left[uid] : null;
-  return !prev || prev === seat;
+  if (prev) return prev === seat ? null : 'A board is in progress. You can only sit in your own seat until it ends.';
+  // never seated this board: anyone who could watch all four hands waits for the next board
+  if (!mine && t.kibSee !== false) return 'Onlookers can see every hand, so you can sit down when this board ends.';
+  return null;
 };
 const markLeft = (t, uid, seat) => { if (live(t) && uid) t.left = { ...(t.left || {}), [uid]: seat }; };
 const MAX_REQUESTS = 20;
 const MAX_SOCKETS = 200;
+const TIME_UP = "Time's up for this board, so the robots are finishing it.";
+const deadline = t => (t.boardLimit && t.boardStart && live(t) && !t.timeUp) ? t.boardStart + t.boardLimit * 60e3 : null;
 const ACTIONS = {
   sit: (t, u, seat) => {
     if (!SEATS.includes(seat)) return false;
-    if (!mayTake(t, u.uid, seat)) return G.fail('A board is in progress. You can only sit in your own seat until it ends.');
+    const why = seatBlock(t, u.uid, seat); if (why) return G.fail(why);
     const o = t.seats[seat];
     // Locked table: ask the host instead of sitting straight down.
     if (t.locked && t.host !== u.uid && !(o && o.kind === 'human')) {
@@ -156,7 +162,7 @@ const ACTIONS = {
   grant: (t, u, uid) => {
     const r = typeof uid === 'string' && t.requests && Object.hasOwn(t.requests, uid) ? t.requests[uid] : null;
     if (t.host !== u.uid || !r) return false;
-    if (!mayTake(t, uid, r.seat)) return G.fail('A board is in progress. That player can only take their own seat until it ends.');
+    if (seatBlock(t, uid, r.seat)) return G.fail('A board is in progress. That player can sit down when it ends.');
     const o = t.seats[r.seat];
     if (o && o.kind === 'human') return false;
     for (const s of SEATS) { const x = t.seats[s]; if (x && x.kind === 'human' && x.id === uid) t.seats[s] = null; }
@@ -191,15 +197,18 @@ const ACTIONS = {
   // A redeal is only for a board nobody has bid on, and never in a team match (its deals are fixed).
   redeal: t => (t.seed || t.auction.length) ? false : A.redeal(t),
   call: (t, u, call, alert) => {
+    if (t.timeUp) return G.fail(TIME_UP);
     const s = G.mySeat(t); if (!s || typeof call !== 'string') return false;
     return A.call(t, s, call, alert ? String(alert).slice(0, 60) : null);
   },
   card: (t, u, seat, card) => {
+    if (t.timeUp) return G.fail(TIME_UP);
     const s = G.mySeat(t);
     if (!s || !SEATS.includes(seat) || typeof card !== 'string' || G.controllerOf(t, seat) !== s) return false;
     return A.card(t, seat, card);
   },
-  claim: (t, u, n) => { const s = G.mySeat(t); return s && Number.isInteger(n) ? A.claim(t, s, n) : false; },
+  claim: (t, u, n) => {
+    if (t.timeUp) return G.fail(TIME_UP); const s = G.mySeat(t); return s && Number.isInteger(n) ? A.claim(t, s, n) : false; },
   respond: (t, u, accept) => { const s = G.mySeat(t); return s ? A.respond(t, s, !!accept) : false; },
   cancelClaim: t => { const s = G.mySeat(t); return s ? A.cancelClaim(t, s) : false; },
   chat: (t, u, text) => {
@@ -212,6 +221,7 @@ const ACTIONS = {
   },
   next: (t, u) => (G.mySeat(t) || t.host === u.uid) ? A.next(t) : false,
   undo: t => {
+    if (t.timeUp) return G.fail(TIME_UP);
     const s = G.mySeat(t); if (!s) return false;
     if (t.undoReq) return false;
     if (!t.undoAsk) return A.undo(t, s);
@@ -464,6 +474,7 @@ export class TableRoom extends DurableObject {
     const ts = G.turnSeat(t); if (!ts) return false;
     const ctrl = G.controllerOf(t, ts);
     const o = G.occupant(t, ctrl);
+    if (t.timeUp && live(t)) return !!o;
     return !!(o && (o.kind === 'robot' || (o.kind === 'human' && t.subs && t.subs[ctrl])));
   }
 
@@ -474,16 +485,25 @@ export class TableRoom extends DurableObject {
       const scale = Number(this.env.ROBOT_DELAY_SCALE ?? 1); // only changed for automated tests
       await this.ctx.storage.setAlarm(Date.now() + pause * (scale >= 0 ? scale : 1));
     } else {
-      await this.ctx.storage.setAlarm(Date.now() + IDLE_DELETE_MS);
+      const d = deadline(this.t); // wake up when the board's time runs out
+      await this.ctx.storage.setAlarm(d ? Math.max(Date.now() + 1000, d) : Date.now() + IDLE_DELETE_MS);
     }
   }
 
   async alarm() {
     if (!this.t) return;
+    const d = deadline(this.t);
+    if (d && Date.now() >= d) {
+      await this.apply({}, t => {
+        t.timeUp = true; t.claim = null; t.undoReq = null;
+        G.sysMsg(t, `Time's up (${t.boardLimit} minutes). The robots are finishing this board.`);
+      });
+      return;
+    }
     if (this.robotPending()) {
       const ok = await this.apply({}, t => {
         const ts = G.turnSeat(t), o = G.occupant(t, G.controllerOf(t, ts));
-        if (robotClaim(t)) return;
+        if (!t.timeUp && robotClaim(t)) return;
         if (o.kind === 'robot') return A.robotStep(t);
         // stand-in for an away player: same robot logic, played for that seat
         if (t.phase === 'auction') { const r = G.botCall(t.hands[ts], ts, t.dealer, t.auction); return A.call(t, ts, r.call, r.alert); }

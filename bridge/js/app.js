@@ -106,7 +106,7 @@ function currentCards(t, seat) {
 }
 function myLegal(t, seat) {
   const mine = mySeat(t);
-  if (!mine || t.phase !== 'play' || t.claim) return [];
+  if (!mine || t.phase !== 'play' || t.claim || t.timeUp) return [];
   const ts = turnSeat(t);
   if (ts !== seat || controllerOf(t, ts) !== mine) return [];
   return legalPlays(t.hands, t.play, t.contract, seat);
@@ -155,9 +155,12 @@ function seatBlock(t, seat, where) {
   const o = occupant(t, seat);
   const mine = mySeat(t);
   let inner = plateHTML(t, seat);
-  if (!o) {
+  const midBoard = !t.local && !mine && (t.phase === 'auction' || t.phase === 'play') && t.kibSee !== false && !(t.left && t.left[me.id]);
+  if (!o && midBoard) {
+    inner += `<div class="sitbtns"><span class="note" style="color:inherit">Sit after this board</span>${isHost(t) ? `<button class="btn small" data-robot="${seat}">Add robot</button>` : ''}</div>`;
+  } else if (!o) {
     inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Sit here</button>${mine || t.local || isHost(t) ? `<button class="btn small" data-robot="${seat}">Add robot</button>` : ''}</div>`;
-  } else if (o.kind === 'robot' && !t.local && (!mine)) {
+  } else if (o.kind === 'robot' && !t.local && !mine && !midBoard) {
     inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Take seat</button></div>`;
   }
   if (where !== 'bottom' && t.hands && t.phase !== 'waiting') {
@@ -193,7 +196,7 @@ function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ?
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   let html = '';
-  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}<br>${vulText(t.vul)}${t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
+  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}<br>${vulText(t.vul)}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   if (t.contract && t.phase !== 'auction') {
     html += `<div class="corner tr"><b>${contractText(t.contract)}</b></div>`;
   }
@@ -302,7 +305,7 @@ function renderHand() {
 }
 function renderBidBox() {
   const t = T, mine = mySeat(t);
-  const show = t.phase === 'auction' && mine && turnSeat(t) === mine;
+  const show = t.phase === 'auction' && mine && turnSeat(t) === mine && !t.timeUp;
   $('bidArea').classList.toggle('hidden', !show);
   if (!show) { selLevel = null; pendingCall = null; $('bbConfirm').classList.add('hidden'); return; }
   const legal = legalCalls(t.dealer, t.auction);
@@ -424,8 +427,9 @@ function render() {
 
 // ---------- modals ----------
 let modalReturn = null;
+function setBackgroundInert(on) { for (const id of ['home', 'tableView']) { const el = $(id); if (el) el.inert = on; } }
 function closeModal() {
-  $('modalRoot').innerHTML = ''; openRecord = null;
+  $('modalRoot').innerHTML = ''; openRecord = null; setBackgroundInert(false);
   const r = modalReturn; modalReturn = null;
   if (r && r.isConnected) r.focus({ preventScroll: true });
 }
@@ -433,7 +437,16 @@ function modal(html) {
   if (!$('modalRoot').firstChild) modalReturn = document.activeElement;
   $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box">${html}<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div></div></div>`;
   const m = $('modalRoot').firstChild;
+  setBackgroundInert(true);
   m.addEventListener('click', e => { if (e.target === m || e.target.dataset.close) closeModal(); });
+  m.addEventListener('keydown', e => { // Tab and Shift+Tab cycle within the dialog
+    if (e.key !== 'Tab') return;
+    const f = [...m.querySelectorAll('button, [href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')].filter(x => !x.disabled && x.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+    else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+  });
   openRecord = null;
   const b = m.querySelector('button'); if (b) b.focus();
   return m;
@@ -459,9 +472,10 @@ function showRecord(i) {
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
     ${otherLine(h)}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
-    <div class="row" style="margin-top:10px"><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}</div><div id="replayBox"></div>`);
+    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}</div><div id="replayBox"></div>`);
   openRecord = i;
   $('pbnOne').addEventListener('click', () => copyText(pbnBoard(h, T)));
+  $('modalRoot').querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => exportRecord(h, b.dataset.export)));
   if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h));
 }
 function otherLine(h) {
@@ -605,7 +619,11 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && wa
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => { });
 
 // ----- "More" menu on phones -----
-function setSide(open) { $('side').classList.toggle('open', open); $('sideBtn').setAttribute('aria-expanded', open); }
+const drawerMode = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
+function syncSideInert() { $('side').inert = drawerMode.matches && !$('side').classList.contains('open'); }
+function setSide(open) { $('side').classList.toggle('open', open); $('sideBtn').setAttribute('aria-expanded', open); syncSideInert(); if (open) { const t = $('side').querySelector('[aria-selected=true]'); if (t) t.focus(); } else $('sideBtn').focus(); }
+drawerMode.addEventListener('change', syncSideInert); syncSideInert();
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('side').classList.contains('open') && !$('modalRoot').firstChild) setSide(false); });
 $('sideBtn').addEventListener('click', () => setSide(!$('side').classList.contains('open')));
 $('sideClose').addEventListener('click', () => setSide(false));
 $('moreBtn').addEventListener('click', () => {
@@ -732,8 +750,9 @@ function showSettings() {
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setLock" ${t.locked ? 'checked' : ''}> Lock seats, so only you can seat people</label>
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setUndo" ${t.allowUndo !== false ? 'checked' : ''}> Allow undo</label>
     ${t.local ? '' : `<label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setUndoAsk" ${t.undoAsk ? 'checked' : ''}> Opponents must agree to an undo</label>`}
-    <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setKib" ${t.kibSee !== false ? 'checked' : ''}> Spectators see all four hands</label>
-    <label class="row" style="gap:8px;margin-bottom:12px">Time per board <select id="setTime">${[0, 5, 7, 10, 15].map(m => `<option value="${m}" ${(t.boardLimit || 0) === m ? 'selected' : ''}>${m ? m + ' minutes' : 'No limit'}</option>`).join('')}</select></label>
+    <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setKib" ${t.kibSee !== false ? 'checked' : ''} ${t.match ? 'disabled' : ''}> Spectators see all four hands${t.match ? ' (never in a team match)' : ' (they then can\'t sit down mid-board)'}</label>
+    <label class="row" style="gap:8px;margin-bottom:4px">Time per board <select id="setTime">${[0, 5, 7, 10, 15].map(m => `<option value="${m}" ${(t.boardLimit || 0) === m ? 'selected' : ''}>${m ? m + ' minutes' : 'No limit'}</option>`).join('')}</select></label>
+    <p class="note" style="margin:0 0 12px">When the time runs out, the robots finish the board.</p>
     <h3 style="font-size:16px">Seats</h3>
     ${people.length ? people.map(s => `<div class="row" style="justify-content:space-between;margin-bottom:6px"><span>${SEAT_NAME[s]}: ${esc(seatLabel(t, s))}</span><button class="btn small" data-kick="${s}">Remove</button></div>`).join('') : '<p class="note">Nobody else is seated.</p>'}
     ${t.phase === 'auction' ? '<div class="row" style="margin-top:10px"><button class="btn" id="setRedeal">Redeal this board</button></div>' : ''}`);
