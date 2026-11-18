@@ -139,7 +139,7 @@ function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null) {
       if (pts < lim.hcpMin) p += lim.hcpMin - pts;
       if (pts > lim.hcpMax) p += pts - lim.hcpMax;
       for (const su of SUITS) { if (L[su] < lim.lenMin[su]) p += 2 * (lim.lenMin[su] - L[su]); if (L[su] > lim.lenMax[su]) p += 2 * (L[su] - lim.lenMax[su]); }
-      if (lim.bal) { const sh = SUITS.map(su => L[su]).sort((a, b) => a - b); if (sh[0] < 2 || sh[1] < 3) p += 2; } // not 4333, 4432 or 5332
+      if (lim.bal && SUITS.some(su => L[su] < 2)) p += 2; // a singleton or void in a hand that showed a (semi-)balanced one
     }
     return p;
   };
