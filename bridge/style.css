@@ -101,11 +101,18 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .topbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .topbar .tt { font-family: var(--serif); font-size: 19px; margin-right: auto; }
 .topbar .code { font-size: 13px; color: var(--ink-soft); }
+.topbar .code:empty { display: none; }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
 @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
 /* side by side: the sidebar is as tall as the table (.felt height), and the chat log fills it */
+/* the table's height: as tall as the window allows while the hand and bidding box still fit below it */
+:root { --vh: 100vh; }
+@supports (height: 100dvh) { :root { --vh: 100dvh; } }
+/* in play (no bidding box) the table takes that room too, so the page keeps its height when the box goes */
+#tableView { --feltH: clamp(360px, calc(var(--vh) - 225px), 530px); }
+#tableView.bidding { --feltH: clamp(360px, calc(var(--vh) - 380px), 530px); }
 @media (min-width: 861px) {
-  .side { height: 530px; display: flex; flex-direction: column; box-sizing: border-box; }
+  .side { height: var(--feltH); display: flex; flex-direction: column; box-sizing: border-box; }
   .side .pane { flex: 1; max-height: none; min-height: 0; }
   #pane-chat:not(.hidden) { display: flex; flex-direction: column; }
   #pane-chat .chatlog { flex: 1; max-height: none; min-height: 0; }
@@ -115,8 +122,10 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
   position: relative; background: var(--felt);
   border: 4px solid var(--felt-edge); border-radius: 12px; color: var(--felt-ink);
   display: grid; grid-template-columns: minmax(70px, 1.5fr) minmax(170px, 1fr) minmax(70px, 1.5fr);
-  grid-template-rows: auto minmax(240px, 1fr) auto; gap: 6px; padding: 10px; height: 530px;
+  grid-template-rows: auto minmax(0, 1fr) auto; gap: 6px; padding: 10px; height: var(--feltH);
 }
+.pos-left, .pos-right { min-width: 0; max-width: 100%; }
+.pos-left .seat, .pos-right .seat { max-width: 100%; }
 .pos-top { grid-column: 2; grid-row: 1; justify-self: center; text-align: center; }
 .pos-left { grid-column: 1; grid-row: 2; align-self: center; }
 .pos-right { grid-column: 3; grid-row: 2; align-self: center; justify-self: end; text-align: right; }
@@ -128,6 +137,8 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .corner.tr { grid-column: 3; justify-self: end; text-align: right; }
 .corner b { font-family: var(--serif); font-size: 15px; font-weight: 600; }
 .corner.tl { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+/* the board box sits in the corner without making the top row taller, so the middle keeps its room */
+.felt > .corner.tl { position: absolute; top: 10px; left: 10px; z-index: 1; }
 .corner .room { font-size: 12px; }
 /* board indicator: one edge per seat (red = vulnerable), split by diagonals, D on the dealer's edge */
 .bbx { --line: linear-gradient(45deg, #0000 calc(50% - .6px), #0008 calc(50% - .6px), #0008 calc(50% + .6px), #0000 calc(50% + .6px));
@@ -161,11 +172,13 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .hiddenhand { font-size: 12px; opacity: .7; }
 .backs { display: inline-flex; padding-top: 2px; }
 .backs i { width: var(--cw); height: var(--ch); flex: none; border-radius: 5px; border: 1.5px solid #fff; box-sizing: border-box; background: repeating-linear-gradient(45deg, #2c4f9e 0 3px, #4167c4 3px 6px); box-shadow: -1px 0 0 #0003; }
-.backs i + i { margin-left: calc(var(--cw) * -0.72); }
+.backs i + i { margin-left: var(--bo, calc(var(--cw) * -0.72)); } /* --bo: tighter overlap set by the page when the hand would not fit */
 
 /* compact (suit rows) hand */
 .rows { background: #fff; color: #000; border: var(--bw) solid var(--bcard-line); border-radius: 8px; padding: 5px 8px; font-family: var(--serif); font-size: 15px; text-align: left; min-width: 96px; }
-.rows .r { display: flex; gap: 2px; align-items: center; min-height: 24px; flex-wrap: wrap; }
+.rows .r { display: flex; gap: 2px; align-items: flex-start; min-height: 24px; flex-wrap: nowrap; }
+.rows .r .s { line-height: 24px; flex: none; }
+.rows .rr { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; min-height: 24px; min-width: 0; } /* a long suit wraps under its own cards */
 .rows .s { width: 16px; display: inline-block; }
 .rows .rk { border: none; background: none; padding: 1px 3px; border-radius: 4px; font: inherit; font-weight: 600; color: inherit; }
 .rows .rk.play { background: var(--brass); }
@@ -175,19 +188,19 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .rows .void { opacity: .45; }
 
 /* trick */
-.trick { position: absolute; inset: 0; }
+/* trick card size (--tw x --th), gap to the side cards (--tg) and font (--tf); --tk shrinks them to fit the middle */
+.trick { position: absolute; inset: 0; --tw: 76px; --th: 110px; --tg: 42px; --tf: 28px; --tk: 1; }
 .trick.full { cursor: pointer; }
 .bwrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; gap: 8px; z-index: 3; width: min(270px, 98%); }
 .bwrap .banner { position: static; transform: none; width: auto; }
 .tslot { position: absolute; left: 50%; top: 50%; }
 .tslot.top { transform: translate(-50%, calc(-100% - 4px)); }
 .tslot.bottom { transform: translate(-50%, 4px); }
-.tslot.left { transform: translate(calc(-100% - 42px), -50%); }
-.tslot.right { transform: translate(42px, -50%); }
-.tslot .card { cursor: default; width: 76px; height: 110px; pointer-events: none; }
-.tslot .card .cr, .tslot .card .cs { font-size: 28px; left: 6px; }
-.tslot .card .cr { top: 4px; } .tslot .card .cs { top: 33px; }
-.tslot .card .cb { font-size: 44px; }
+.tslot.left { transform: translate(calc(-100% - var(--tg) * var(--tk)), -50%); }
+.tslot.right { transform: translate(calc(var(--tg) * var(--tk)), -50%); }
+.tslot .card { cursor: default; width: calc(var(--tw) * var(--tk)); height: calc(var(--th) * var(--tk)); pointer-events: none; }
+.tslot .card .cr, .tslot .card .cs { font-size: calc(var(--tf) * var(--tk)); left: calc(6px * var(--tk)); }
+.tslot .card .cr { top: calc(4px * var(--tk)); } .tslot .card .cs { top: calc(var(--th) * var(--tk) * .3); }
 .tslot .card.win { box-shadow: 0 0 0 2.5px #e0b000; }
 
 /* four-colour deck option */
@@ -197,10 +210,11 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 /* your hand and every face-up hand (dummy) use the same card size */
 :root { --cw: 64px; --ch: 92px; }
 /* dummy (and other visible hands) as columns of cards, one per suit */
-.dhand { display: flex; gap: 4px; align-items: flex-start; justify-content: center; margin-top: 2px; }
+.dhand { display: flex; gap: 0; align-items: flex-start; justify-content: center; margin-top: 2px; }
 .dcol { display: flex; flex-direction: column; }
+.dhand .dcol + .dcol { margin-left: var(--dgap, 4px); } /* --dgap: suits overlap a little when the hand is wider than its room */
 .dhand .card { width: var(--cw); height: var(--ch); }
-.dhand .card + .card { margin-top: calc(28px - var(--ch)); }
+.dhand .card + .card { margin-top: calc(var(--dstep, 28px) - var(--ch)); } /* --dstep: closer for long suits */
 .dhand .card .cr { font-size: calc(var(--cw) * .36); top: 3px; left: 4px; }
 .dhand .card .cs { font-size: calc(var(--cw) * .32); top: 4px; left: auto; right: 4px; }
 .dhand .card.legal { cursor: pointer; }
@@ -246,7 +260,11 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .agrid .c.expl { cursor: help; }
 .explain { position: absolute; z-index: 40; max-width: min(280px, calc(100vw - 16px)); background: #1b1b1b; color: #fff; font-size: 13px; line-height: 1.35; padding: 7px 10px; border-radius: 6px; box-shadow: 0 3px 10px #0006; pointer-events: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 96%); box-shadow: 0 4px 14px #0004; }
+/* the auction on the table stays inside the middle; after about three rounds it scrolls (latest calls shown) under a fixed W N E S row */
+.felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 100%); box-shadow: 0 4px 14px #0004;
+  max-height: min(100%, 158px); overflow-y: auto; overscroll-behavior: contain; padding-top: 3px; }
+.felt .agrid .h { position: sticky; top: 0; z-index: 1; box-shadow: 0 0 0 3px #fff; }
+.agrid [data-alert]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 /* bidding box: styled after physical bidding cards */
 .bbox { margin: 0 auto; max-width: 520px; background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 10px; }
@@ -260,6 +278,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .bcard.pass { background: var(--pass); color: #fff; }
 .bcard.dbl { background: var(--dbl); color: #fff; }
 .bcard.rdbl { background: var(--rdbl); color: #fff; }
+#bidArea.idle .bbox { opacity: .75; } /* between your turns in the auction: kept in place, greyed out */
 .confirmrow { display: flex; gap: 8px; justify-content: center; margin-top: 8px; }
 .confirmrow .btn { min-width: 110px; font-size: 16px; }
 .alertrow { display: flex; gap: 8px; align-items: center; margin-top: 8px; font-size: 13px; }
@@ -285,11 +304,21 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .msg { font-size: 14px; }
 .msg .who { font-weight: 600; }
 .msg.sys { color: var(--ink-soft); }
+.toast.update .btn { margin-left: 8px; color: var(--ink); }
+/* touch screens: bigger small buttons and tick boxes */
+@media (pointer: coarse) {
+  .btn.small { min-height: 40px; }
+  input[type=checkbox] { width: 20px; height: 20px; }
+}
 .reslist { width: 100%; border-collapse: collapse; font-size: 14px; }
 .reslist td, .reslist th { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: left; }
 .reslist th { font-weight: 600; font-size: 12px; color: var(--ink-soft); }
 .reslist tr.click { cursor: pointer; }
-.reslist tr.click:hover td { background: var(--panel-2); }
+.reslist tr.click:hover td, .reslist tr.click:focus-visible td { background: var(--panel-2); }
+.reslist tr.click:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+/* unread chat: a dot on the Chat tab and the sidebar button */
+.tabs button.unread::after, #sideBtn.unread::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--vul); margin-left: 5px; vertical-align: middle; }
+.sb-short { display: none; }
 .num { text-align: right !important; font-variant-numeric: tabular-nums; }
 .totals { display: flex; justify-content: space-between; font-family: var(--serif); font-size: 16px; margin-bottom: 8px; }
 
@@ -297,6 +326,10 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .modal { position: fixed; inset: 0; background: #000b; display: flex; align-items: center; justify-content: center; z-index: 20; padding: 12px; }
 .modal .box { background: var(--panel); color: var(--ink); border: var(--bw) solid var(--line); border-radius: 8px; padding: 16px; max-width: 560px; width: 100%; max-height: 90vh; overflow: auto; }
 .modal h3 { font-size: 20px; margin-bottom: 10px; }
+.modal .box > h3:nth-child(2) { padding-right: 40px; }
+/* close button pinned to the top corner while a long window scrolls */
+.modal .mtop { position: sticky; top: 0; height: 0; display: flex; justify-content: flex-end; z-index: 2; margin: -8px -8px 0 0; }
+.modal .mclose { height: 32px; min-width: 32px; padding: 0 8px; box-shadow: 0 1px 4px #0003; }
 .diagram { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto auto; gap: 8px; align-items: center; justify-items: center; margin: 8px 0 12px; }
 .diagram .rows { border: 1px solid var(--line); }
 .diagram .lbl { font-size: 12px; color: var(--ink-soft); text-align: center; }
@@ -333,14 +366,18 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .ttable td.w { font-weight: 700; text-decoration: underline; }
 
 @media (max-width: 560px) {
-  .felt { grid-template-columns: minmax(64px, .9fr) minmax(140px, 1.6fr) minmax(64px, .9fr); padding: 6px; border-width: 4px; height: 470px; }
+  #tableView { --feltH: clamp(290px, calc(var(--vh) - 240px), 470px); }
+  #tableView.bidding { --feltH: clamp(290px, calc(var(--vh) - 390px), 470px); }
+  .felt { grid-template-columns: minmax(64px, .9fr) minmax(140px, 1.6fr) minmax(64px, .9fr); padding: 6px; border-width: 4px; height: var(--feltH); }
+  /* the sidebar sits below the table: a Chat button (with the unread dot) takes you there */
+  #sideBtn { display: inline-block; } .sb-long { display: none; } .sb-short { display: inline; }
+  .felt .agrid { max-height: min(100%, 128px); }
   .card { width: 40px; height: 58px; }
   .card .cr, .card .cs { font-size: 15px; left: 4px; } .card .cs { top: 18px; } .card .cb { font-size: 18px; }
-  .felt { grid-template-rows: auto minmax(190px, 1fr) auto; }
-  .tslot .card { width: 50px; height: 72px; }
-  .tslot .card .cr, .tslot .card .cs { font-size: 19px; left: 4px; } .tslot .card .cs { top: 22px; } .tslot .card .cb { font-size: 26px; }
+  .felt { grid-template-rows: auto minmax(0, 1fr) auto; }
+  .trick { --tw: 50px; --th: 72px; --tg: 26px; --tf: 19px; }
+  .tslot .card .cr, .tslot .card .cs { left: calc(4px * var(--tk)); }
   .tslot.top { transform: translate(-50%, calc(-100% - 2px)); } .tslot.bottom { transform: translate(-50%, 2px); }
-  .tslot.left { transform: translate(calc(-100% - 26px), -50%); } .tslot.right { transform: translate(26px, -50%); }
   :root { --cw: 52px; --ch: 76px; }
   .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
   .myhand { height: 112px; }
@@ -351,6 +388,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .pos-left .plate, .pos-right .plate { flex-wrap: wrap; white-space: normal; row-gap: 0; padding: 2px 6px; }
   .plate { height: auto; min-height: 30px; }
   .corner.tl { transform: scale(.6); transform-origin: top left; } /* board box and trick count fit the narrow corner */
+  .felt > .corner.tl { top: 6px; left: 6px; }
   .rows .rk { padding: 1px 2px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }
@@ -366,15 +404,17 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .layout { grid-template-columns: 1fr; }
   .layout > div:first-child { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: "req req" "felt hand" "felt bid"; grid-template-rows: auto auto 1fr; gap: 0 10px; align-items: start; }
   #seatReqs { grid-area: req; }
-  .felt { grid-area: felt; height: calc(100vh - 50px); min-height: 290px; padding: 6px; border-width: 3px; grid-template-rows: auto minmax(170px, 1fr) auto; }
+  #tableView, #tableView.bidding { --feltH: max(290px, calc(var(--vh) - 56px)); }
+  .felt { grid-area: felt; height: var(--feltH); padding: 6px; border-width: 3px; grid-template-rows: auto minmax(0, 1fr) auto; }
+  .felt .agrid { max-height: min(100%, 128px); }
   .myhand { grid-area: hand; margin-top: 0; height: 104px; }
   #bidArea { grid-area: bid; }
   .bbox { padding: 6px; } .bbox .lv, .bbox .st, .bbox .sp { gap: 4px; margin-bottom: 4px; } .bcard { font-size: 15px; padding: 5px 0; }
   .alertrow { margin-top: 4px; }
-  .tslot .card { width: 54px; height: 78px; }
-  .tslot .card .cr, .tslot .card .cs { font-size: 20px; left: 4px; } .tslot .card .cs { top: 24px; } .tslot .card .cb { font-size: 28px; }
+  .trick { --tw: 54px; --th: 78px; --tg: 30px; --tf: 20px; }
+  .tslot .card .cr, .tslot .card .cs { left: calc(4px * var(--tk)); }
   .tslot.top { transform: translate(-50%, calc(-100% - 3px)); } .tslot.bottom { transform: translate(-50%, 3px); }
-  .tslot.left { transform: translate(calc(-100% - 30px), -50%); } .tslot.right { transform: translate(30px, -50%); }
+  .sb-long { display: inline; } .sb-short { display: none; }
   :root { --cw: 52px; --ch: 76px; }
   .fan { padding-top: 18px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
@@ -383,4 +423,15 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .side.open { transform: none; }
   .sidehead { display: flex; justify-content: flex-end; padding: 6px 8px 0; }
   .side .pane { max-height: calc(100vh - 90px); }
+}
+/* phones: a compact end-of-board panel that fits the middle of the table instead of covering the seats */
+@media (max-width: 560px), (orientation: landscape) and (max-height: 520px) {
+  .bwrap { width: 100%; gap: 4px; }
+  .banner { padding: 6px; font-size: 13px; line-height: 1.3; }
+  .banner h3 { font-size: 15px; margin-bottom: 2px; } .banner .big { font-size: 19px; }
+  .banner .row { margin-top: 5px; gap: 4px; }
+  .banner .row .btn { padding: 3px 7px; font-size: 13px; min-height: 32px; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .felt > .corner.tl { top: 6px; left: 6px; transform: scale(.8); transform-origin: top left; }
 }
