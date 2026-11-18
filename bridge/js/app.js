@@ -159,7 +159,7 @@ function plateHTML(t, seat) {
     const lead = t.phase === 'play' && (!tr || tr.cards.length === 0 || tr.cards.length === 4);
     yt = t.phase === 'auction' ? 'Your bid' : seat !== mine ? (lead ? 'Lead from dummy' : 'Play from dummy') : lead ? 'Your lead' : 'Your play';
   }
-  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="yt">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
+  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="sr">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
 }
 function seatBlock(t, seat, where) {
   const o = occupant(t, seat);
@@ -185,6 +185,37 @@ function seatBlock(t, seat, where) {
   }
   return `<div class="seat">${inner}</div>`;
 }
+// ACBL Alert Procedure, as the robots' explanations map onto it: natural calls and the common conventions
+// (Stayman, Blackwood/RKCB and replies, strong 2C and 2D waiting, takeout/negative/responsive/penalty doubles,
+// Michaels, Unusual 2NT, cue bids, control bids) are not alerted; a natural 1NT opening, Jacoby transfers and a
+// forcing 1NT response are Announced; artificial calls with unexpected meanings are Alerted. Anything else, such
+// as an explanation a human typed in, counts as an Alert.
+const ALERT_RE = /^(Texas|Transfer to 3♣|Completes the transfer to clubs|Super-accept|Smolen|Lebensohl|Forced reply to lebensohl|New minor forcing|Fourth suit forcing|Second negative|Jacoby 2NT|Shortness|17\+ points, no shortness|14-16 points, no shortness|Minimum, no shortness|Good 6\+ card suit: sets trumps|Splinter|Support (double|redouble)|Jordan 2NT|Maximum with an ace or king|Minimum, or a maximum without a feature|Solid suit \(AKQ\)|Lead-directing|Stayman: 4 cards in an unbid major|To play, (no|with a)|No .* stopper either|Asks for the Michaels bidder|Cue bid: game values, asks for a major)/;
+const ANNOUNCE = [[/^15-17 points, balanced/, '15 to 17'], [/^Transfer: 5\+/, 'Transfer'], [/^Forcing one round: 6-12 points/, 'Forcing']];
+function alertKind(a, auction, i) {
+  if (!a) return null;
+  for (const [re, say] of ANNOUNCE) if (re.test(a)) {
+    if (say === '15 to 17' && auction.slice(0, i).some(x => bidValue(x.call) >= 0)) return null; // only the opening 1NT is announced
+    return { kind: 'announce', say };
+  }
+  if (ALERT_RE.test(a)) return { kind: 'alert' };
+  return isRobotText(a) ? null : { kind: 'alert' };
+}
+function isRobotText(a) { return /^(Penalty|Takeout|Responsive double|Reopening double|Two lowest|Quantitative|Redouble|Strong and artificial|20-21|22-24|25-27|Limit raise|Two over one|Invites game|Jump shift|Reverse|4 spades|4 hearts|Minimum, no fit|Maximum, no fit|Stayman: asks|Shows 4|No 4-card major|Completes the transfer|Game forcing|Invitational|To play|Positive|Waiting|Support, |Feature ask|Preemptive|Forcing one round|Natural|Balancing|Michaels|15-18 points|Weak jump overcall|Converts the double|Cue bid|Constructive|Strong hand, takeout|Defends their|Wants to defend|[0-9] (or [0-9] )?key cards|[0-9] key cards|Roman Key Card|Asks for the .* queen|Has the|No .* queen|Grand slam try|Control bid|3-card .* support|5 .* and 4 of the other major|Negative double|Unusual 2NT|Weak two|Maximum|Minimum|Lead-directing)/.test(a); }
+// A small bubble right under the tapped call; closes on the next tap anywhere, or after 6 seconds.
+let explainTimer = null;
+function showExplain(el, text) {
+  hideExplain();
+  const r = el.getBoundingClientRect(), d = document.createElement('div');
+  d.className = 'explain'; d.id = 'explainPop'; d.setAttribute('role', 'status'); d.textContent = text;
+  document.body.appendChild(d);
+  const w = d.offsetWidth, x = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
+  const below = r.bottom + 6 + d.offsetHeight < window.innerHeight;
+  d.style.left = x + 'px'; d.style.top = (below ? r.bottom + 6 : r.top - d.offsetHeight - 6) + window.scrollY + 'px';
+  explainTimer = setTimeout(hideExplain, 6000);
+  setTimeout(() => document.addEventListener('pointerdown', hideExplain, { once: true }), 0);
+}
+function hideExplain() { clearTimeout(explainTimer); const p = document.getElementById('explainPop'); if (p) p.remove(); }
 function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul, viewer = mySeat(t)) {
   const order = ['W', 'N', 'E', 'S'];
   const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${s}</div>`);
@@ -194,11 +225,12 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const hideAlert = viewer && partnerOf(a.by) === viewer;
     const isBid = bidValue(a.call) >= 0;
     const red = isBid && isRed(a.call[1]);
-    const al = a.alert && !hideAlert;
+    const al = a.alert && !hideAlert, ak = al ? alertKind(a.alert, auction, i) : null;
+    const expl = al ? (ak && ak.kind === 'announce' ? `Announced: "${ak.say}". ${a.alert}` : ak ? `Alert: ${a.alert}` : a.alert) : '';
     const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : 'bid';
     // the level is always black; only the suit symbol takes its suit's colour
     const txt = isBid ? `${a.call[0]}<span class="sy ${a.call[1] !== 'N' ? (red ? 'red' : 'blk') + ' s-' + a.call[1] : ''}">${SYM[a.call[1]]}</span>` : callText(a.call);
-    cells.push(`<div class="c ${kind} ${al ? 'alert' : ''}" aria-label="${callText(a.call)}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${txt}</div>`);
+    cells.push(`<div class="c ${kind} ${ak && ak.kind === 'alert' ? 'alert' : al ? 'expl' : ''}" aria-label="${callText(a.call)}" ${al ? `data-alert="${esc(expl)}" title="${esc(expl)}"` : ''}>${txt}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
@@ -367,7 +399,7 @@ function renderSide(force) {
 }
 function renderAuctionPane(t) {
   if (t.masked) { $('pane-auction').innerHTML = '<p class="empty">In a team match, onlookers see each board once both rooms have played it.</p>'; return; }
-  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractText(t.contract)}</p>${tricksHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a yellow outline are alerted. Tap one to read the explanation.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
+  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractText(t.contract)}</p>${tricksHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted. Tap any call to read what it means.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
 }
 function renderChatPane(t) {
   const log = $('chatLog');
@@ -836,7 +868,7 @@ document.addEventListener('click', e => {
   else if (d.next) doAct('next');
   else if (d.review !== undefined) { const h = T.history[+d.review]; showRecord(+d.review); if (h && h.tricks && h.tricks.length) startReplay(h); }
   else if (d.record !== undefined) showRecord(+d.record);
-  else if (d.alert) toast(`Alert: ${d.alert}`, 4000);
+  else if (d.alert) showExplain(b, d.alert);
   else if (d.sub) doAct('sub', d.sub);
   else if (d.quick) doAct('chat', d.quick);
   else if (d.undoreply) doAct('undoReply', d.undoreply === 'yes');

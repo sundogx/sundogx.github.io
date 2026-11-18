@@ -151,7 +151,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 
 .seat { display: inline-flex; flex-direction: column; gap: 4px; align-items: inherit; }
 .plate { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: #000000b0; color: #fff; border: 2px solid transparent; font-size: 13px; white-space: nowrap; max-width: 100%; }
-.plate .sl { font-weight: 700; font-family: var(--serif); }
+.plate .sl { font-weight: 700; font-family: var(--serif); font-size: 17px; line-height: 1; }
 .plate.vul { border: 3px solid #ff3b30; }
 .plate.turn { background: var(--brass); color: #000; border-color: #000; }
 .plate.vul.turn { border-color: #ff3b30; }
@@ -244,7 +244,10 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .agrid .c.cx { color: #d32f2f; }
 .agrid .c.cxx { color: #1f5fae; }
 .agrid .c.cp { color: #2e7d4f; }
-.agrid .c.alert { box-shadow: inset 0 0 0 2px #f4c430; cursor: help; }
+.agrid .c.alert { box-shadow: inset 0 0 0 2px #d32f2f; cursor: help; }
+.agrid .c.expl { cursor: help; }
+.explain { position: absolute; z-index: 40; max-width: min(280px, calc(100vw - 16px)); background: #1b1b1b; color: #fff; font-size: 13px; line-height: 1.35; padding: 7px 10px; border-radius: 6px; box-shadow: 0 3px 10px #0006; pointer-events: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 96%); box-shadow: 0 4px 14px #0004; }
 
 /* bidding box: styled after physical bidding cards */
