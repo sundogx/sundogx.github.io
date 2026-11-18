@@ -1683,6 +1683,113 @@ function shown(auction, seat, vul) {
 }
 function explainAuction(auction) { return auctionMetas(auction).map(m => m && m.alert); }
 
+// ---- Plain-English explanation of any call (for tapping a call in the auction) ----
+// describeCall(auction, i, vul) explains auction[i] by the system: the alert text when the call has one (with
+// the points and suit lengths it shows added when the alert does not say them), else a summary built from its
+// meaning. A pass is explained only when it means something (a forcing pass, leaving partner's double in).
+// Returns null when there is nothing worth saying; never throws. describeAuction does every call at once.
+function describeAuction(auction, vul) {
+  if (!Array.isArray(auction)) return [];
+  let metas;
+  try { metas = auctionMetas(auction, vul); } catch (e) { return auction.map(() => null); }
+  return auction.map((_, i) => describeCall(auction, i, vul, metas));
+}
+function describeCall(auction, i, vul, metas) {
+  try {
+    const a = auction && auction[i]; if (!a || !a.call) return null;
+    metas = metas || auctionMetas(auction.slice(0, i + 1), vul);
+    const m = metas[i], call = a.call;
+    if (call === 'P') return describePass(auction, i, vul, metas, m);
+    if (!m) return null;
+    const isBid = bidValue(call) >= 0, st = isBid ? call[1] : null;
+    const al = m.alert || '';
+    const pts = describePts(m.lo, m.hi), lens = describeLens(m), parts = [];
+    if (al) {
+      if (pts && !/point|values|key card/i.test(al)) parts.push(pts);
+      if (m.bal && !/balanced/i.test(al)) parts.push('balanced');
+      const said = su => al.includes(su) || (/both majors|major/.test(al) && (su === 'majors' || (/both majors/.test(al) && (su === 'hearts' || su === 'spades'))));
+      for (const L of lens) if (!said(L.suit)) parts.push(L.text);
+      if (/short/.test(al)) for (let k = parts.length - 1; k >= 0; k--) if (/^short in /.test(parts[k])) parts.splice(k, 1);
+      if (!parts.length) return al;
+      return al + (al.includes(':') ? ', ' : ': ') + parts.join(', ');
+    }
+    if (m.bal) parts.push('balanced');
+    if (pts) parts.push(pts);
+    for (const L of lens) parts.push(L.text);
+    if (st === 'N' && m.stop && m.stop.length) parts.push(`${m.stop.map(s => SNAME[s]).join(' and ')} stopped`);
+    if (m.f === 2) parts.push('game forcing'); else if (m.f === 1) parts.push('forcing one round'); else if (m.inv) parts.push('invitational');
+    const TAGS = { raise: 'single raise', reverse: 'reverse', '1NPH': 'passed hand, not forcing', signoff: 'sign-off' };
+    const body = parts.join(', '), lv = isBid ? +call[0] : 0, game = isBid && lv >= gameLevel(st);
+    const natural = !m.art && isBid;
+    const earlier = auction.slice(0, i).map((x, k) => ({ x, m: metas[k] })).filter(o => bidValue(o.x.call) >= 0 && o.x.call[1] === st && !(o.m && o.m.art));
+    let head = null;
+    if (m.tag === 'pre') head = 'Preemptive';
+    else if (m.tag === 'raise' || m.tag === '1NPH') return capFirst((body ? body + ' ' : '') + `(${TAGS[m.tag]})`);
+    else if (natural && st !== 'N') {
+      const mine = earlier.some(o => o.x.by === a.by), pard = earlier.some(o => o.x.by === partnerOf(a.by)), opp = earlier.some(o => !sameSide(o.x.by, a.by));
+      const agreed = m.agree === st || metas.slice(0, i).some((x, k) => x && x.agree === st && sameSide(auction[k].by, a.by));
+      const raiseTo = lv >= 7 ? 'Raise to a grand slam' : lv === 6 ? 'Raise to slam' : 'Raise to game';
+      const shows = lens.some(L => L.suit === SNAME[st]), len = (m.mn || {})[st] || 0;
+      if (pard && !mine) head = len && len <= 2 ? 'Preference' : game ? raiseTo : 'Raise';
+      else if (!pard && !mine && m.agree === st) head = game ? raiseTo : 'Raise';
+      else if (mine) head = (pard || agreed) && game ? 'To play' : shows ? null : `Rebids ${SNAME[st]}`;
+      else if (!shows) head = opp ? `Cue bid in ${SNAME[st]}` : game ? 'To play' : `Natural (${SNAME[st]})`;
+    } else if (natural && st === 'N' && !m.bal) head = lv >= 3 ? 'To play' : 'Natural';
+    if (!head && !body) return m.art ? null : TAGS[m.tag] ? capFirst(TAGS[m.tag]) : 'Natural';
+    let s = head ? head + (body ? ': ' + body : '') : body;
+    if (TAGS[m.tag]) s += ` (${TAGS[m.tag]})`;
+    return capFirst(s);
+  } catch (e) { return null; }
+}
+function capFirst(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+function describePts(lo, hi) {
+  lo = Math.max(0, lo | 0); hi = Math.min(37, hi === undefined ? 37 : hi | 0);
+  if (hi < lo) hi = lo;
+  if (lo <= 0 && hi >= 37) return '';
+  if (hi >= 37) return `${lo}+ points`;
+  if (lo <= 0) return `0-${hi} points`;
+  return lo === hi ? `${lo} points` : `${lo}-${hi} points`;
+}
+function describeLens(m) { // [{suit, text}] for what the call shows about suit lengths, longest first
+  const out = [], mn = m.mn || {}, mx = m.mx || {};
+  const done = new Set();
+  // both majors capped: "no 4-card major" / "no 5-card major"
+  if (!mn.H && !mn.S && mx.H !== undefined && mx.H === mx.S && mx.H <= 4) { out.push({ suit: 'majors', text: `no ${mx.H + 1}-card major` }); done.add('H'); done.add('S'); }
+  for (const s of ['S', 'H', 'D', 'C']) {
+    const a = mn[s] || 0, b = mx[s] === undefined ? 13 : mx[s];
+    if (a && b <= a) out.push({ suit: SNAME[s], text: `exactly ${a} ${SNAME[s]}`, k: a });
+    else if (a) out.push({ suit: SNAME[s], text: `${a}+ ${SNAME[s]}`, k: a });
+  }
+  for (const s of ['S', 'H', 'D', 'C']) {
+    if (done.has(s) || mn[s]) continue;
+    const b = mx[s] === undefined ? 13 : mx[s];
+    if (b === 0) out.push({ suit: SNAME[s], text: `void in ${SNAME[s]}`, k: -1 });
+    else if (b === 1) out.push({ suit: SNAME[s], text: `singleton or void in ${SNAME[s]}`, k: -1 });
+    else if (b === 2) out.push({ suit: SNAME[s], text: `short in ${SNAME[s]}`, k: -1 });
+    else if (b === 3) out.push({ suit: SNAME[s], text: `at most 3 ${SNAME[s]}`, k: -1 });
+  }
+  return out.sort((x, y) => (y.k || 0) - (x.k || 0));
+}
+function describePass(auction, i, vul, metas, m) {
+  if (m && m.alert) return m.alert;
+  const prefix = auction.slice(0, i), seat = auction[i].by;
+  const ctx = mkCtx(prefix, seat, metas, vul);
+  const lnpIdx = (() => { for (let k = prefix.length - 1; k >= 0; k--) if (prefix[k].call !== 'P') return k; return -1; })();
+  if (lnpIdx < 0) return null;
+  const lnp = prefix[lnpIdx], lm = metas[lnpIdx];
+  if (lnp.call === 'X' && lnp.by === ctx.p) {
+    const lb = ctx.lb;
+    const their = lb ? ` ${lb.call[0]}${SSYM[lb.call[1]]}` : '';
+    if (lm && lm.tag === 'xpen') return `Leaves partner's penalty double of${their} in`;
+    if (lm && lm.tag === 'xlead') return `Leaves partner's lead-directing double of${their} in`;
+    return `Leaves partner's double of${their} in, for penalties: length and strength in their suit`;
+  }
+  // their bid straight after ours in a game-forcing auction: a pass hands the decision to partner
+  if (ctx.gf && lnpIdx === prefix.length - 1 && lnp.by === ctx.rho && bidValue(lnp.call) >= 0 && ctx.ours.some(x => bidValue(x.call) >= 0))
+    return 'Forcing pass: we are in a game-forcing auction, so partner must bid on or double';
+  return null;
+}
+
 function debugTable(hand, seat, auction, vul) { // for tests/bidwhy.js: the table that applies, with each entry's hand test
   const metas = auctionMetas(auction, vul), ctx = mkCtx(auction, seat, metas, vul), h = evalHand(hand), T = tablesFor(ctx);
   return T ? T.map(d => d.nat ? 'natural' : `${d.c}${ctx.ok(d.c) ? '' : '(illegal)'}${d.w(h) ? '+' : '-'}`).join(' ') : 'no table: natural';
