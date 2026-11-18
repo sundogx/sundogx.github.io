@@ -149,7 +149,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .rs { color: var(--card-red); }
 
 .seat { display: inline-flex; flex-direction: column; gap: 4px; align-items: inherit; }
-.plate { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: #000000b0; color: #fff; border: 3px solid transparent; font-size: 13px; white-space: nowrap; max-width: 100%; width: 180px; height: 32px; box-sizing: border-box; } /* every seat's plate the same size */
+.plate { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: #000000b0; color: #fff; border: 3px solid transparent; font-size: 13px; white-space: nowrap; max-width: 100%; width: calc(var(--cw) * 4.36); height: 32px; box-sizing: border-box; } /* every seat's plate the same size */
 .plate .sl { font-weight: 700; font-family: var(--serif); font-size: 17px; line-height: 1; }
 .plate.turn { background: var(--brass); color: #000; border-color: #000; }
 .plate .yt { font-weight: 700; background: #000; color: var(--brass); border-radius: 4px; padding: 0 6px; font-size: 12px; }
