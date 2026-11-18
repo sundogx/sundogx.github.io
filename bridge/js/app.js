@@ -208,7 +208,7 @@ function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ?
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   let html = '';
-  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}<br>${vulText(t.vul)}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
+  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   if (t.contract && t.phase !== 'auction') {
     html += `<div class="corner tr"><b>${contractText(t.contract)}</b></div>`;
   }
