@@ -446,10 +446,324 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
   return R('L216', low(of(legal, pool[0])));
 }
 
-// Robot response to a claim: how many of the remaining tricks the claimer's side is sure to take.
-// With 4 or fewer tricks left this is exact (every line of play is tried). With more it only counts
-// winners that can't be lost: cards in the hand on lead, side suits only once the opponents' trumps
-// are drawn, and nothing at all if the opponents are on lead with a trick to cash.
+// ===== Claims: how robots answer them, and when robots claim =====
+// A claim is judged on the actual cards. A claim of n tricks is accepted when the claimer's side takes at least n
+// of the remaining tricks double dummy: whatever the opponents do, the claimer's side has a line that makes n.
+// (Under Law 70 doubtful points go against the claimer; a finesse that happens to work is the doubtful case this
+// doesn't catch. Robots' own claims are stricter: see robotClaimCount.)
+// claimSolver is an exact double-dummy search in plain JavaScript (the server can't run the WebAssembly solver,
+// and the page's is asynchronous): alpha-beta as a yes/no question ("can this side take n?"), one card of each run
+// of equals, a transposition table at the start of each trick keyed by the relative order of the cards left, and a
+// quick count of top winners for the side on lead. Up to 7 tricks left it always finishes within the server budget
+// (p99 about 2 ms), 8 tricks 90% (p99 5 ms; tests/claimtest.js); past its node budget it answers null and the
+// callers fall back to claimTopTricks.
+const CL_SUIT = { S: 0, H: 1, D: 2, C: 3 }, CL_BUDGET = { budget: true };
+// Node budgets (about 0.4 microseconds a node): answering a claim, and a robot deciding whether to claim (tried at
+// each of its leads). The server has 10 ms of CPU for a whole request; a practice table in the page has more time.
+const CLAIM_NODES = 20000, ROBOT_CLAIM_NODES = 6000;
+const CLAIM_NODES_PAGE = 300000, ROBOT_CLAIM_NODES_PAGE = 30000;
+const clBits = m => { m -= (m >>> 1) & 0x55555555; m = (m & 0x33333333) + ((m >>> 2) & 0x33333333); return (((m + (m >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24; };
+const clTop = m => 31 - Math.clz32(m); // highest rank in a mask, -1 if none
+const clLow = m => 31 - Math.clz32(m & -m);
+
+// The position on a table: remaining cards as rank masks h[seat * 4 + suit] (seats in SEATS order), the trump suit
+// (-1 at no trumps), the leader of the trick in progress and the cards already played to it. `hands` (remaining
+// cards by seat) replaces the real ones, for trying other layouts.
+function claimPos(t, hands) {
+  const play = t.play, c = t.contract, h = new Array(16).fill(0);
+  for (let i = 0; i < 4; i++) for (const x of hands ? hands[SEATS[i]] : remainingHand(t.hands, play, SEATS[i])) h[i * 4 + CL_SUIT[x[0]]] |= 1 << rankOf(x);
+  const tr = play.tricks[play.tricks.length - 1], open = !!(tr && tr.cards.length < 4);
+  const cur = open ? tr.cards.map(pc => [SEATS.indexOf(pc.seat), CL_SUIT[pc.card[0]], rankOf(pc.card)]) : [];
+  return { h, trump: c.strain === 'N' ? -1 : CL_SUIT[c.strain], leader: SEATS.indexOf(open ? tr.leader : playTurn(play, c)), cur };
+}
+
+// side: 0 for N-S, 1 for E-W. Returns { win(n), value(), nodes() }: win(n) says whether `side` takes at least n of
+// the remaining tricks (the one in progress included), value() how many it takes; both null past maxNodes.
+let clTable = null;
+function clTT() { // 2^16 entries, made once
+  if (!clTable) { const n = 1 << 16; clTable = { K: new Int32Array(n * 4), V: new Int8Array(n * 3), G: new Int32Array(n), mask: n - 1, gen: 0 }; }
+  return clTable;
+}
+function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
+  const h = Int32Array.from(pos.h), trump = pos.trump, k0 = pos.cur.length;
+  // the cards of every trick on the search path (index: 4 * trick + place in the trick), and the moves tried there
+  const tSeat = new Int8Array(56), tSuit = new Int8Array(56), tRank = new Int8Array(56);
+  const mvBuf = new Int32Array(56 * 14), scBuf = new Int32Array(14);
+  pos.cur.forEach(([s, su, r], k) => { tSeat[k] = s; tSuit[k] = su; tRank[k] = r; });
+  let cards = 0; for (const m of h) cards += clBits(m);
+  const L0 = (cards + k0) / 4;
+  let leader = pos.leader, left = L0, nodes = 0;
+  const winnerAt = b => { let w = b; for (let j = b + 1; j < b + 4; j++) if (tSuit[j] === tSuit[w] ? tRank[j] > tRank[w] : tSuit[j] === trump) w = j; return tSeat[w]; };
+
+  // Tricks a hand can cash in a suit while it keeps the lead: its cards above every other card in the suit, and
+  // all of them once the opponents are out of the suit and partner can't be forced to overtake.
+  function cash(X, su) {
+    const m = h[X * 4 + su]; if (!m) return 0;
+    const pm = h[(X ^ 2) * 4 + su], a = h[((X + 1) & 3) * 4 + su], b = h[((X + 3) & 3) * 4 + su];
+    const tops = clBits(m >>> (clTop(pm | a | b) + 1));
+    return tops >= Math.max(clBits(a), clBits(b)) && (!pm || clTop(pm) < clLow(m)) ? clBits(m) : tops;
+  }
+  // Tricks the side on lead (L) can surely take straight off. In a trump contract where the opponents have trumps,
+  // only the leader's top trumps count, plus its side winners if those top trumps draw the opponents' trumps.
+  // Otherwise: the leader's winners, or the leader's winners, then a low card to partner's winners in one suit and
+  // partner's winners elsewhere (when neither hand has to throw a counted winner meanwhile).
+  function quick(L) {
+    const P = L ^ 2;
+    let oppTr = 0;
+    if (trump >= 0) oppTr = Math.max(clBits(h[((L + 1) & 3) * 4 + trump]), clBits(h[((L + 3) & 3) * 4 + trump]));
+    if (oppTr) {
+      const m = h[L * 4 + trump], others = h[P * 4 + trump] | h[((L + 1) & 3) * 4 + trump] | h[((L + 3) & 3) * 4 + trump];
+      const tops = m ? clBits(m >>> (clTop(others) + 1)) : 0;
+      if (tops < oppTr) return tops;
+    }
+    let lc = 0; const pw = [0, 0, 0, 0];
+    for (let su = 0; su < 4; su++) { lc += cash(L, su); pw[su] = cash(P, su); }
+    let best = lc;
+    for (let s = 0; s < 4; s++) {
+      if (!pw[s] || !h[L * 4 + s] || clTop(h[L * 4 + s]) > clTop(h[P * 4 + s])) continue; // needs a low card to cross with
+      let pc = 0; for (let su = 0; su < 4; su++) pc += pw[su];
+      const lcs = lc - cash(L, s);
+      if (lcs + pc <= left && lcs + pc > best) best = lcs + pc;
+    }
+    return Math.min(best, left);
+  }
+  // Sure tricks for side X however play goes: in a trump contract, trumps in one hand above all the other side's trumps.
+  function topTrumps(X) {
+    if (trump < 0) return 0;
+    const opp = h[((X + 1) & 3) * 4 + trump] | h[((X + 3) & 3) * 4 + trump], hi = clTop(opp) + 1;
+    return Math.max(clBits(h[X * 4 + trump] >>> hi), clBits(h[(X ^ 2) * 4 + trump] >>> hi));
+  }
+  // At most this many tricks for side X: a trick won in a suit uses up a card of it in each of X's hands, so no
+  // more than the longer holding (plus, in a trump contract, one trick per trump X holds).
+  function most(X) {
+    let n = 0;
+    for (let su = 0; su < 4; su++) {
+      const a = clBits(h[X * 4 + su]), b = clBits(h[(X ^ 2) * 4 + su]);
+      n += su === trump ? a + b : a > b ? a : b;
+    }
+    return n < left ? n : left;
+  }
+  // The transposition table (shared by all solvers, one at a time: entries of another solve count as empty). The key
+  // is, suit by suit, who holds each remaining card from the top (relative ranks only), and the leader. An entry
+  // holds bounds on the tricks this side takes from the position and the lead that settled it; an entry may be
+  // overwritten by another position, which only loses the bounds.
+  const T = clTT(), gen = T.gen = (T.gen + 1) | 0, KS = T.K, VS = T.V, GS = T.G, tmask = T.mask;
+  let key0 = 0, key1 = 0, key2 = 0, key3 = 0;
+  function keyOf() {
+    for (let su = 0; su < 4; su++) {
+      const b = h[4 + su], c = h[8 + su], d = h[12 + su];
+      let v = 1;
+      for (let m = h[su] | b | c | d; m;) { const r = clTop(m), bit = 1 << r; m ^= bit; v = (v << 2) | (b & bit ? 1 : c & bit ? 2 : d & bit ? 3 : 0); }
+      if (su === 0) key0 = v | (leader << 28); else if (su === 1) key1 = v; else if (su === 2) key2 = v; else key3 = v;
+    }
+  }
+  function slot() { // where the current key lives (or would): >= 0 if found, ~slot if not
+    let x = Math.imul(key0 ^ Math.imul(key1, 0x9E3779B1) ^ Math.imul(key2, 0x85EBCA77) ^ Math.imul(key3, 0xC2B2AE3D), 0x27D4EB2F);
+    x ^= x >>> 15;
+    const i = x & tmask, j = i * 4;
+    return GS[i] === gen && KS[j] === key0 && KS[j + 1] === key1 && KS[j + 2] === key2 && KS[j + 3] === key3 ? i : ~i;
+  }
+  function put(i, lo, hi, best) { const j = i * 4; GS[i] = gen; KS[j] = key0; KS[j + 1] = key1; KS[j + 2] = key2; KS[j + 3] = key3; VS[i * 3] = lo; VS[i * 3 + 1] = hi; VS[i * 3 + 2] = best; }
+  let lastBest = -1; // the lead that settled the last trick searched from its start
+  // The cards worth trying at place i of the search path (one of each run of equals), likeliest best first, into
+  // mvBuf[i * 14 ...]; returns how many.
+  function moves(seat, k, b, best) {
+    const o0 = (b + k) * 14;
+    let n = 0;
+    const led = k ? tSuit[b] : -1;
+    let w = b; for (let j = b + 1; j < b + k; j++) if (tSuit[j] === tSuit[w] ? tRank[j] > tRank[w] : tSuit[j] === trump) w = j;
+    const partnerWins = k > 0 && (tSeat[w] & 1) === (seat & 1);
+    const follow = k > 0 && h[seat * 4 + led] !== 0;
+    for (let su = follow ? led : 0; su < (follow ? led + 1 : 4); su++) {
+      const m = h[seat * 4 + su]; if (!m) continue;
+      let others = h[((seat + 1) & 3) * 4 + su] | h[((seat + 2) & 3) * 4 + su] | h[((seat + 3) & 3) * 4 + su];
+      for (let j = b; j < b + k; j++) if (tSuit[j] === su) others |= 1 << tRank[j];
+      const all = others | m, top = clTop(others), pTop = clTop(h[(seat ^ 2) * 4 + su]);
+      let prev = -1;
+      for (let x = m; x;) {
+        const r = clTop(x); x ^= 1 << r;
+        if (prev >= 0 && (others & ((1 << prev) - (1 << (r + 1)))) === 0) { prev = r; continue; } // equal to the card above
+        prev = r;
+        const mv = (su << 4) | r;
+        let s;
+        if (best >= 0 && best >> 4 === su && clBits(all >>> (r + 1)) === (best & 15)) s = 1000;
+        else if (!k) s = r > top ? 100 + clBits(m) : (pTop === top && top >= 0 ? 50 : 0) - r;
+        else if (partnerWins) s = -r - (su === trump && su !== led ? 30 : 0) + (su !== led ? 3 * clBits(m) : 0);
+        else if (su === tSuit[w] ? r > tRank[w] : su === trump) s = 60 - r;
+        else s = -r - (su === trump ? 30 : 0) + (su !== led ? 3 * clBits(m) : 0);
+        let i = n++;
+        while (i > 0 && scBuf[i - 1] < s) { mvBuf[o0 + i] = mvBuf[o0 + i - 1]; scBuf[i] = scBuf[i - 1]; i--; }
+        mvBuf[o0 + i] = mv; scBuf[i] = s;
+      }
+    }
+    return n;
+  }
+  function trick(k, need, best) { // best: at the start of a trick, the lead that settled this position before
+    if (++nodes > maxNodes) throw CL_BUDGET;
+    const b = (L0 - left) * 4, seat = (leader + k) & 3, isMax = (seat & 1) === side, o0 = (b + k) * 14;
+    const n = moves(seat, k, b, k ? -1 : best);
+    if (k === 3) { // a card that ends the trick in a position whose bounds settle it
+      for (let i = 0; i < n; i++) {
+        const mv = mvBuf[o0 + i], su = mv >> 4, bit = 1 << (mv & 15);
+        h[seat * 4 + su] ^= bit; tSeat[b + 3] = seat; tSuit[b + 3] = su; tRank[b + 3] = mv & 15;
+        const w = winnerAt(b), old = leader, nd = need - ((w & 1) === side ? 1 : 0);
+        leader = w; left--;
+        let res = -1;
+        if (nd <= 0) res = 1; else if (nd > left) res = 0;
+        else if (left > 1) { keyOf(); const j = slot(); if (j >= 0) res = VS[j * 3] >= nd ? 1 : VS[j * 3 + 1] < nd ? 0 : -1; }
+        leader = old; left++;
+        h[seat * 4 + su] ^= bit;
+        if (res === (isMax ? 1 : 0)) return isMax;
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      const mv = mvBuf[o0 + i], su = mv >> 4, r = mv & 15, bit = 1 << r;
+      h[seat * 4 + su] ^= bit; tSeat[b + k] = seat; tSuit[b + k] = su; tRank[b + k] = r;
+      let res;
+      if (k === 3) {
+        const w = winnerAt(b), old = leader;
+        leader = w; left--;
+        res = search(need - ((w & 1) === side ? 1 : 0));
+        leader = old; left++;
+      } else res = trick(k + 1, need);
+      h[seat * 4 + su] ^= bit;
+      if (res === isMax) {
+        if (!k) lastBest = (su << 4) | clBits((h[su] | h[4 + su] | h[8 + su] | h[12 + su]) >>> (r + 1));
+        return res;
+      }
+    }
+    if (!k) lastBest = -1;
+    return !isMax;
+  }
+  function search(need) { // at the start of a trick
+    if (need <= 0) return true;
+    if (need > left) return false;
+    if (left === 1) { // the last trick: one card each
+      let w = -1, ws = 0, wr = 0;
+      for (let i = 0; i < 4; i++) {
+        const s = (leader + i) & 3; let su = 0; while (!h[s * 4 + su]) su++;
+        const r = clTop(h[s * 4 + su]);
+        if (w < 0 || (su === ws ? r > wr : su === trump)) { w = s; ws = su; wr = r; }
+      }
+      return (w & 1) === side;
+    }
+    keyOf();
+    let i = slot(), lo, hi, best = -1;
+    if (i >= 0) { lo = VS[i * 3]; hi = VS[i * 3 + 1]; best = VS[i * 3 + 2]; }
+    else {
+      const q = quick(leader), mine = (leader & 1) === side;
+      lo = Math.max(mine ? q : 0, topTrumps(side), left - most(side ^ 1));
+      hi = Math.min(mine ? left : left - q, left - topTrumps(side ^ 1), most(side));
+      put(~i, lo, hi, -1);
+    }
+    if (lo >= need) return true;
+    if (hi < need) return false;
+    const k0_ = key0, k1 = key1, k2 = key2, k3 = key3;
+    lastBest = -1;
+    const res = trick(0, need, best);
+    if (res) lo = need; else hi = need - 1;
+    if (lastBest >= 0) best = lastBest;
+    key0 = k0_; key1 = k1; key2 = k2; key3 = k3;
+    i = slot();
+    if (i >= 0) { lo = Math.max(lo, VS[i * 3]); hi = Math.min(hi, VS[i * 3 + 1]); } else i = ~i; // (another position may have taken the slot meanwhile)
+    put(i, lo, hi, best);
+    return res;
+  }
+  function win(n) {
+    try { return n <= 0 ? true : n > L0 ? false : k0 ? trick(k0, n) : search(n); } catch (e) { if (e === CL_BUDGET) return null; throw e; }
+  }
+  return {
+    win,
+    value() {
+      let lo = 0, hi = L0;
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1, r = win(mid); if (r === null) return null; if (r) lo = mid; else hi = mid - 1; }
+      return lo;
+    },
+    nodes: () => nodes,
+  };
+}
+
+// Does the claimer's side take at least n of the remaining tricks double dummy? null if too big to work out.
+function claimHolds(t, by, n, maxNodes = CLAIM_NODES) {
+  const left = 13 - completedTricks(t.play).length;
+  if (n <= 0) return true;
+  if (n > left) return false;
+  return claimSolver(claimPos(t), SEATS.indexOf(by) & 1, maxNodes).win(n);
+}
+// A robot's answer to a claim of n tricks by `by`: exact when the search finishes, otherwise only a claim within
+// the conservative count of sure winners is accepted. A concession of everything is always accepted.
+function claimAccept(t, by, n, maxNodes = CLAIM_NODES) {
+  if (n === 0) return true;
+  const r = claimHolds(t, by, n, maxNodes);
+  return r !== null ? r : n <= claimTopTricks(t, by);
+}
+// How many of the remaining tricks the claimer's side takes double dummy (the conservative count if too big).
+function sureTricks(t, claimer) {
+  const v = claimSolver(claimPos(t), SEATS.indexOf(claimer) & 1).value();
+  return v !== null ? v : claimTopTricks(t, claimer);
+}
+
+// The claim a robot on lead at the start of a trick (seat) would make for its side, or null. It is the number of
+// tricks its side takes double dummy, and only if that number doesn't depend on where the cards the robot can't
+// see lie: it must hold for every way those cards could be split between the two hands it can't see (keeping
+// to suits they have shown out of), so the claim needs no finesse or guess. Unseen cards next to each other in
+// rank count as one group (only how many of a group each hand holds is varied). With more layouts than
+// maxLayouts, or past the node budget, the robot doesn't claim.
+function robotClaimCount(t, seat, maxNodes = CLAIM_NODES, maxLayouts = 120) {
+  const play = t.play, c = t.contract;
+  const tr = play.tricks[play.tricks.length - 1];
+  if (!tr || tr.cards.length < 4) return null;
+  const left = 13 - completedTricks(play).length;
+  if (left < 2) return null;
+  const side = SEATS.indexOf(seat) & 1;
+  const S = claimSolver(claimPos(t), side, left > 8 ? Math.min(500, maxNodes) : maxNodes); // early in the play only the plainest claims
+  const v = S.value();
+  if (v === null) return null;
+  let budget = maxNodes - S.nodes();
+  const dummy = partnerOf(c.declarer);
+  const hidden = SEATS.filter(s => s !== seat && s !== dummy);
+  const rem = {}; for (const s of SEATS) rem[s] = remainingHand(t.hands, play, s);
+  const out = { [hidden[0]]: new Set(), [hidden[1]]: new Set() }; // suits each has shown out of
+  for (const x of play.tricks) for (const pc of x.cards.slice(1)) if (pc.card[0] !== x.cards[0].card[0] && out[pc.seat]) out[pc.seat].add(x.cards[0].card[0]);
+  const seenCards = new Set(SEATS.filter(s => !hidden.includes(s)).flatMap(s => rem[s]));
+  const pool = [...rem[hidden[0]], ...rem[hidden[1]]].sort((a, b) => SUITS.indexOf(a[0]) - SUITS.indexOf(b[0]) || rankOf(b) - rankOf(a));
+  const groups = []; // runs of unseen cards with no seen card between them
+  for (const x of pool) {
+    const g = groups[groups.length - 1], y = g && g[g.length - 1];
+    let together = !!y && y[0] === x[0];
+    for (let r = rankOf(x) + 1; together && r < rankOf(y); r++) if (seenCards.has(x[0] + RANKS[r])) together = false;
+    if (together) g.push(x); else groups.push([x]);
+  }
+  const nA = rem[hidden[0]].length, after = [];
+  for (let i = groups.length - 1, n = 0; i >= 0; i--) { after[i] = n; n += groups[i].length; }
+  const layouts = [];
+  const pick = (gi, a, got) => { // how many of each group hidden[0] holds
+    if (layouts.length > maxLayouts) return;
+    if (gi === groups.length) { layouts.push(a.slice()); return; }
+    const g = groups[gi], s = g[0][0];
+    for (let k = 0; k <= g.length; k++) {
+      if (got + k > nA || got + k + after[gi] < nA) continue;
+      if ((k > 0 && out[hidden[0]].has(s)) || (k < g.length && out[hidden[1]].has(s))) continue;
+      a.push(k); pick(gi + 1, a, got + k); a.pop();
+    }
+  };
+  pick(0, [], 0);
+  if (layouts.length > maxLayouts) return null;
+  for (const a of layouts) {
+    const hands = { ...rem, [hidden[0]]: [], [hidden[1]]: [] };
+    groups.forEach((g, i) => g.forEach((x, j) => hands[j < a[i] ? hidden[0] : hidden[1]].push(x)));
+    if (budget <= 0) return null;
+    const L = claimSolver(claimPos(t, hands), side, budget);
+    const r = L.win(v);
+    budget -= L.nodes();
+    if (r !== true) return null; // fails in some layout (or too big to tell): not obvious
+  }
+  return v;
+}
+
+// The conservative count used when the exact search is too big: winners that can't be lost (cards in the hand on
+// lead, side suits only once the opponents' trumps are drawn), and nothing at all if the opponents are on lead or a
+// trick is in progress. exactTricks is the plain minimax (every card tried), kept as the reference for tests.
 function exactTricks(t, claimer) {
   const c = t.contract, trump = c.strain === 'N' ? null : c.strain;
   const rem = {}; for (const s of SEATS) rem[s] = remainingHand(t.hands, t.play, s).slice();
@@ -482,10 +796,9 @@ function exactTricks(t, claimer) {
   const turn = cur.length ? nextSeat(cur[cur.length - 1].seat) : playTurn(t.play, c);
   return go(cur, turn);
 }
-function sureTricks(t, claimer) {
+function claimTopTricks(t, claimer) {
   const c = t.contract, play = t.play, hands = t.hands;
   const left = remainingHand(hands, play, claimer).length;
-  if (left <= 4) return exactTricks(t, claimer);
   const tr = play.tricks[play.tricks.length - 1];
   if (tr && tr.cards.length && tr.cards.length < 4) return 0; // mid-trick: only exact endings are accepted
   const leader = playTurn(play, c);
@@ -526,4 +839,4 @@ function simulateBoard(hands, dealer, vul) {
   const d = tricksWon(t.play, contract).decl;
   return { auction, contract, declTricks: d, scoreNS: scoreNS(contract, d, vul), tricks: t.play.tricks };
 }
-if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown };
+if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount };
