@@ -160,6 +160,9 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
   // known voids: a seat that failed to follow suit is void in it
   const voidIn = (who, su) => play.tricks.some(tr => suitOf(tr.cards[0].card) === su && tr.cards.some(pc => pc.seat === who && suitOf(pc.card) !== su));
 
+  // a defender's sure winner: a master that neither declarer (known void) nor dummy (void) can ruff
+  const defSure = x => isMaster(x) && (!trump || x[0] === trump || (!(voidIn(decl, x[0]) && !voidIn(decl, trump)) && !(dummyUp && of(dummyCards, x[0]).length === 0 && of(dummyCards, trump).length)));
+
   // ---- declarer's count (both hands are visible to the declaring side) ----
   // For each suit: our cards in this hand (A) and partner's (B), the opponents' (O), all high to low;
   // sure: tricks from the top; dev: tricks once the suit is developed (round by round, our top card wins if it
@@ -329,8 +332,7 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     if (!OFF('setcash')) {
       const tw = tricksWon(play, c);
       const toSet = 13 - (c.level + 6) + 1 - tw.def;
-      const declTrumps = trump && !voidIn(decl, trump);
-      const sure = legal.filter(x => isMaster(x) && (!trump || x[0] === trump || (!(voidIn(decl, x[0]) && declTrumps) && !(of(dummyCards, x[0]).length === 0 && of(dummyCards, trump).length))));
+      const sure = legal.filter(defSure);
       if (toSet > 0 && sure.length >= toSet) return want ? null : R('L103', high(sure));
     }
     const scoreSuit = s => {
@@ -361,7 +363,8 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     // features of leading each suit (weights fitted to double-dummy results by tests/heurfit.js)
     const bidBy = (who, s) => (t.auction || []).some(a => a.by === who && /^[1-7][CDHS]$/.test(a.call) && a.call[1] === s);
     // dummy has a long suit it can run (discards for declarer's losers)
-    const dummyRun = s0 => SUITS.some(x => x !== s0 && x !== trump && of(dummyCards, x).length >= 4 && of(dummyCards, x).filter(isMaster).length >= 2);
+    const dmMaster = x => { for (let r = rankOf(x) + 1; r < 13; r++) { const y = x[0] + RANKS[r]; if (!played.has(y) && !dummyCards.includes(y)) return false; } return true; };
+    const dummyRun = s0 => SUITS.some(x => x !== s0 && x !== trump && of(dummyCards, x).length >= 4 && of(dummyCards, x).filter(dmMaster).length >= 2);
     // dummy holds a tenace (two honours with exactly one unseen card between them)
     const dmTenace = dm => { const h = dm.filter(x => rankOf(x) >= 9).sort((a, b) => rankOf(b) - rankOf(a)); for (let i = 0; i + 1 < h.length; i++) { const gap = unseenAbove(h[i + 1]).filter(u => rankOf(u) < rankOf(h[i])).length; if (gap === 1 && isMaster(h[i])) return true; } return false; };
     const myTenace = srt => { for (let i = 0; i + 1 < srt.length; i++) if (rankOf(srt[i + 1]) >= 9 && rankOf(srt[i]) - rankOf(srt[i + 1]) === 2 && !known.has(srt[0][0] + RANKS[rankOf(srt[i]) - 1])) return true; return false; };
@@ -456,6 +459,11 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       }
       const m = winners.filter(isMaster);
       if (!OFF('second') && onDeclSide && m.length) return R('L182', low(m));
+      // defender: take a master when it and our other sure winners beat the contract
+      if (!onDeclSide && m.length && !OFF('set2')) {
+        const toSet = 13 - (c.level + 6) + 1 - tricksWon(play, c).def;
+        if (1 + my.filter(x => suitOf(x) !== led && defSure(x)).length >= toSet) return R('set2', low(m));
+      }
       return R('L183', low(follow));
     }
     // third hand
