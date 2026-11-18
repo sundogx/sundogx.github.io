@@ -150,7 +150,7 @@ const A = {
     const ctrl = controllerOf(t, ts);
     const o = occupant(t, ctrl);
     if (!o || o.kind !== 'robot') return false;
-    if (t.phase === 'auction') { const r = botCall(t.hands[ts], ts, t.dealer, t.auction); return A.call(t, ts, r.call, r.alert); }
+    if (t.phase === 'auction') { const r = botCall(t.hands[ts], ts, t.dealer, t.auction, t.vul); return A.call(t, ts, r.call, r.alert); }
     const ok = hint && hint.key === playKey(t) && legalPlays(t.hands, t.play, t.contract, ts).includes(hint.card);
     return A.card(t, ts, ok ? hint.card : botPlay(t, ts));
   },

@@ -391,7 +391,7 @@ function sureTricks(t, claimer) {
 
 function simulateBoard(hands, dealer, vul) {
   const auction = [];
-  while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = botCall(hands[s], s, dealer, auction); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
+  while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = botCall(hands[s], s, dealer, auction, vul); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
   const contract = finalContract(auction);
   if (!contract) return { auction, contract: null, declTricks: null, scoreNS: 0, tricks: [] };
   const t = { hands, auction, contract, play: { tricks: [] } };

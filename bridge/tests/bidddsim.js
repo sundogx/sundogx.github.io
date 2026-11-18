@@ -3,7 +3,9 @@
 // Each final contract is scored with the double-dummy tricks from DDS (js/wasm), so card play does not
 // matter. Reports IMPs per board for the new system (± standard error) and both systems against par.
 //
-// Usage: node tests/bidddsim.js [boards=1000] [seed=1] [--worst=10] [--self]
+// Usage: node tests/bidddsim.js [boards=1000] [seed=1] [--worst=10] [--self] [--cats] [--vs=basebid]
+//   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
+//   --vs=name  the baseline system: tests/fixtures/<name>.js (default oldbid)
 //   --worst=k  print the k boards the new system lost most on (hands and both auctions)
 //   --self     also report each system in self-play against par
 // Double-dummy tables are cached in the OS temp folder (bridge-dd-<seed>.json), so reruns are fast.
@@ -41,7 +43,9 @@ const args = process.argv.slice(2), flags = args.filter(a => a.startsWith('--'))
 const N = +pos[0] || 1000, SEED = pos[1] || '1';
 const WORST = +((flags.find(f => f.startsWith('--worst')) || '').split('=')[1] || 0);
 const SELF = flags.includes('--self');
-const NEW = require('../js/bidding.js'), OLD = require('./fixtures/oldbid.js');
+globalThis.BID_OFF = ((flags.find(f => f.startsWith('--off=')) || '--off=').slice(6)).split(',').filter(Boolean); // switch off named features of js/bidding.js
+const VS = (flags.find(f => f.startsWith('--vs=')) || '--vs=oldbid').slice(5);
+const NEW = require('../js/bidding.js'), OLD = require(`./fixtures/${VS}.js`);
 const { parScore } = require('../js/par.js');
 
 const rand = seededRand('bidddsim-' + SEED);
@@ -82,7 +86,7 @@ function bid(b, sys) { // sys: { NS: module, EW: module }
   const auction = [];
   while (!auctionOver(auction)) {
     const s = auctionTurn(b.dealer, auction);
-    const r = sys[sideOf(s)].botCall(b.hands[s], s, b.dealer, auction);
+    const r = sys[sideOf(s)].botCall(b.hands[s], s, b.dealer, auction, b.vul);
     if (!isLegalCall(b.dealer, auction, r.call)) throw new Error(`illegal call ${r.call} by ${s} after ${auction.map(a => a.call).join(' ')}`);
     auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s });
     if (auction.length > 60) throw new Error('auction does not end: ' + auction.map(a => a.call).join(' '));
@@ -124,7 +128,10 @@ const stats = () => ({ n: 0, s: 0, q: 0, add(x) { this.n++; this.s += x; this.q 
       const o = t.auction.find(a => a.call !== 'P');
       const k = o ? `${sideOf(o.by) === newSide ? 'new' : 'old'} opens ${o.call}` : 'passed out';
       const c = cats[k] || (cats[k] = { n: 0, imps: 0 }); c.n++; c.imps += x.imps / 2;
+      const both = ['NS', 'EW'].every(sd => t.auction.some(a => a.call !== 'P' && sideOf(a.by) === sd)); // did both sides bid or double?
+      const k2 = both ? '[contested]' : '[one side]', c2 = cats[k2] || (cats[k2] = { n: 0, imps: 0 }); c2.n++; c2.imps += x.imps / 2;
     }
+    for (const k of ['[contested]', '[one side]']) { const c = cats[k] || { n: 0, imps: 0 }; delete cats[k]; console.log(`  ${k.padEnd(16)} ${String(c.n).padStart(5)} tables  ${c.imps.toFixed(1).padStart(7)} IMPs`); }
     Object.entries(cats).sort((a, b) => a[1].imps - b[1].imps).slice(0, 25).forEach(([k, c]) => console.log(`  ${k.padEnd(16)} ${String(c.n).padStart(5)} tables  ${c.imps.toFixed(1).padStart(7)} IMPs`));
   }
   if (WORST) {
