@@ -155,6 +155,8 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     }
   }
   const trick = currentTrick(play);
+  // known voids: a seat that failed to follow suit is void in it
+  const voidIn = (who, su) => play.tricks.some(tr => suitOf(tr.cards[0].card) === su && tr.cards.some(pc => pc.seat === who && suitOf(pc.card) !== su));
 
   // ---- declarer's count (both hands are visible to the declaring side) ----
   // For each suit: our cards in this hand (A) and partner's (B), the opponents' (O), all high to low;
@@ -277,8 +279,6 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     const firstLead = play.tricks[0].cards[0];
     const dummyLeft = nextSeat(seat) === dummy; // dummy plays right after me
     const cand = SUITS.filter(s => of(legal, s).length);
-    // known voids: a seat that failed to follow suit is void in it
-    const voidIn = (who, su) => play.tricks.some(tr => suitOf(tr.cards[0].card) === su && tr.cards.some(pc => pc.seat === who && suitOf(pc.card) !== su));
     // cash setting tricks: our side's sure winners are enough to beat the contract
     if (!OFF('setcash')) {
       const tw = tricksWon(play, c);
@@ -402,7 +402,19 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     }
     // third hand
     // finesse: partner (our hand) led low; play the cheapest card that beats the current winner
-    if (onDeclSide) return R('L196', low(winners));
+    if (onDeclSide) {
+      if (OFF('third')) return R('L196', low(winners));
+      // card counting: the fourth hand known void wins nothing (unless it ruffs); the second hand showed out, so the
+      // fourth hand holds every unseen card and a finesse can't work; otherwise finesse only against one missing card
+      const fourth = nextSeat(seat), second = trick.cards[1].seat;
+      if (voidIn(fourth, led)) {
+        if (trump && led !== trump && oppTrumpsLeft() && !voidIn(fourth, trump)) return R('3rdRuffed', low(follow));
+        return R('3rdVoid', low(winners));
+      }
+      const k = x => unseenAbove(x).length, kmin = Math.min(...winners.map(k));
+      const lim = voidIn(second, led) ? kmin : Math.max(1, kmin);
+      return R(lim > kmin ? '3rdFin' : '3rdTop', low(winners.filter(x => k(x) <= lim)));
+    }
     // defender third hand: high, but cheapest of equals
     const top = high(winners);
     const seq = follow.filter(x => rankOf(x) <= rankOf(top) && rankOf(x) >= rankOf(winCard) && unseenAbove(x).filter(u => rankOf(u) < rankOf(top)).length === 0 && beats(x));

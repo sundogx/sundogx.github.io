@@ -1,4 +1,4 @@
-// Heuristic card play (js/bots.js botPlay) against the previous heuristic (tests/fixtures/basebots.js), paired:
+// Heuristic card play (js/bots.js botPlay) against the previous heuristic (tests/fixtures/basebots2.js), paired:
 // the same deals, the same robot auctions and contracts; only one side's card play changes.
 // Usage: node tests/heurstim.js [boards=2000] [mode=cmp] [seed=heurstim] [workers=cores-2]
 //   cmp   decl: declarer and dummy play the new heuristic, defenders the old one
@@ -52,7 +52,7 @@ if (isMainThread) {
 } else {
   Object.assign(globalThis, require('../js/engine.js'));
   const NEWB = require(process.env.NEW ? path.resolve(process.env.NEW) : '../js/bots.js');
-  const OLDB = require(process.env.BASE ? path.resolve(process.env.BASE) : './fixtures/basebots.js');
+  const OLDB = require(process.env.BASE ? path.resolve(process.env.BASE) : './fixtures/basebots2.js');
   const D = require('../js/ddplay.js');
   const NEWOFF = process.env.NEWOFF != null ? process.env.NEWOFF.split(',').filter(Boolean) : undefined;
   const newPlay = (t, s) => { globalThis.BOT_OFF = NEWOFF; const c = NEWB.botPlay(t, s); globalThis.BOT_OFF = undefined; return c; };
