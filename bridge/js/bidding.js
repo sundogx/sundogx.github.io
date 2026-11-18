@@ -201,6 +201,9 @@ function natMean(ctx, call) {
     return MM(lo, 37, { nt: true, stop: ctx.oppSuits });
   }
   const pShown = P.mn[st] >= 3;
+  // game forcing, a cheap raise of partner's major when game was there to bid: slam interest (fast arrival)
+  if (pShown && MAJ(st) && !BID_OFF('slow') && ctx.quiet && ctx.gf && !ourGame(ctx) && lv === ctx.cheap(st) && lv < 4 && ctx.ok('4' + st) && !ctx.ours.some(x => x.m && x.m.agree === st) && pBid)
+    return MM(Me.lo + 3, 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st, f: 2, t: 'slow' });
   if (pShown) return MM(Me.lo, 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st });
   if (myBids.some(x => x.call[1] === st && !(x.m && x.m.art))) return MM(Me.lo, 37, { mn: { [st]: Math.min(7, Math.max(Me.mn[st] + 1, 6)) } });
   const lo = myBids.length ? Me.lo : pBid ? (lv >= 2 ? 10 : 6) : (lv >= 2 ? 10 : 8);
@@ -602,7 +605,7 @@ function ntSystem(ctx) {
   const k = after.length, isOpener = x.by === ctx.seat, c = i => after[i] ? after[i].call : null;
   if (b.interfered) { const lb = !BID_OFF('leb') && lebensohl(ctx, b, after); if (lb !== false) return lb; return (k === 1 && !isOpener) ? ntInterference(ctx, lo) : null; }
   const ovc2N = !one && !sameSide(ctx.first.by, x.by) && !BID_OFF('o2n'); // over their weak two the 2NT overcaller's partner raises with less
-  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = 32 - lo, six = 33 - lo;
+  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = (BID_K('ntq') ?? 31) - lo, six = (BID_K('ntq') ?? 31) + 1 - lo;
   const T = [];
   const trA = s => `Transfer: 5+ ${SNAME[s]}`;
   if (!isOpener && k === 1) {
@@ -1460,7 +1463,9 @@ function ctlTable(ctx) {
     const s = c[1];
     T.push(T_(c, h => interest(h) && ctl(h, s) && !(myCtl.has(s)), Object.assign(MM(ctx.Me.lo, 37, { art: true, f: 1, agree: tr, a: `Control bid: ace, king, singleton or void in ${SNAME[s]}; slam interest in ${SNAME[tr]}`, t: 'ctl' }), { ctlS: s })));
   }
-  T.push(T_('4' + tr, () => true, MM(ctx.Me.lo, 37, { agree: tr, t: 'signoff' })));
+  // over partner's slow raise (slam interest) four of the major only says "no interest": partner may still go on
+  const pSlow = ctx.pLast && ctx.pLast.m && ctx.pLast.m.tag === 'slow' && !BID_OFF('csign');
+  T.push(T_('4' + tr, () => true, MM(ctx.Me.lo, pSlow ? ctx.Me.lo + 4 : 37, { agree: tr, t: pSlow ? 'csign' : 'signoff' })));
   return T;
 }
 // 2♣-2♦-3NT (25-27 balanced): responder raises to slam on points, invites with 4NT, or transfers to a major.
@@ -1484,13 +1489,16 @@ function natRescue(ctx, h, T, call) { // a table with no fitting call fell back 
   if (ds.some(d => d.m.art || d.m.tag === 'signoff')) return null;
   return c;
 }
-const SLAM_PTS = 31, SLAM_TR = 12;
+let SLAM_PTS = 30, SLAM_TR = 11;
+if (BID_K('sp') !== undefined) SLAM_PTS = BID_K('sp');
+if (BID_K('st') !== undefined) SLAM_TR = BID_K('st');
 function slamZone(ctx, h, tr) { // worth a slam try: values, and no side suit where we may have two fast losers
   if (BID_OFF('slamzone')) return false;
   const v = slamVal(ctx, h, tr);
-  if (tr === 'N') return v.pts >= 31;
-  return (v.pts >= SLAM_PTS + 2 || (v.pts >= SLAM_PTS && v.tricks >= SLAM_TR)) && openSuits(ctx, h, tr) === 0;
+  if (tr === 'N') return v.pts >= (BID_K('nts') ?? 31);
+  return slamValues(ctx, h, tr) && openSuits(ctx, h, tr) === 0;
 }
+function slamValues(ctx, h, tr) { const v = slamVal(ctx, h, tr); return v.pts >= SLAM_PTS + 2 || (v.pts >= SLAM_PTS && v.tricks >= SLAM_TR); }
 
 // ---- Which table applies ----
 function tablesFor(ctx) {
@@ -1609,8 +1617,8 @@ function natural(ctx, h, reserved) {
     if (h.L[myLong] >= 6 || !pS || h.L[pS] < 2) strain = myLong; else strain = pS;
   }
   const gl = gameLevel(strain);
-  const lvlFor = t => t >= 37 ? 7 : t >= 33 ? 6 : t >= (strain === 'N' || MAJ(strain) ? ((ctx.quiet || !BID_OFF('game24c')) && !BID_OFF('game24') ? 24 : 25) : 28) ? gl : t >= 23 ? Math.min(gl - 1, 3) : t >= 20 ? (strain === 'N' && !BID_OFF('nt2') ? 1 : 2) : t >= 17 ? 1 : 0;
-  let target = lvlFor((total + totLo) / 2 >= 33 ? total : Math.min(total, 32.5));
+  const lvlFor = t => t >= 37 ? 7 : t >= (BID_K('n6') ?? 31) ? 6 : t >= (strain === 'N' || MAJ(strain) ? ((ctx.quiet || !BID_OFF('game24c')) && !BID_OFF('game24') ? 24 : 25) : 28) ? gl : t >= 23 ? Math.min(gl - 1, 3) : t >= 20 ? (strain === 'N' && !BID_OFF('nt2') ? 1 : 2) : t >= 17 ? 1 : 0;
+  let target = lvlFor((total + totLo) / 2 >= (BID_K('n6') ?? 31) ? total : Math.min(total, (BID_K('n6') ?? 31) - 0.5));
   if (!pBid && !fit && !(h.L[strain] >= 6 && myV >= 12)) target = Math.min(target, 0);
   const oppNT = ctx.theirs.some(x => bidValue(x.call) >= 0 && x.call[1] === 'N' && x.m && x.m.nt);
   if (lb && !sameSide(lb.by, ctx.seat) && !fit && !ctx.forced && !(ctx.gf && !ourGame(ctx))) { // no fit and they hold the contract: bid on only with real values
@@ -1625,6 +1633,12 @@ function natural(ctx, h, reserved) {
   const lnp = lastNonPass(ctx.prefix);
   // slam
   if (target < 6 && pBid && ctx.quiet && (fit || strain === 'N') && (ctx.gf || ourGame(ctx) || total >= 28) && (ok('4N') || slamVal(ctx, h, strain).pts >= 34) && slamZone(ctx, h, strain)) target = 6;
+  // game forcing with a major fit partner does not know about, and slam values: raise slowly (slam interest), so that
+  // control bids and 4NT can follow in that suit
+  if (!BID_OFF('slow') && fit && MAJ(strain) && pBid && ctx.quiet && ctx.gf && !ourGame(ctx) && cheapS < gl && ok(cheapS + strain) && (target >= 6 || slamValues(ctx, h, strain))) {
+    const m = natMean(ctx, cheapS + strain);
+    if (m.tag === 'slow' && (openSuits(ctx, h, strain) > 0 || fourNTMeaning(ctx).trump !== strain)) return cheapS + strain;
+  }
   if (target >= 6 && strain !== 'N' && openSuits(ctx, h, strain) > 0) target = gl;
   if (target >= 6 && pBid) {
     if (strain !== 'N' && fit && ok('4N') && !ctx.ours.some(x => x.call === '4N') && openSuits(ctx, h, strain) === 0) {
@@ -1787,7 +1801,7 @@ function describeCall(auction, i, vul, metas) {
     for (const L of lens) parts.push(L.text);
     if (st === 'N' && m.stop && m.stop.length) parts.push(`${m.stop.map(s => SNAME[s]).join(' and ')} stopped`);
     if (m.f === 2) parts.push('game forcing'); else if (m.f === 1) parts.push('forcing one round'); else if (m.inv) parts.push('invitational');
-    const TAGS = { raise: 'single raise', reverse: 'reverse', '1NPH': 'passed hand, not forcing', signoff: 'sign-off' };
+    const TAGS = { slow: 'slam interest', raise: 'single raise', reverse: 'reverse', '1NPH': 'passed hand, not forcing', signoff: 'sign-off' };
     const body = parts.join(', '), lv = isBid ? +call[0] : 0, game = isBid && lv >= gameLevel(st);
     const natural = !m.art && isBid;
     const earlier = auction.slice(0, i).map((x, k) => ({ x, m: metas[k] })).filter(o => bidValue(o.x.call) >= 0 && o.x.call[1] === st && !(o.m && o.m.art));
