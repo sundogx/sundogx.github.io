@@ -187,7 +187,7 @@ function seatBlock(t, seat, where) {
 }
 function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul, viewer = mySeat(t)) {
   const order = ['W', 'N', 'E', 'S'];
-  const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}">${SEAT_NAME[s]}</div>`);
+  const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${s}</div>`);
   const off = order.indexOf(dealer);
   for (let i = 0; i < off; i++) cells.push('<div></div>');
   auction.forEach((a, i) => {
@@ -195,8 +195,10 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const isBid = bidValue(a.call) >= 0;
     const red = isBid && isRed(a.call[1]);
     const al = a.alert && !hideAlert;
-    const kind = (a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : red ? 'red' : 'blk') + (isBid ? ' s-' + a.call[1] : '');
-    cells.push(`<div class="c ${kind} ${al ? 'alert' : ''}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${callText(a.call)}</div>`);
+    const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : 'bid';
+    // the level is always black; only the suit symbol takes its suit's colour
+    const txt = isBid ? `${a.call[0]}<span class="sy ${a.call[1] !== 'N' ? (red ? 'red' : 'blk') + ' s-' + a.call[1] : ''}">${SYM[a.call[1]]}</span>` : a.call === 'P' ? 'P' : a.call;
+    cells.push(`<div class="c ${kind} ${al ? 'alert' : ''}" aria-label="${callText(a.call)}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${txt}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
@@ -760,6 +762,8 @@ function showSettings() {
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setLock" ${t.locked ? 'checked' : ''}> Lock seats, so only you can seat people</label>
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setUndo" ${t.allowUndo !== false ? 'checked' : ''}> Allow undo</label>
     ${t.local ? '' : `<label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setUndoAsk" ${t.undoAsk ? 'checked' : ''}> Opponents must agree to an undo</label>`}
+    ${t.local ? '' : `<label class="row" style="gap:8px;margin-bottom:4px"><input type="checkbox" id="setFriends" ${friendsMode(t) ? 'checked' : ''}> Friends mode: stronger robot card play</label>
+    <p class="note" style="margin:0 0 12px">The robots work out their cards in a player's browser, so their hands reach that browser. Turn it off when playing with strangers.</p>`}
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setKib" ${t.kibSee !== false ? 'checked' : ''} ${t.match ? 'disabled' : ''}> Spectators see all four hands${t.match ? ' (never in a team match)' : ' (they then can\'t sit down mid-board)'}</label>
     <label class="row" style="gap:8px;margin-bottom:4px">Time per board <select id="setTime">${[0, 5, 7, 10, 15].map(m => `<option value="${m}" ${(t.boardLimit || 0) === m ? 'selected' : ''}>${m ? m + ' minutes' : 'No limit'}</option>`).join('')}</select></label>
     <p class="note" style="margin:0 0 12px">When the time runs out, the robots finish the board.</p>
@@ -767,7 +771,7 @@ function showSettings() {
     ${people.length ? people.map(s => `<div class="row" style="justify-content:space-between;margin-bottom:6px"><span>${SEAT_NAME[s]}: ${esc(seatLabel(t, s))}</span><button class="btn small" data-kick="${s}">Remove</button></div>`).join('') : '<p class="note">Nobody else is seated.</p>'}
     ${t.phase === 'auction' ? '<div class="row" style="margin-top:10px"><button class="btn" id="setRedeal">Redeal this board</button></div>' : ''}`);
   const bind = (id, key) => $(id).addEventListener('change', e => doAct('settings', { [key]: e.target.checked }));
-  bind('setLock', 'locked'); bind('setUndo', 'allowUndo'); bind('setKib', 'kibSee'); if ($('setUndoAsk')) bind('setUndoAsk', 'undoAsk');
+  bind('setLock', 'locked'); bind('setUndo', 'allowUndo'); bind('setKib', 'kibSee'); if ($('setUndoAsk')) bind('setUndoAsk', 'undoAsk'); if ($('setFriends')) bind('setFriends', 'friends');
   $('setTime').addEventListener('change', e => doAct('settings', { boardLimit: +e.target.value }));
   m.querySelectorAll('[data-kick]').forEach(b => b.addEventListener('click', () => { doAct('kick', b.dataset.kick); b.closest('.row').remove(); }));
   if ($('setRedeal')) $('setRedeal').addEventListener('click', () => { $('modalRoot').innerHTML = ''; doAct('redeal'); });

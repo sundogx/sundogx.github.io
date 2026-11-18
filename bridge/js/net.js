@@ -37,6 +37,8 @@ const Net = {
         if (this.chatQueue && this.chatQueue.length && ws.readyState === 1) { this.chatQueue.forEach(c => ws.send(JSON.stringify(c))); this.chatQueue = []; }
         if (this.pending) { const p = this.pending; this.pending = null; if (p.mark === playMark(T) && ws.readyState === 1) ws.send(JSON.stringify(p.msg)); else toast('The table moved on while you were reconnecting, so your move wasn\'t sent.'); }
         render();
+      } else if (m.type === 'think') { // friends mode: work out a robot's card for the server
+        robotDDSolve(m.view, m.prefer).then(card => { if (this.ws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'thought', key: m.key, card: card || null })); });
       } else if (m.type === 'error') toast(m.msg);
       else if (m.type === 'notfound') {
         const wasOpen = this.gotState, gone = this.code; this.close(); forgetTable(gone);

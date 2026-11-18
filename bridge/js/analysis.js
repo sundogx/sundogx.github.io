@@ -226,13 +226,21 @@ function robotDDDrop(failed) { // stop this worker; anything waiting gets the he
   RobotDD.wait.clear();
 }
 function robotDDCard(t, seat) {
-  if (RobotDD.fails >= 3 || typeof Worker === 'undefined' || typeof ddView !== 'function') return Promise.resolve(null);
   let view, prefer;
   try {
+    if (typeof ddView !== 'function') return Promise.resolve(null);
     view = ddView(t, seat);
+    prefer = botPlay(t, seat); // the heuristic's card wins ties (sequence leads, signals)
+  } catch (e) { console.error(e); return Promise.resolve(null); }
+  return robotDDSolve(view, prefer);
+}
+// Solve a robot's view (from ddView). Also used for online tables: the server sends a robot's view to a
+// player's browser to work out, since the solver needs more CPU time than the server's free plan allows.
+function robotDDSolve(view, prefer) {
+  if (RobotDD.fails >= 3 || typeof Worker === 'undefined' || typeof ddWorthIt !== 'function') return Promise.resolve(null);
+  try {
     if (!ddWorthIt(view)) return Promise.resolve(null);
     if (!RobotDD.LEADS && !view.tricks.length) return Promise.resolve(null);
-    prefer = botPlay(t, seat); // the heuristic's card wins ties (sequence leads, signals)
   } catch (e) { console.error(e); return Promise.resolve(null); }
   const k = ++RobotDD.n;
   return new Promise(res => {

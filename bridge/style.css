@@ -210,16 +210,16 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 @media (prefers-reduced-motion: reduce) { .fan .card { transition: none; } }
 
 /* auction grid */
-.agrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; font-size: 18px; text-align: center; background: #ffffff; color: #1b1b1b; padding: 6px; border-radius: 8px; border: 1px solid #00000026; }
-.agrid .h { font-size: 15px; font-weight: 600; padding: 3px 0; background: #e6ebe7; color: #1b1b1b; border-radius: 4px; }
-.agrid .h.vul { background: #d32f2f; color: #ffffff; }
-.agrid .c { padding: 2px 0; border-radius: 4px; font-family: var(--serif); font-weight: 700; }
-.agrid .c.blk { color: #111111; }
-.agrid .c.red { color: #d32f2f; }
-.agrid .c.cx { color: #d32f2f; }
+.agrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; font-size: 22px; text-align: center; background: #a6cbcc; color: #000; border: 3px solid #fff; font-family: Arial, Helvetica, sans-serif; }
+.agrid .h { font-size: 20px; padding: 3px 0; background: #fff; color: #000; }
+.agrid .h.vul { background: #c0281c; color: #fff; }
+.agrid .c { padding: 1px 0; font-weight: 400; color: #000; }
+.agrid .c:nth-child(5) { padding-top: 6px; }
+.agrid .c .sy.blk { color: #000; }
+.agrid .c .sy.red { color: #c0281c; }
+.agrid .c.cx { color: #c0281c; }
 .agrid .c.cxx { color: #1f5fae; }
-.agrid .c.cp { color: #2e7d4f; }
-.agrid .c.alert { box-shadow: inset 0 0 0 2px #f4c430; cursor: help; }
+.agrid .c.alert { box-shadow: inset 0 0 0 2px #f4c430; cursor: help; border-radius: 4px; }
 .felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 96%); box-shadow: 0 4px 14px #0004; }
 
 /* bidding box: styled after physical bidding cards */
@@ -316,7 +316,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .tslot.top { transform: translate(-50%, calc(-100% - 2px)); } .tslot.bottom { transform: translate(-50%, 2px); }
   .tslot.left { transform: translate(calc(-100% - 26px), -50%); } .tslot.right { transform: translate(26px, -50%); }
   :root { --cw: 52px; --ch: 76px; }
-  .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
+  .felt .agrid { font-size: 17px; } .felt .agrid .h { font-size: 15px; }
   .myhand { height: 112px; }
   .rows { font-size: 14px; min-width: 0; padding: 4px 5px; }
   .plate .nm { max-width: 64px; }
@@ -350,7 +350,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   :root { --cw: 52px; --ch: 76px; }
   .fan { padding-top: 18px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
-  .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
+  .felt .agrid { font-size: 17px; } .felt .agrid .h { font-size: 15px; }
   .side { position: fixed; top: 0; right: 0; bottom: 0; width: min(330px, 88vw); z-index: 15; transform: translateX(105%); transition: transform .2s; border-radius: 0; box-shadow: -4px 0 16px #0005; }
   .side.open { transform: none; }
   .sidehead { display: flex; justify-content: flex-end; padding: 6px 8px 0; }

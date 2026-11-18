@@ -9,12 +9,15 @@ function newTable({ name, priv, local }) {
     seats: { N: null, E: null, S: null, W: null },
     board: 0, dealer: 'N', vul: 'None', hands: null, auction: [], contract: null,
     play: { tricks: [] }, phase: 'waiting', claim: null, history: [], chat: [],
-    host: me.id, locked: false, allowUndo: true, kibSee: false,
+    host: me.id, locked: false, allowUndo: true, kibSee: false, friends: !!priv,
     boardLimit: 0, lastActAt: Date.now(), boardStart: null, seed: null, match: null,
   };
 }
 function mySeat(t = T) { return SEATS.find(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === me.id) || null; }
 function playKey(t) { return `${t.id}:${t.board}:${t.play.tricks.map(tr => tr.cards.map(pc => pc.card).join('')).join('|')}`; } // identifies a position in the play
+// Friends mode (online): robots' card play is worked out in a player's browser, which then receives the robot's
+// cards. Strangers mode keeps every hidden card on the server, and the robots play by heuristic there.
+function friendsMode(t) { return t.friends ?? !!t.private; }
 function dummySeat(t) { return t.contract ? partnerOf(t.contract.declarer) : null; }
 function turnSeat(t) {
   if (t.phase === 'auction') return auctionTurn(t.dealer, t.auction);
@@ -92,6 +95,7 @@ const A = {
     const on = v => v ? 'on' : 'off';
     if ('locked' in patch) sysMsg(t, `Seats ${patch.locked ? 'locked' : 'unlocked'} by the host`);
     if ('allowUndo' in patch) sysMsg(t, `Undo turned ${on(patch.allowUndo)}`);
+    if ('friends' in patch) sysMsg(t, patch.friends ? 'Friends mode on: stronger robot card play (robots think in a player\'s browser, which can see their cards)' : 'Strangers mode on: robots\' cards stay on the server');
     if ('boardLimit' in patch) sysMsg(t, patch.boardLimit ? `Time limit set to ${patch.boardLimit} minutes per board` : 'Time limit removed');
     if ('kibSee' in patch) sysMsg(t, `Spectators ${patch.kibSee ? 'can' : 'can no longer'} see all hands`);
   },

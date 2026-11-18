@@ -9,6 +9,7 @@ const { SEATS, A } = G;
 const IDLE_DELETE_MS = 3 * 24 * 3600e3; // tables nobody has touched for 3 days are deleted
 const LOBBY_MAX_AGE_MS = 12 * 3600e3;   // the lobby lists tables active in the last 12 hours
 const MAX_MSG = 4000;
+const THINK_MS = 2500;                   // friends mode: how long a robot waits for a player's browser to work out its card
 const MAX_BOARDS = 100;                  // finished boards kept per table (keeps the stored record far below the size limit)
 const histSig = h => h.length + ':' + (h.length ? h[h.length - 1].board : 0);
 
@@ -186,7 +187,7 @@ const ACTIONS = {
   settings: (t, u, patch) => {
     if (!patch || typeof patch !== 'object') return false;
     const p = {};
-    for (const k of ['locked', 'allowUndo', 'kibSee', 'undoAsk']) if (k in patch) p[k] = !!patch[k];
+    for (const k of ['locked', 'allowUndo', 'kibSee', 'undoAsk', 'friends']) if (k in patch) p[k] = !!patch[k];
     if (t.match && p.kibSee) delete p.kibSee; // onlookers could pass on hands the other room is about to play
     if ('boardLimit' in patch) { const v = +patch.boardLimit; if ([0, 5, 7, 10, 15].includes(v)) p.boardLimit = v; }
     if (!Object.keys(p).length) return false;
@@ -382,6 +383,7 @@ export class TableRoom extends DurableObject {
     }
 
     const u = ws.deserializeAttachment() || {};
+    if (u.uid && m.type === 'thought') { this.thought(m); return; }
     if (!u.uid || m.type !== 'act') return;
     if (!this.allow(u.uid, m.name === 'chat')) { this.sendTo(ws, { type: 'error', msg: 'Slow down a little, then try again.' }); return; }
     const fn = typeof m.name === 'string' && Object.hasOwn(ACTIONS, m.name) ? ACTIONS[m.name] : null;
@@ -483,11 +485,41 @@ export class TableRoom extends DurableObject {
       const tr = this.t.play && this.t.play.tricks[this.t.play.tricks.length - 1];
       const pause = this.t.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? 1300 : 700);
       const scale = Number(this.env.ROBOT_DELAY_SCALE ?? 1); // only changed for automated tests
-      await this.ctx.storage.setAlarm(Date.now() + pause * (scale >= 0 ? scale : 1));
+      const due = Date.now() + pause * (scale >= 0 ? scale : 1);
+      this.askThink(due);
+      await this.ctx.storage.setAlarm(due);
     } else {
       const d = deadline(this.t); // wake up when the board's time runs out
       await this.ctx.storage.setAlarm(d ? Math.max(Date.now() + 1000, d) : Date.now() + IDLE_DELETE_MS);
     }
+  }
+
+  // Friends mode: the double-dummy solver needs more CPU time than the free plan gives this server, so a
+  // player's browser works out the robot's card (js/net.js 'think'). That browser gets the robot's view
+  // (its own cards and its partner's if it is declarer). If no answer comes in time, the robot plays its heuristic card.
+  askThink(due) {
+    const t = this.t;
+    if (this.think && t && t.phase === 'play' && this.think.key === G.playKey(t)) return; // already asked about this position (e.g. a chat line arrived)
+    this.think = null;
+    if (!t || t.phase !== 'play' || !G.friendsMode(t)) return;
+    const ts = G.turnSeat(t);
+    let view, prefer;
+    try { view = G.ddView(t, ts); if (!G.ddWorthIt(view)) return; prefer = G.botPlay(t, ts); } catch (e) { console.error(e); return; }
+    // seated players first (they are likely to stay), taking turns so one slow phone isn't always asked
+    const seated = new Set(SEATS.map(s => t.seats[s] && t.seats[s].kind === 'human' ? t.seats[s].id : null).filter(Boolean));
+    const socks = this.ctx.getWebSockets().filter(w => { const a = w.deserializeAttachment() || {}; return a.uid && seated.has(a.uid); });
+    const pool = socks.length ? socks : this.ctx.getWebSockets().filter(w => (w.deserializeAttachment() || {}).uid);
+    if (!pool.length) return;
+    const ws = pool[(this.thinkN = (this.thinkN || 0) + 1) % pool.length];
+    const key = G.playKey(t);
+    this.think = { key, at: Date.now(), due, done: false, card: null };
+    this.sendTo(ws, { type: 'think', key, view, prefer });
+  }
+  thought(m) {
+    const th = this.think;
+    if (!th || th.done || !this.t || th.key !== m.key || G.playKey(this.t) !== m.key) return;
+    th.done = true; th.card = typeof m.card === 'string' && m.card.length === 2 ? m.card : null; // legality is checked when it's played
+    if (Date.now() >= th.due) this.ctx.storage.setAlarm(Date.now()).catch(e => console.error(e)); // the robot's pause is over: play now
   }
 
   async alarm() {
@@ -501,13 +533,17 @@ export class TableRoom extends DurableObject {
       return;
     }
     if (this.robotPending()) {
+      const th = this.think, key = this.t.phase === 'play' ? G.playKey(this.t) : null;
+      if (th && key && th.key === key && !th.done && Date.now() < th.at + THINK_MS) { await this.ctx.storage.setAlarm(th.at + THINK_MS); return; } // still thinking
+      const hint = th && th.done && th.card && th.key === key ? { key, card: th.card } : null;
       const ok = await this.apply({}, t => {
         const ts = G.turnSeat(t), o = G.occupant(t, G.controllerOf(t, ts));
         if (!t.timeUp && robotClaim(t)) return;
-        if (o.kind === 'robot') return A.robotStep(t);
+        if (o.kind === 'robot') return A.robotStep(t, hint);
         // stand-in for an away player: same robot logic, played for that seat
         if (t.phase === 'auction') { const r = G.botCall(t.hands[ts], ts, t.dealer, t.auction); return A.call(t, ts, r.call, r.alert); }
-        return A.card(t, ts, G.botPlay(t, ts));
+        const ok = hint && G.legalPlays(t.hands, t.play, t.contract, ts).includes(hint.card);
+        return A.card(t, ts, ok ? hint.card : G.botPlay(t, ts));
       });
       this.botFails = ok ? 0 : (this.botFails || 0) + 1;
       if (!ok) await this.ctx.storage.setAlarm(Date.now() + (this.botFails < 5 ? 2000 : IDLE_DELETE_MS)); // retry a few times, then leave it to the players
