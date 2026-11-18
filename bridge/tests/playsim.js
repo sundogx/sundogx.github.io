@@ -8,6 +8,12 @@
 //   leadc    only the opening lead, by js/leads.js (leadChoose: solver plus lead prior; leadct is now the same)
 //   defc     defenders by sampling, with the js/leads.js opening lead (defct: the same)
 // The heuristic base robot leads with botLead (js/leads.js). tests/leadsim.js measures leads alone, more cheaply.
+// Against the current sampler instead of the heuristic: all four seats play by sampling with the settings the
+// page uses (K layouts, the conventional lead with the 30-point rule), and one side gets new options:
+//   ndecl.X  declarer side with the options X, defenders current     ndef.X  defenders (lead included) with X
+//   nlead.X  only the opening lead with X                             nplay.X defenders after the lead with X
+// where X names an entry of the JSON in the environment variable NEW, e.g.
+//   NEW='{"w":{"pool":96},"imp":{"agg":"imp"}}' node tests/playsim.js 300 20 ndecl.w,ndef.w,nlead.imp
 // Reports, for the side whose play changed: IMPs per board and tricks per board (mean ± standard error),
 // how many boards changed, and the time per sampled decision.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -54,16 +60,19 @@ if (isMainThread) {
   const create = require(path.join(wasmDir, 'compiled.js'));
   const { K, variants, seed } = workerData;
   let solve = null;
-  async function playOut(hands, auction, ct, vul, useDD, rand, extra = {}) { // useDD(seat, cardIndex) -> bool
+  const NEW = JSON.parse(process.env.NEW || '{}');
+  const CUR = { lead: 'conv', leadTol: 30 }; // what the page uses (js/analysis.js robotDDSolve)
+  async function playOut(hands, auction, ct, vul, useDD, rand, extra = {}) { // useDD(seat, cardIndex) -> bool, or the options for that card
     const t = { hands, auction, contract: ct, vul, play: { tricks: [] } };
     let dec = 0, ms = 0;
     for (let i = 0; i < 52; i++) {
       const s = playTurn(t.play, ct);
       const prefer = B.botPlay(t, s);
       let card = prefer;
-      if (useDD(s, i)) {
-        const r = await D.ddChoose(D.ddView(t, s), solve, { k: K, prefer, rand, ...extra });
-        if (r) { card = r.card; dec++; ms += r.ms; }
+      const u = useDD(s, i);
+      if (u) {
+        const r = await D.ddChoose(D.ddView(t, s), solve, { k: K, prefer, rand, ...extra, ...(typeof u === 'object' ? u : {}) });
+        if (r) { card = r.card; if (!(u === true && extra === CUR)) { dec++; ms += r.ms; } } // n-variants: time only the decisions with the new options
       }
       applyPlay(t.play, ct, s, card);
     }
@@ -91,7 +100,16 @@ if (isMainThread) {
         defct: s => !decl(s),
       };
       const extra = { leadc: { lead: 'conv' }, leadct: { lead: 'conv', leadTol: 30 }, defc: { lead: 'conv' }, defct: { lead: 'conv', leadTol: 30 } };
-      for (const v of variants) {
+      let cur = null;
+      for (const v of variants) if (/^n/.test(v)) {
+        if (!cur) cur = (await playOut(hands, auction, ct, vul, () => true, seededRand(seed + ':cur:' + g), CUR)).decl;
+        const [kind, name] = v.split('.'), X = NEW[name] || {};
+        const nsel = { ndecl: (s, i) => decl(s) ? X : true, ndef: (s, i) => decl(s) ? true : X, nlead: (s, i) => i === 0 ? X : true, nplay: (s, i) => !decl(s) && i > 0 ? X : true }[kind];
+        const r = await playOut(hands, auction, ct, vul, nsel, seededRand(seed + ':cur:' + g), CUR);
+        const sign = kind === 'ndecl' ? 1 : -1;
+        res[v] = { imp: sign * toImps(scoreContract(ct, r.decl, vul) - scoreContract(ct, cur, vul)), tr: sign * (r.decl - cur), dec: r.dec, ms: r.ms };
+      }
+      for (const v of variants) if (!/^n/.test(v)) {
         const r = await playOut(hands, auction, ct, vul, sel[v], seededRand(seed + ':dd:' + v + ':' + g), extra[v]);
         const sign = v === 'decl' ? 1 : -1; // results for the side whose play changed
         res[v] = { imp: sign * toImps(scoreContract(ct, r.decl, vul) - baseScore), tr: sign * (r.decl - base), dec: r.dec, ms: r.ms };

@@ -9,6 +9,7 @@
 // The robot never sees a hidden hand: ddView() copies only the visible cards out of the table, and
 // everything after that works from the view alone.
 if (typeof require !== 'undefined' && typeof SEATS === 'undefined') Object.assign(globalThis, require('./engine.js'));
+if (typeof require !== 'undefined' && typeof botPlay === 'undefined') globalThis.botPlay = require('./bots.js').botPlay;
 
 // What a seat's calls say about its hand: HCP range and suit lengths, as soft limits for the sampler.
 // Uses shown() from js/bots.js when it is loaded (it reads the robots' own bidding), plus a few
@@ -54,6 +55,7 @@ function ddView(t, seat) {
   const view = {
     seat, vul: t.vul, contract: { level: c.level, strain: c.strain, doubled: c.doubled, declarer: decl },
     tricks: play.tricks.map(tr => ({ leader: tr.leader, cards: tr.cards.map(pc => ({ seat: pc.seat, card: pc.card })) })),
+    auction: (t.auction || []).map(a => ({ call: a.call, by: a.by })), // public; the play model reads partner's suits for leads
     known, limits,
   };
   if (!play.tricks.length && typeof leadView === 'function') leadView(view, t); // opening lead: js/leads.js
@@ -92,7 +94,8 @@ function ddClasses(view, legal) {
 // ---- Sampling the unseen cards ----
 function ddShuffle(a, rand) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 // Returns up to k full layouts {N,E,S,W: remaining cards}, best fits to the auction first.
-function ddSample(view, k, rand = Math.random, maxTries = 0) {
+// pens (optional array) receives each returned layout's distance from the auction (0 = fits).
+function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null) {
   const played = ddPlayedSet(view), seen = new Set(played);
   for (const s in view.known) view.known[s].forEach(x => seen.add(x));
   const unseen = [];
@@ -141,8 +144,58 @@ function ddSample(view, k, rand = Math.random, maxTries = 0) {
     for (const s in view.known) h[s] = view.known[s].slice();
     if (p === 0) good.push(h); else spare.push({ h, p });
   }
-  if (good.length < k) { spare.sort((a, b) => a.p - b.p); for (const s of spare) { if (good.length >= k) break; good.push(s.h); } }
+  if (pens) good.forEach(() => pens.push(0));
+  if (good.length < k) { spare.sort((a, b) => a.p - b.p); for (const s of spare) { if (good.length >= k) break; good.push(s.h); if (pens) pens.push(s.p); } }
   return good;
+}
+
+// ---- How well a layout explains the cards already played (BEN's play-consistency check) ----
+// BEN replays the play so far through its card-play neural networks and drops or down-weights layouts in
+// which a hidden player would not have chosen the card actually played. Here the play model is the
+// heuristic robot (botPlay): it plays standard carding (sequence leads, attitude signals, second hand low,
+// third hand high, discards from weak suits), so in a layout where it would have played the same card
+// (or one equal to it) the play fits. Each mismatch multiplies the layout's weight by a factor:
+// opts.wOpp for the opponents' choices, opts.wPart for partner's, opts.wLead / opts.wLeadSuit for the
+// opening lead (wLeadSuit when the lead is still the conventional card of its suit, e.g. the K from KQ;
+// wLead when it isn't, e.g. the Q lead from a hand that holds the K).
+function ddEqual(hand, gone, a, b) { // a and b equal for whoever holds `hand` (cards between them played or held)
+  if (a === b) return true;
+  if (suitOf(a) !== suitOf(b)) return false;
+  const lo = Math.min(rankOf(a), rankOf(b)), hi = Math.max(rankOf(a), rankOf(b)), s = suitOf(a);
+  for (let r = lo + 1; r < hi; r++) { const y = s + RANKS[r]; if (!gone.has(y) && !hand.includes(y)) return false; }
+  return true;
+}
+function ddConsistency(view, h, opts = {}) {
+  if (typeof botPlay !== 'function' || !view.tricks.length) return 1;
+  const me = view.seat, c = view.contract, decl = c.declarer, dummy = partnerOf(decl);
+  const onDecl = sameSide(me, decl);
+  const full = {};
+  for (const s of SEATS) full[s] = h[s].slice();
+  for (const tr of view.tricks) for (const pc of tr.cards) full[pc.seat].push(pc.card);
+  for (const s of SEATS) full[s] = sortHand(full[s]); // as dealt: the heuristic lead looks at cards in this order
+  const t = { hands: full, auction: view.auction || [], contract: c, vul: view.vul, play: { tricks: [] } };
+  const mOpp = opts.wOpp != null ? opts.wOpp : 0.5, mPart = opts.wPart != null ? opts.wPart : 0.5;
+  const mLead = opts.wLead != null ? opts.wLead : 0.25, mLeadSuit = opts.wLeadSuit != null ? opts.wLeadSuit : 0.7;
+  const gone = new Set();
+  let w = 1, first = true;
+  for (const tr of view.tricks) for (const { seat, card } of tr.cards) {
+    const chooser = seat === dummy ? decl : seat;
+    if (chooser !== me && !(onDecl && sameSide(chooser, me))) {
+      const legal = legalPlays(full, t.play, c, seat);
+      if (legal.length > 1) {
+        let bot = null;
+        try { bot = botPlay(t, seat); } catch (e) { bot = null; }
+        const rem = remainingHand(full, t.play, seat);
+        if (bot && !ddEqual(rem, gone, bot, card)) {
+          if (first) w *= ddLeadCards(rem, c.strain).includes(card) ? mLeadSuit : mLead;
+          else w *= sameSide(chooser, me) ? mPart : mOpp;
+        }
+      }
+    }
+    first = false;
+    applyPlay(t.play, c, seat, card); gone.add(card);
+  }
+  return w;
 }
 
 // ---- The solver ----
@@ -202,6 +255,8 @@ function ddSolver(createModule, wasmModule) {
 
 // ---- Choosing the card ----
 // results: one {card: tricks} per sampled layout. Returns { card, stats } or null.
+// opts.weights: one weight per layout (default all 1). opts.agg 'imp': rank cards by average IMPs against the
+// other candidate cards layout by layout (BEN's use_real_imp_or_mp), scaled x10 to keep the tolerances' meaning.
 function ddPick(view, legal, results, prefer, opts = {}) {
   const c = view.contract, onDecl = sameSide(view.seat, c.declarer);
   let sideWon = 0;
@@ -209,16 +264,28 @@ function ddPick(view, legal, results, prefer, opts = {}) {
     const w = trickWinner(tr, c.strain);
     if (sameSide(w, view.seat)) sideWon++;
   }
+  const W = opts.weights || results.map(() => 1);
+  const pts = (r, card) => { const side = sideWon + r[card], s = scoreContract(c, onDecl ? side : 13 - side, view.vul); return onDecl ? s : -s; };
   const stats = legal.map(card => {
-    let sc = 0, tk = 0, n = 0;
-    for (const r of results) {
-      if (!(card in r)) continue;
-      const side = sideWon + r[card], decl = onDecl ? side : 13 - side;
-      const s = scoreContract(c, decl, view.vul);
-      sc += onDecl ? s : -s; tk += side; n++;
-    }
-    return { card, score: n ? sc / n : -1e9, tricks: n ? tk / n : 0, n };
+    let sc = 0, tk = 0, n = 0, wt = 0;
+    results.forEach((r, i) => {
+      if (!(card in r)) return;
+      sc += W[i] * pts(r, card); tk += W[i] * (sideWon + r[card]); wt += W[i]; n++;
+    });
+    return { card, score: wt ? sc / wt : -1e9, tricks: wt ? tk / wt : 0, n };
   });
+  if (opts.agg === 'imp' && stats.length > 1) {
+    const imp = stats.map(a => {
+      if (!a.n) return a.score;
+      let sum = 0, wt = 0;
+      for (const b of stats) if (b !== a) results.forEach((r, i) => {
+        if (!(a.card in r) || !(b.card in r)) return;
+        sum += W[i] * toImps(pts(r, a.card) - pts(r, b.card)); wt += W[i];
+      });
+      return wt ? 10 * sum / wt : 0;
+    });
+    stats.forEach((a, i) => { a.score = imp[i]; });
+  }
   const best = Math.max(...stats.map(s => s.score));
   const tol = opts.tol != null ? opts.tol : 0.5;
   const near = stats.filter(s => s.score >= best - tol);
@@ -261,28 +328,44 @@ function ddWorthIt(view) {
 // The whole decision. solve(job) -> Promise<{card: tricks}>. Returns { card, stats, samples, ms } or null (use the heuristic).
 // opts: k (layouts, default 20), minK (fewest solved layouts worth trusting, default 6), ms (time budget),
 // rand, prefer (the heuristic card, for ties), tol.
+// Inference from the play (after the opening lead): pool (layouts dealt before the k best-fitting are solved),
+// weigh (average by fit), wOpp/wPart/wLead/wLeadSuit (see ddConsistency). opts.declarer / opts.defender hold
+// extra options for the declaring side's and the defenders' decisions after the opening lead.
 async function ddChoose(view, solve, opts = {}) {
   const legal = ddLegal(view);
   if (!ddWorthIt(view)) return null;
+  const side = sameSide(view.seat, view.contract.declarer) ? opts.declarer : opts.defender;
+  if (side && view.tricks.length) opts = { ...opts, ...side };
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   if (!view.tricks.length && opts.lead === 'conv' && view.prior && typeof leadChoose === 'function') return leadChoose(view, solve, opts); // js/leads.js
   const t0 = now(), k = opts.k || 20, minK = Math.min(k, opts.minK || 6), budget = opts.ms || Infinity;
-  const deals = ddSample(view, k, opts.rand || Math.random);
+  const rand = opts.rand || Math.random;
+  let deals, weights = null;
+  if (opts.pool > k && view.tricks.length && typeof botPlay === 'function') {
+    // BEN-style: deal a larger pool, weight each layout by how well it explains the play so far, solve the best k
+    const pens = [], pool = ddSample(view, opts.pool, rand, 0, pens);
+    const ws = pool.map((h, i) => ddConsistency(view, h, opts) * Math.pow(0.7, pens[i] || 0));
+    const order = pool.map((h, i) => i).sort((a, b) => ws[b] - ws[a]); // stable: ties keep the sampler's order
+    deals = order.slice(0, k).map(i => pool[i]);
+    if (opts.weigh) weights = order.slice(0, k).map(i => ws[i]);
+  } else deals = ddSample(view, k, rand);
   const results = [];
   for (const h of deals) {
     if (results.length >= minK && now() - t0 > budget) break;
     results.push(await solve(ddJob(view, h)));
   }
   if (results.length < minK) return null;
+  if (weights) { const m = Math.max(...weights.slice(0, results.length)); weights = m > 0 ? weights.slice(0, results.length).map(x => x / m) : null; }
   let cands = legal, o = opts;
   if (!view.tricks.length && opts.lead === 'conv') { // opening lead: the solver picks the suit, convention the card
     cands = ddLeadCards(legal, view.contract.strain);
     if (opts.prefer && !cands.includes(opts.prefer)) cands.push(opts.prefer);
     o = { ...opts, tol: opts.leadTol != null ? opts.leadTol : opts.tol };
   }
+  if (weights) o = { ...o, weights };
   const r = ddPick(view, cands, results, opts.prefer, o);
   r.samples = results.length; r.ms = now() - t0;
   return r;
 }
 
-if (typeof module !== 'undefined') module.exports = { ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolver, ddPick, ddWorthIt, ddChoose };
+if (typeof module !== 'undefined') module.exports = { ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolver, ddPick, ddWorthIt, ddChoose };

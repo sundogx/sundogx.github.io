@@ -206,7 +206,10 @@ function downloadText(name, text, type = 'text/plain') {
 // robotDDCard(t, seat) resolves to the card the solver picks, or null (no need, too slow, or no solver),
 // in which case the robot plays its heuristic card. Only ddView(t, seat), what the robot may see, is sent.
 // Opening leads go to robotDDLead below (js/leads.js), several workers at once.
-const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, slow: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30 };
+// After the opening lead the robots also read the cards played so far (BEN-style play-consistency weighting,
+// js/ddplay.js ddConsistency): 96 layouts are dealt and the K that best fit the play so far are solved, weighted by fit.
+const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, slow: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30,
+  DECL: { pool: 96, weigh: 1, wOpp: 0.8 }, DEF: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8 } };
 function robotDDWorker() {
   if (RobotDD.w) return RobotDD.w;
   const w = RobotDD.w = new Worker('js/dds-worker.js');
@@ -249,7 +252,7 @@ function robotDDSolve(view, prefer) {
       if (++RobotDD.slow >= 2) { RobotDD.slow = 0; robotDDDrop(false); }
     }, RobotDD.BUDGET_MS + 500);
     RobotDD.wait.set(k, card => { clearTimeout(timer); RobotDD.slow = 0; res(card); });
-    try { robotDDWorker().postMessage({ k, play: view, opts: { k: RobotDD.K, minK: 8, ms: RobotDD.BUDGET_MS, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL } }); }
+    try { robotDDWorker().postMessage({ k, play: view, opts: { k: RobotDD.K, minK: 8, ms: RobotDD.BUDGET_MS, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: RobotDD.DECL, defender: RobotDD.DEF } }); }
     catch (e) { RobotDD.wait.delete(k); clearTimeout(timer); robotDDDrop(true); res(null); }
   });
 }
