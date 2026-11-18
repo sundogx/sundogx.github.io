@@ -85,6 +85,8 @@ function amDriver(t) {
   return mySeat(t) && Date.now() - t.updatedAt > 6000; // take over if the driver went quiet
 }
 function scheduleRobot() {
+  // practice: start the solver workers during the auction so the opening lead and first cards aren't cold
+  if (T && T.local && T.phase === 'auction' && typeof robotDDWarm === 'function') robotDDWarm();
   if (robotTimer || !T) return;
   const ts = turnSeat(T); if (!ts || T.claim) return;
   const o = occupant(T, controllerOf(T, ts));

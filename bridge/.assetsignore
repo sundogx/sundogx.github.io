@@ -8,3 +8,5 @@ package-lock.json
 wrangler.jsonc
 build.mjs
 README.md
+js/wasm/build.sh
+js/wasm/dds_wrapper.cpp
