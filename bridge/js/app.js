@@ -152,7 +152,7 @@ function plateHTML(t, seat) {
   const vul = t.board && isVul(t.vul, seat);
   const turn = turnSeat(t) === seat && !t.claim;
   const mine = mySeat(t), you = mine === seat;
-  const tag = seat === dummySeat(t) && t.phase === 'play' ? ' <span class="bot">dummy</span>' : '';
+  const tag = ''; // dummy is clear from the face-up hand, so no label
   let yt = '';
   if (turn && mine && controllerOf(t, seat) === mine && (t.phase === 'auction' || t.phase === 'play')) {
     const tr = t.phase === 'play' && t.play.tricks[t.play.tricks.length - 1];
