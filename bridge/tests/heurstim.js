@@ -10,7 +10,7 @@
 //         costs against the best card, totalled by category (side, strain, position in the trick, and the
 //         rule in botPlay that chose the card, from botWhyLast() in js/bots.js).
 // NEWOFF=a,b sets globalThis.BOT_OFF (the features switched off) for the new heuristic only, e.g. NEWOFF=fin,hold.
-// BASE=path compares against another copy of bots.js instead of the frozen fixture.
+// BASE=path compares against another copy of bots.js instead of the frozen fixture; NEW=path replaces js/bots.js.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
 
@@ -51,7 +51,7 @@ if (isMainThread) {
   }
 } else {
   Object.assign(globalThis, require('../js/engine.js'));
-  const NEWB = require('../js/bots.js');
+  const NEWB = require(process.env.NEW ? path.resolve(process.env.NEW) : '../js/bots.js');
   const OLDB = require(process.env.BASE ? path.resolve(process.env.BASE) : './fixtures/basebots.js');
   const D = require('../js/ddplay.js');
   const NEWOFF = process.env.NEWOFF != null ? process.env.NEWOFF.split(',').filter(Boolean) : undefined;

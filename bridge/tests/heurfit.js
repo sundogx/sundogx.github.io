@@ -4,7 +4,7 @@
 // (botFeatures in js/bots.js) and the tricks its card takes are recorded; a ridge regression on the
 // differences between the suits of the same decision gives the weights.
 // Usage: node tests/heurfit.js [boards=1500] [kind=switch] [seed=heurfit] [workers=cores-2]
-//   kind switch: a defender on lead after the opening lead; discard: a defender discarding.
+//   kind switch: a defender on lead after the opening lead; discard: a discard (either side).
 // Prints the weights for notrump and for suit contracts, ready to paste into js/bots.js, and how often the
 // fitted choice and the current choice pick a best suit on the fitting boards.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -24,7 +24,7 @@ if (isMainThread) {
   function fit() {
     const NEWB = require('../js/bots.js');
     const names = NEWB.botFeatureNames(kind);
-    for (const st of ['NT', 'suit']) {
+    for (const st of [...new Set(recs.map(r => r.st))].sort()) {
       const rs = recs.filter(r => r.st === st);
       const d = names.length, XtX = Array.from({ length: d }, () => new Array(d).fill(0)), Xty = new Array(d).fill(0);
       for (const r of rs) {
@@ -74,11 +74,11 @@ if (isMainThread) {
         const s = playTurn(t.play, ct);
         const card = NEWB.botPlay(t, s);
         const F = NEWB.botFeatures(t, s, kind);
-        if (F && F.length > 1) {
+        if (F) {
           const view = D.ddView(t, s);
           const rem = {}; for (const x of SEATS) rem[x] = remainingHand(hands, t.play, x);
           const r = await solve(D.ddJob(view, rem));
-          recs.push({ st: ct.strain === 'N' ? 'NT' : 'suit', opts: F.map(o => ({ f: o.f, y: r[o.card], cur: suitOf(o.card) === suitOf(card) })) });
+          recs.push({ st: F.group, opts: F.opts.map(o => ({ f: o.f, y: r[o.card], cur: suitOf(o.card) === suitOf(card) })) });
         }
         applyPlay(t.play, ct, s, card);
       }

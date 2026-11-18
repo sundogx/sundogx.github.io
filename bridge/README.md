@@ -25,7 +25,7 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
 | `src/game.js` | **Generated** by `build.mjs` from `js/engine.js`, `js/bidding.js`, `js/leads.js`, `js/bots.js`, `js/ddplay.js` and `js/table.js`, so the server runs exactly the same rules and robots as the page. Don't edit it; `npm run dev` and `npm run deploy` rebuild it. |
 | `sw.js` | Service worker: caches the app so practice works offline. Bump `CACHE` and keep `CORE` in step when files are added. |
-| `tests/` | `npm test` (rules, robots, bidding fuzz), `node tests/ddtest.js` (solver, robot sampler), `node tests/playsim.js` (robot card play, sampling against heuristic), `node tests/leadsim.js` (opening leads), `BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs` (a running server). Bidding: `node tests/bidddsim.js` (match against the old bidding, scored double-dummy; `--base=basebid` plays the 2/1 system before the constructive changes, `tests/fixtures/basebid.js`), `node tests/bidloss.js` (where uncontested auctions lose against the best double-dummy contract), `node tests/bidshow.js` (read auctions), `node tests/bidwhy.js` (why a robot made a call). |
+| `tests/` | `npm test` (rules, robots, bidding fuzz), `node tests/ddtest.js` (solver, robot sampler), `node tests/playsim.js` (robot card play, sampling against heuristic), `node tests/heurstim.js` (the heuristic robot against its previous version, and where it loses tricks against double dummy), `node tests/heurfit.js` (fits the heuristic's switch and discard weights), `node tests/leadsim.js` (opening leads), `BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs` (a running server). Bidding: `node tests/bidddsim.js` (match against the old bidding, scored double-dummy; `--base=basebid` plays the 2/1 system before the constructive changes, `tests/fixtures/basebid.js`), `node tests/bidloss.js` (where uncontested auctions lose against the best double-dummy contract), `node tests/bidshow.js` (read auctions), `node tests/bidwhy.js` (why a robot made a call). |
 
 The page's scripts are plain scripts that share globals, loaded in the order above. Practice games run entirely in the page; online tables run on the server, which sends each person only the cards they may see.
 
@@ -122,6 +122,26 @@ The neural-network leader of BEN (github.com/lorserker/ben) was considered and n
 - But BEN is GPL-3.0.
 - The lead network reads the auction only through BEN's own bidding-info network, trained on GIB/BEN system auctions, which would need a JS port of its auction encoding.
 - BEN itself picks among the network's candidates by sampling and double-dummy solving, as here.
+
+### The heuristic robot (`botPlay`)
+
+`botPlay` in `js/bots.js` plays without the solver. It is what the robots use at strangers tables and on the server, the fallback when the solver is slow, the tie-breaker inside the solver play, and the play model that `ddConsistency` replays. It is synchronous and cheap (about 0.01 ms a card at the median and under 0.1 ms at p99; the opening lead is `botLead`), and it reads only what that seat may see.
+
+- **Declarer counts and plans** (`suitCount`, `declPlan`). For each suit it counts the sure tricks from the top, and the tricks once the suit is developed (round by round: our top card wins if it beats theirs, otherwise we duck and they win).
+  - In a suit contract it ruffs losers in the short trump hand first. It draws trumps with a master, toward partner's higher trumps, or with the top of a sequence. It leaves the opponents' trumps alone when they are all higher than ours.
+  - If the sure tricks are enough, it cashes them, short hand first. If not, it develops the suit that gains the most tricks (leading toward honours, or the top of a sequence) instead of cashing winners early.
+  - In second seat it wins with a master when it can (`second`). With a tenace opposite, it leads toward it (`fin`).
+- **Defenders** choose a suit to lead after the opening lead (`swF`) and a suit to discard (`dsF`) by a linear score on simple features: partner's signals and lead, through strength or up to weakness, ruffs for dummy or ruff-and-discard, honours that would be led away from or unguarded, length against dummy's, the suits the opponents bid, and so on. The weights (`BOT_SWITCH_W`, `BOT_DISCARD_W`, by notrump or suit contract and for discards by side) are fitted by ridge regression to the double-dummy result of every candidate suit on 1,200 robot boards: `node tests/heurfit.js 1200 switch|discard`. The rest is standard: second hand low, third hand high, covering an honour with an honour, cashing the setting tricks, and attitude signals.
+- Features switched off by default (`BOT_DEFAULT_OFF`, measured neutral or worse): a hold-up with a single stopper in notrump by the rule of 7 (`holdup`, −0.02 IMPs), and leading trumps against dummy's ruffs (`trlead`). Letting partner's honour run in third seat when we hold the next card measured −0.03 and was removed.
+
+`node tests/heurstim.js [boards] cmp [seed]` plays the same deals and robot auctions with one side's card play changed, against the previous heuristic (frozen in `tests/fixtures/basebots.js`). On 2,979 held-out boards (seed `test`; the work was tuned on `dev`):
+
+| Side changed | IMPs a board | Tricks a board |
+|---|---|---|
+| Declarer | +1.07 ± 0.09 | +0.35 ± 0.03 |
+| Defenders | +0.29 ± 0.08 | +0.13 ± 0.03 |
+
+With the new heuristic in all four seats, declarer takes 0.41 tricks fewer than the double-dummy result of the deal, against 0.64 before. `node tests/heurstim.js 600 leak` solves every decision double-dummy and totals the tricks lost by kind of decision and by the rule that chose the card. Against perfect play the declaring side now loses 1.81 tricks a board (was 2.27) and the defenders 1.35 (was 1.66). The largest leaks left are declarer's leads in suit contracts, defenders' switches, and declarer's third-hand play (the cheapest card that wins).
 
 `node tests/playsim.js [boards] [K]` replays the same deals and auctions with one side's play changed. Measured against the heuristic with K = 20 layouts per decision: declarer play +2.6 ± 0.2 IMPs a board (+1.1 tricks, 400 boards), and defence +2.1 ± 0.3 IMPs a board (+0.8 tricks, 300 boards). A decision takes about 0.2 to 0.3 seconds on one core; an opening lead at most about 1.7 seconds, shared between workers. (These playsim numbers predate `js/leads.js`: its base robot now leads with `botLead`, and its `lead*` variants with the solver lead above.)
 
