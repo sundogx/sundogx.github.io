@@ -202,3 +202,47 @@ function downloadText(name, text, type = 'text/plain') {
   } catch (e) { copyText(text); }
 }
 
+// ---- Robot card play in practice games: double-dummy sampling (js/ddplay.js) in a worker of its own ----
+// robotDDCard(t, seat) resolves to the card the solver picks, or null (no need, too slow, or no solver),
+// in which case the robot plays its heuristic card. Only ddView(t, seat), what the robot may see, is sent.
+// Opening leads: the solver may only swap the heuristic's lead for another suit's conventional card that
+// scores 30+ points better on average (tests/playsim.js: pure solver leads measured slightly worse than the heuristic).
+const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, slow: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30 };
+function robotDDWorker() {
+  if (RobotDD.w) return RobotDD.w;
+  const w = RobotDD.w = new Worker('js/dds-worker.js');
+  w.onmessage = e => {
+    const m = e.data, f = RobotDD.wait.get(m.k);
+    if (m.error) { RobotDD.fails++; console.warn('robot solver:', m.error); } else if (m.card) RobotDD.fails = 0;
+    if (f) { RobotDD.wait.delete(m.k); f(m.card || null); }
+  };
+  w.onerror = () => robotDDDrop(true);
+  return w;
+}
+function robotDDDrop(failed) { // stop this worker; anything waiting gets the heuristic card
+  try { if (RobotDD.w) RobotDD.w.terminate(); } catch (e) { }
+  RobotDD.w = null; if (failed) RobotDD.fails++;
+  for (const f of RobotDD.wait.values()) f(null);
+  RobotDD.wait.clear();
+}
+function robotDDCard(t, seat) {
+  if (RobotDD.fails >= 3 || typeof Worker === 'undefined' || typeof ddView !== 'function') return Promise.resolve(null);
+  let view, prefer;
+  try {
+    view = ddView(t, seat);
+    if (!ddWorthIt(view)) return Promise.resolve(null);
+    if (!RobotDD.LEADS && !view.tricks.length) return Promise.resolve(null);
+    prefer = botPlay(t, seat); // the heuristic's card wins ties (sequence leads, signals)
+  } catch (e) { console.error(e); return Promise.resolve(null); }
+  const k = ++RobotDD.n;
+  return new Promise(res => {
+    const timer = setTimeout(() => { // too slow: play the heuristic card, and restart a worker that keeps lagging
+      RobotDD.wait.delete(k); res(null);
+      if (++RobotDD.slow >= 2) { RobotDD.slow = 0; robotDDDrop(false); }
+    }, RobotDD.BUDGET_MS + 500);
+    RobotDD.wait.set(k, card => { clearTimeout(timer); RobotDD.slow = 0; res(card); });
+    try { robotDDWorker().postMessage({ k, play: view, opts: { k: RobotDD.K, minK: 8, ms: RobotDD.BUDGET_MS, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL } }); }
+    catch (e) { RobotDD.wait.delete(k); clearTimeout(timer); robotDDDrop(true); res(null); }
+  });
+}
+

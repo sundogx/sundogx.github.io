@@ -14,6 +14,7 @@ function newTable({ name, priv, local }) {
   };
 }
 function mySeat(t = T) { return SEATS.find(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === me.id) || null; }
+function playKey(t) { return `${t.id}:${t.board}:${t.play.tricks.map(tr => tr.cards.map(pc => pc.card).join('')).join('|')}`; } // identifies a position in the play
 function dummySeat(t) { return t.contract ? partnerOf(t.contract.declarer) : null; }
 function turnSeat(t) {
   if (t.phase === 'auction') return auctionTurn(t.dealer, t.auction);
@@ -139,14 +140,15 @@ const A = {
   },
   next(t) { if (t.phase !== 'done') return false; startBoard(t); },
   undo(t, seat) { if (!t.local && t.allowUndo === false) return false; return doUndo(t, seat); },
-  robotStep(t) {
+  robotStep(t, hint) { // hint: { key, card } worked out ahead (the page's solver); used only if the position is unchanged
     const ts = turnSeat(t); if (!ts) return false;
     if (t.claim) return false;
     const ctrl = controllerOf(t, ts);
     const o = occupant(t, ctrl);
     if (!o || o.kind !== 'robot') return false;
     if (t.phase === 'auction') { const r = botCall(t.hands[ts], ts, t.dealer, t.auction); return A.call(t, ts, r.call, r.alert); }
-    return A.card(t, ts, botPlay(t, ts));
+    const ok = hint && hint.key === playKey(t) && legalPlays(t.hands, t.play, t.contract, ts).includes(hint.card);
+    return A.card(t, ts, ok ? hint.card : botPlay(t, ts));
   },
 };
 function checkClaim(t) {

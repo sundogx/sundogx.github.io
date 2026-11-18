@@ -91,7 +91,17 @@ function scheduleRobot() {
   if (!o || o.kind !== 'robot' || !amDriver(T)) return;
   const tr = T.play && T.play.tricks[T.play.tricks.length - 1];
   const m = speedMult(), pause = T.phase === 'auction' ? 650 * m : (tr && tr.cards.length === 4 ? trickHoldMs() + 500 * m : 700 * m);
-  robotTimer = setTimeout(async () => { robotTimer = null; await act(s => A.robotStep(s)); }, pause);
+  // card play: the solver thinks (in a worker, at most ~1.5 s) while the robot's usual pause runs
+  const key = T.phase === 'play' ? playKey(T) : null;
+  const hint = key ? robotDDCard(T, ts).then(card => card && { key, card }) : null;
+  const id = robotTimer = setTimeout(async () => {
+    const h = hint ? await hint : null;
+    if (robotTimer !== id) return; // left the table meanwhile
+    robotTimer = null;
+    if (!T || (key && playKey(T) !== key)) { scheduleRobot(); return; } // the position changed (undo): think again
+    await act(s => A.robotStep(s, h));
+    scheduleRobot();
+  }, pause);
 }
 
 // ---------- rendering ----------
