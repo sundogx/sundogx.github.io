@@ -1318,8 +1318,8 @@ function compMore(ctx) {
 function doublerRebid(ctx) { // I made a takeout double, partner advanced in a suit without jumping, RHO passed
   const pl = ctx.pLast, ml = ctx.myLast;
   if (ctx.weOpened || ctx.mine.length !== 1 || ctx.pards.length !== 1 || !ml || ml.call !== 'X' || !ml.m || ml.m.tag !== 'xto' || ctx.rhoCall !== 'P') return null;
-  if (!pl || pl.i < ml.i || ctx.lb !== pl || bidValue(pl.call) < 0 || !pl.m || pl.m.art || pl.m.f || pl.m.inv || pl.m.hi > 11) return null;
-  const s = pl.call[1], their = ctx.oppSuits, bal = ml.m.lo <= 9 ? 3 : 0; // after a balancing double partner has bid some of my values
+  if (!pl || pl.i < ml.i || ctx.lb !== pl || bidValue(pl.call) < 0 || !pl.m || pl.m.art || pl.m.f || pl.m.inv || pl.m.hi > 11 || pl.m.lo > 6) return null;
+  const s = pl.call[1], their = ctx.oppSuits, bal = (ml.m.lo <= 9 ? 3 : 0) + (pl.m.lo >= 6 ? 3 : 0); // after a balancing double partner has bid some of my values; a free bid shows some
   const stops = h => their.every(x => stopper(h, x)), nt = ctx.cheap('N'), T = [];
   if (s === 'N') {
     if (nt <= 3) T.push(T_('3N', h => h.H >= 19 - bal, MM(19 - bal, 37, { nt: true })));
@@ -1327,10 +1327,11 @@ function doublerRebid(ctx) { // I made a takeout double, partner advanced in a s
     return T;
   }
   const gl = gameLevel(s), l = ctx.cheap(s), sp = h => supPts(h, s);
-  if (MAJ(s) && l <= 4) T.push(T_('4' + s, h => h.L[s] >= 4 && sp(h) >= 22 - bal, MM(22 - bal, 37, { mn: { [s]: 4 }, agree: s })));
-  if (nt <= 3) T.push(T_('3N', h => h.H >= (nt === 3 ? 17 : 20) - bal && stops(h) && !(MAJ(s) && h.L[s] >= 4), MM((nt === 3 ? 17 : 20) - bal, 37, { nt: true, stop: their })));
+  const g4 = (l >= 4 ? 18 : 22) - bal, n4 = l >= 4 ? 3 : 4; // partner was forced to the three level: raise to game with less
+  if (MAJ(s) && l <= 4) T.push(T_('4' + s, h => h.L[s] >= n4 && sp(h) >= g4, MM(g4, 37, { mn: { [s]: n4 }, agree: s })));
+  if (nt <= 3) T.push(T_('3N', h => h.H >= (nt === 3 ? (BID_K('x3n') ?? 20) : (BID_K('x3nl') ?? 22)) - bal && stops(h) && !(MAJ(s) && h.L[s] >= 4), MM((nt === 3 ? (BID_K('x3n') ?? 20) : (BID_K('x3nl') ?? 22)) - bal, 37, { nt: true, stop: their })));
   if (l + 1 < gl && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= 4 && sp(h) >= 19 - bal, MM(19 - bal, 21, { mn: { [s]: 4 }, agree: s, inv: true, a: 'Invites game: strong double with support' })));
-  if (l < gl && l <= 3) T.push(T_(l + s, h => h.L[s] >= 4 && sp(h) >= 16 - bal, MM(16 - bal, 18, { mn: { [s]: 4 }, agree: s, inv: true })));
+  if (l < gl && l <= 3) T.push(T_(l + s, h => h.L[s] >= 4 && sp(h) >= (BID_K('xr1') ?? 18) - bal, MM((BID_K('xr1') ?? 18) - bal, 18, { mn: { [s]: 4 }, agree: s, inv: true })));
   if (nt <= 2) T.push(T_(nt + 'N', h => h.semi && h.H >= 18 - bal && stops(h), MM(18 - bal, 20, { nt: true, stop: their, a: nt === 1 ? '18-20 points, balanced' : 'Strong, balanced, invites game' })));
   for (const x of ['S', 'H', 'D', 'C']) if (x !== s && !their.includes(x) && ctx.cheap(x) <= 3) T.push(T_(ctx.cheap(x) + x, h => h.L[x] >= 5 && h.H >= 18 - bal && longest(h, their) === x && h.L[s] <= 3, MM(18 - bal, 37, { mn: { [x]: 5 } })));
   T.push(T_('P', () => true, MM(ml.m.lo, 17 - bal)));
@@ -1354,11 +1355,13 @@ function afterXXRun(ctx) {
   }
   if (ctx.seat === xx.by && ctx.mine.length === 1 && !ctx.items.some(x => x.by === ctx.p && x.i > xx.i && x.call !== 'P')) { // the redoubler, opener passed
     const nt = ctx.cheap('N');
-    T.push(T_('X', h => h.L[y] >= 3 && (hon(h, y, 'AKQJT') >= 1 || h.L[y] >= 4), pen(10, 3)));
+    T.push(T_('X', h => (h.L[y] >= 3 && hon(h, y, 'AKQJ') >= 2 || h.L[y] >= 4 && hon(h, y, 'AKQJT') >= 1) && !(MAJ(t) && h.L[t] >= 3 && hon(h, y, 'AKQJ') < 2), pen(10, 3)));
     if (nt <= 3) T.push(T_('3N', h => h.H >= 14 && stopper(h, y), MM(14, 37, { nt: true, stop: [y] })));
     T.push(T_(ctx.cheap(t) + t, h => h.L[t] >= (MAJ(t) ? 3 : 4) && ctx.cheap(t) <= 3, MM(10, 37, { mn: { [t]: MAJ(t) ? 3 : 4 }, agree: t })));
     if (nt <= 2) T.push(T_(nt + 'N', h => stopper(h, y), MM(10, 13, { nt: true, stop: [y] })));
     for (const s of ['S', 'H', 'D', 'C']) if (s !== y && s !== t && ctx.cheap(s) <= 2) T.push(T_(ctx.cheap(s) + s, h => h.L[s] >= 4 && longest(h, [y, t]) === s, MM(10, 37, { mn: { [s]: 4 }, f: 1 })));
+    const lg = h => longest(h, [y]);
+    for (const s of ['S', 'H', 'D', 'C']) if (s !== y && ctx.cheap(s) <= 3) T.push(T_(ctx.cheap(s) + s, h => lg(h) === s && h.L[s] >= 4, MM(10, 37, { mn: { [s]: 4 } })));
     T.push(T_('X', () => true, pen(10, 2)));
     return T;
   }
@@ -1682,7 +1685,7 @@ function natural(ctx, h, reserved) {
     }
     // a long suit of my own: compete once at a low level
     const ls = longest(h, opp);
-    if (!fit && h.L[ls] >= 6 && hon(h, ls, 'AKQJ') >= 2 && myV >= 11 && (ctx.cheap(ls) <= 2 || (ctx.cheap(ls) === 3 && myV >= (BID_K('ls3') ?? 15) && !BID_OFF('ls3'))) && ok(ctx.cheap(ls) + ls) && !ctx.mine.some(x => x.call[1] === ls && +x.call[0] >= 2)) return ctx.cheap(ls) + ls;
+    if (!fit && h.L[ls] >= 6 && hon(h, ls, 'AKQJ') >= 2 && myV >= 11 && (ctx.cheap(ls) <= 2 || (ctx.cheap(ls) === 3 && myV >= (BID_K('ls3') ?? 13) && !BID_OFF('ls3'))) && ok(ctx.cheap(ls) + ls) && !ctx.mine.some(x => x.call[1] === ls && +x.call[0] >= 2)) return ctx.cheap(ls) + ls;
   }
   if (forcedGF || ctx.forced) return forcedBid(ctx, h, ok, fit);
   return 'P';
