@@ -541,7 +541,7 @@ export class TableRoom extends DurableObject {
         if (!t.timeUp && robotClaim(t)) return;
         if (o.kind === 'robot') return A.robotStep(t, hint);
         // stand-in for an away player: same robot logic, played for that seat
-        if (t.phase === 'auction') { const r = G.botCall(t.hands[ts], ts, t.dealer, t.auction); return A.call(t, ts, r.call, r.alert); }
+        if (t.phase === 'auction') { const r = G.botCall(t.hands[ts], ts, t.dealer, t.auction, t.vul); return A.call(t, ts, r.call, r.alert); }
         const ok = hint && G.legalPlays(t.hands, t.play, t.contract, ts).includes(hint.card);
         return A.card(t, ts, ok ? hint.card : G.botPlay(t, ts));
       });

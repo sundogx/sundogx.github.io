@@ -4,6 +4,7 @@
 // matter. Reports IMPs per board for the new system (± standard error) and both systems against par.
 //
 // Usage: node tests/bidddsim.js [boards=1000] [seed=1] [--worst=10] [--self] [--cats] [--base=oldbid]
+//   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
 //   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4)
 //   --worst=k  print the k boards the new system lost most on (hands and both auctions); with --best, gained most on
 //   --self     also report each system in self-play against par
@@ -42,6 +43,7 @@ const args = process.argv.slice(2), flags = args.filter(a => a.startsWith('--'))
 const N = +pos[0] || 1000, SEED = pos[1] || '1';
 const WORST = +((flags.find(f => f.startsWith('--worst')) || '').split('=')[1] || 0);
 const SELF = flags.includes('--self');
+globalThis.BID_OFF = ((flags.find(f => f.startsWith('--off=')) || '--off=').slice(6)).split(',').filter(Boolean); // switch off named features of js/bidding.js
 const BASE = (flags.find(f => f.startsWith('--base=')) || '--base=oldbid').split('=')[1];
 const NEW = require('../js/bidding.js'), OLD = require('./fixtures/' + BASE + '.js');
 const { parScore } = require('../js/par.js');
@@ -84,7 +86,7 @@ function bid(b, sys) { // sys: { NS: module, EW: module }
   const auction = [];
   while (!auctionOver(auction)) {
     const s = auctionTurn(b.dealer, auction);
-    const r = sys[sideOf(s)].botCall(b.hands[s], s, b.dealer, auction);
+    const r = sys[sideOf(s)].botCall(b.hands[s], s, b.dealer, auction, b.vul);
     if (!isLegalCall(b.dealer, auction, r.call)) throw new Error(`illegal call ${r.call} by ${s} after ${auction.map(a => a.call).join(' ')}`);
     auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s });
     if (auction.length > 60) throw new Error('auction does not end: ' + auction.map(a => a.call).join(' '));
@@ -126,7 +128,10 @@ const stats = () => ({ n: 0, s: 0, q: 0, add(x) { this.n++; this.s += x; this.q 
       const o = t.auction.find(a => a.call !== 'P');
       const k = o ? `${sideOf(o.by) === newSide ? 'new' : 'old'} opens ${o.call}` : 'passed out';
       const c = cats[k] || (cats[k] = { n: 0, imps: 0 }); c.n++; c.imps += x.imps / 2;
+      const both = ['NS', 'EW'].every(sd => t.auction.some(a => a.call !== 'P' && sideOf(a.by) === sd)); // did both sides bid or double?
+      const k2 = both ? '[contested]' : '[one side]', c2 = cats[k2] || (cats[k2] = { n: 0, imps: 0 }); c2.n++; c2.imps += x.imps / 2;
     }
+    for (const k of ['[contested]', '[one side]']) { const c = cats[k] || { n: 0, imps: 0 }; delete cats[k]; console.log(`  ${k.padEnd(16)} ${String(c.n).padStart(5)} tables  ${c.imps.toFixed(1).padStart(7)} IMPs`); }
     Object.entries(cats).sort((a, b) => a[1].imps - b[1].imps).slice(0, 25).forEach(([k, c]) => console.log(`  ${k.padEnd(16)} ${String(c.n).padStart(5)} tables  ${c.imps.toFixed(1).padStart(7)} IMPs`));
   }
   if (WORST) {

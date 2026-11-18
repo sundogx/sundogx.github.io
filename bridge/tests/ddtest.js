@@ -90,7 +90,7 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
   const check = (ok, msg) => { if (!ok) { bad3++; if (bad3 < 4) console.log('sampler:', msg); } };
   for (let g = 0; g < 40; g++) {
     const hands = deal(seededRand('ddview' + g)), dealer = boardDealer(g + 1), auction = [];
-    while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = Bots.botCall(hands[s], s, dealer, auction); auction.push({ call: r.call, by: s }); }
+    while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = Bots.botCall(hands[s], s, dealer, auction, boardVul(g + 1)); auction.push({ call: r.call, by: s }); }
     const ct = finalContract(auction); if (!ct) continue;
     const t = { hands, auction, contract: ct, vul: boardVul(g + 1), play: { tricks: [] } };
     for (let i = 0; i < 52; i++) {

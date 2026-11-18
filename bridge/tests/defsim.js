@@ -6,7 +6,7 @@ let diff=0,sq=0,n=0,changed=0;
 function playOut(hands,auction,ct,offs){globalThis.BOT_OFF=offs;const t={hands,auction,contract:ct,play:{tricks:[]}};
  for(let i=0;i<52;i++){const s=playTurn(t.play,ct);applyPlay(t.play,ct,s,B.botPlay(t,s))}return tricksWon(t.play,ct).decl}
 for(let g=0;g<N;g++){const hands=deal(rnd),dealer=boardDealer(g+1),auction=[];globalThis.BOT_OFF=base;
- while(!auctionOver(auction)){const s=auctionTurn(dealer,auction);const r=B.botCall(hands[s],s,dealer,auction);auction.push(r.alert?{call:r.call,by:s,alert:r.alert}:{call:r.call,by:s})}
+ while(!auctionOver(auction)){const s=auctionTurn(dealer,auction);const r=B.botCall(hands[s],s,dealer,auction,boardVul(g+1));auction.push(r.alert?{call:r.call,by:s,alert:r.alert}:{call:r.call,by:s})}
  const ct=finalContract(auction);if(!ct)continue;
  // variant: feature on only for defenders is equivalent here since features only affect defender leads
  const a=playOut(hands,auction,ct,base.concat(['setcash','sluff','trlead'])), b=playOut(hands,auction,ct,base.concat(['setcash','sluff','trlead'].filter(x=>!feat.split(',').includes(x))));

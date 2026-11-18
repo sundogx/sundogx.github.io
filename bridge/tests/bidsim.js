@@ -6,7 +6,7 @@ const offAll=base.concat(allNew), offVar=base.concat(allNew.filter(x=>!feat.incl
 let seed=+(process.argv[4]||99);const rnd=()=>{seed=(seed*1103515245+12345)%2147483648;return seed/2147483648};
 function board(hands,dealer,vul,varSide){const auction=[];
  while(!auctionOver(auction)){const s=auctionTurn(dealer,auction);globalThis.BOT_OFF=(varSide&&sideOf(s)===varSide)?offVar:offAll;
-  const r=B.botCall(hands[s],s,dealer,auction);auction.push(r.alert?{call:r.call,by:s,alert:r.alert}:{call:r.call,by:s});if(auction.length>60)break}
+  const r=B.botCall(hands[s],s,dealer,auction,vul);auction.push(r.alert?{call:r.call,by:s,alert:r.alert}:{call:r.call,by:s});if(auction.length>60)break}
  globalThis.BOT_OFF=offAll;const ct=finalContract(auction);if(!ct)return{sc:0,key:'P'};
  const t={hands,auction,contract:ct,play:{tricks:[]}};for(let i=0;i<52;i++){const s=playTurn(t.play,ct);applyPlay(t.play,ct,s,B.botPlay(t,s))}
  const d=tricksWon(t.play,ct).decl;return{sc:scoreNS(ct,d,vul),key:auction.map(a=>a.call).join(' ')}}

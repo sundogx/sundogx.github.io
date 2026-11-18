@@ -73,7 +73,7 @@ if (isMainThread) {
     if (g < 0) return process.exit(0);
     const rand = seededRand(seed + ':' + g);
     const hands = deal(rand), dealer = boardDealer(g + 1), vul = boardVul(g + 1), auction = [];
-    while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(hands[s], s, dealer, auction); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
+    while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(hands[s], s, dealer, auction, vul); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
     const ct = finalContract(auction);
     const res = {};
     if (ct) {

@@ -2,7 +2,7 @@ Object.assign(globalThis, require('../js/engine.js'));const B=require('../js/bot
 let stats={games:0,passout:0,levels:{},errors:0,made:0,long:0};const samples=[];
 for(let g=0;g<3000;g++){
  const n=g+1,dealer=boardDealer(n),vul=boardVul(n),hands=deal();const auction=[];
- while(!auctionOver(auction)){const s=auctionTurn(dealer,auction);const r=B.botCall(hands[s],s,dealer,auction);const c=r.call;
+ while(!auctionOver(auction)){const s=auctionTurn(dealer,auction);const r=B.botCall(hands[s],s,dealer,auction,vul);const c=r.call;
   if(!isLegalCall(dealer,auction,c)){stats.errors++;console.log('illegal',c);break}auction.push({call:c,by:s,alert:r.alert});if(auction.length>40){stats.long++;break}}
  const ct=finalContract(auction);stats.games++;if(!ct){stats.passout++;continue}
  stats.levels[ct.level+ct.strain]=(stats.levels[ct.level+ct.strain]||0)+1;
