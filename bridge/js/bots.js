@@ -457,8 +457,10 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
 // quick count of top winners for the side on lead. Up to 8 tricks left it takes a few milliseconds at worst
 // (tests/claimtest.js); past its node budget it answers null and the callers fall back to claimTopTricks.
 const CL_SUIT = { S: 0, H: 1, D: 2, C: 3 }, CL_BUDGET = { budget: true };
-const CLAIM_NODES = 20000;      // node budget for answering a claim: under 10 ms on the server
-const ROBOT_CLAIM_NODES = 6000; // and for a robot deciding whether to claim (tried at each of its leads)
+// Node budgets (about 0.4 microseconds a node): answering a claim, and a robot deciding whether to claim (tried at
+// each of its leads). The server has 10 ms of CPU for a whole request; a practice table in the page has more time.
+const CLAIM_NODES = 20000, ROBOT_CLAIM_NODES = 6000;
+const CLAIM_NODES_PAGE = 300000, ROBOT_CLAIM_NODES_PAGE = 30000;
 const clBits = m => { m -= (m >>> 1) & 0x55555555; m = (m & 0x33333333) + ((m >>> 2) & 0x33333333); return (((m + (m >>> 4)) & 0x0F0F0F0F) * 0x01010101) >>> 24; };
 const clTop = m => 31 - Math.clz32(m); // highest rank in a mask, -1 if none
 const clLow = m => 31 - Math.clz32(m & -m);
@@ -689,9 +691,9 @@ function claimHolds(t, by, n, maxNodes = CLAIM_NODES) {
 }
 // A robot's answer to a claim of n tricks by `by`: exact when the search finishes, otherwise only a claim within
 // the conservative count of sure winners is accepted. A concession of everything is always accepted.
-function claimAccept(t, by, n) {
+function claimAccept(t, by, n, maxNodes = CLAIM_NODES) {
   if (n === 0) return true;
-  const r = claimHolds(t, by, n);
+  const r = claimHolds(t, by, n, maxNodes);
   return r !== null ? r : n <= claimTopTricks(t, by);
 }
 // How many of the remaining tricks the claimer's side takes double dummy (the conservative count if too big).
@@ -713,7 +715,7 @@ function robotClaimCount(t, seat, maxNodes = CLAIM_NODES, maxLayouts = 120) {
   const left = 13 - completedTricks(play).length;
   if (left < 2) return null;
   const side = SEATS.indexOf(seat) & 1;
-  const S = claimSolver(claimPos(t), side, maxNodes);
+  const S = claimSolver(claimPos(t), side, left > 8 ? Math.min(500, maxNodes) : maxNodes); // early in the play only the plainest claims
   const v = S.value();
   if (v === null) return null;
   let budget = maxNodes - S.nodes();

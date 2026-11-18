@@ -184,7 +184,7 @@ function resolveRobotClaim(t) {
   for (const s of c.need) {
     const o = occupant(t, controllerOf(t, s));
     if (o && o.kind === 'robot') {
-      if (ok === null) ok = claimAccept(t, c.by, c.tricks);
+      if (ok === null) ok = claimAccept(t, c.by, c.tricks, t.local ? CLAIM_NODES_PAGE : CLAIM_NODES);
       if (!ok) { sysMsg(t, `Robot ${SEAT_NAME[s]} rejected the claim. Play continues.`); t.claim = null; return; }
       c.acc[s] = true;
     }
@@ -203,7 +203,7 @@ function robotClaim(t) {
   const done = completedTricks(t.play).length, side = sideOf(by);
   const last = t.robotClaimAt && t.robotClaimAt.b === t.board && t.robotClaimAt.side === side ? t.robotClaimAt.d : -9;
   if (done < last + 2) return false;
-  const n = robotClaimCount(t, by, ROBOT_CLAIM_NODES);
+  const n = robotClaimCount(t, by, t.local ? ROBOT_CLAIM_NODES_PAGE : ROBOT_CLAIM_NODES);
   if (n == null) return false;
   t.robotClaimAt = { b: t.board, d: done, side };
   return A.claim(t, by, n) !== false;
