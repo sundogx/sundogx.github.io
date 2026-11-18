@@ -204,8 +204,8 @@ function natMean(ctx, call) {
   const cm = ctlBidMeaning(ctx, call); if (cm) return cm;
   const pShown = P.mn[st] >= 3;
   // game forcing, a cheap raise of partner's major when game was there to bid: slam interest (fast arrival)
-  if (pShown && MAJ(st) && !BID_OFF('slow') && ctx.quiet && ctx.gf && !ourGame(ctx) && lv === ctx.cheap(st) && lv < 4 && ctx.ok('4' + st) && !ctx.ours.some(x => x.m && x.m.agree === st) && pBid)
-    return MM(Math.max(Me.lo + 3, BID_OFF('slowlo') ? 0 : 29 - SD() - Math.round(pExp(ctx))), 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st, f: 2, t: 'slow' });
+  if (pShown && (MAJ(st) || (lv >= 3 && !BID_OFF('slowm'))) && !BID_OFF('slow') && ctx.quiet && ctx.gf && !ourGame(ctx) && lv === ctx.cheap(st) && lv < gameLevel(st) && ctx.ok(gameLevel(st) + st) && !ctx.ours.some(x => x.m && x.m.agree === st) && pBid)
+    return MM(Me.lo + 3, 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st, f: 2, t: 'slow' });
   if (pShown) return MM(Me.lo, 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st });
   if (myBids.some(x => x.call[1] === st && !(x.m && x.m.art))) return MM(Me.lo, 37, { mn: { [st]: Math.min(7, Math.max(Me.mn[st] + 1, 6)) } });
   const lo = myBids.length ? Me.lo : pBid ? (lv >= 2 ? 10 : 6) : (lv >= 2 ? 10 : 8);
@@ -1664,7 +1664,7 @@ function natural(ctx, h, reserved) {
   if (target < 6 && pBid && ctx.quiet && (fit || strain === 'N') && (ctx.gf || ourGame(ctx) || total >= 28) && (ok('4N') || slamVal(ctx, h, strain).pts >= 34) && slamZone(ctx, h, strain)) target = 6;
   // game forcing with a major fit partner does not know about, and slam values: raise slowly (slam interest), so that
   // control bids and 4NT can follow in that suit
-  if (!BID_OFF('slow') && fit && MAJ(strain) && pBid && ctx.quiet && ctx.gf && !ourGame(ctx) && cheapS < gl && ok(cheapS + strain) && (target >= 6 || slamValues(ctx, h, strain))) {
+  if (!BID_OFF('slow') && fit && (MAJ(strain) || (cheapS >= 3 && !BID_OFF('slowm'))) && pBid && ctx.quiet && ctx.gf && !ourGame(ctx) && cheapS < gl && ok(cheapS + strain) && (target >= 6 || slamValues(ctx, h, strain))) {
     const m = natMean(ctx, cheapS + strain);
     if (m.tag === 'slow' && (openSuits(ctx, h, strain) > 0 || fourNTMeaning(ctx).trump !== strain)) return cheapS + strain;
   }
