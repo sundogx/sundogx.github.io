@@ -28,7 +28,7 @@ const exports = `
 
 export {
   SEATS, SEAT_NAME, A, newTable, startBoard, sysMsg, mySeat, canSee, turnSeat, controllerOf, occupant,
-  dummySeat, remainingHand, completedTricks, rid, legalCalls, legalPlays, botCall, botPlay, sureTricks, ddView, ddWorthIt, playKey, friendsMode,
+  dummySeat, remainingHand, completedTricks, rid, legalCalls, legalPlays, botCall, botPlay, sureTricks, ddView, ddWorthIt, playKey, friendsMode, undoReveals,
 };
 `;
 writeFileSync(join(root, 'src', 'game.js'), prelude + read('engine.js') + '\n' + read('bidding.js') + '\n' + read('leads.js') + '\n' + read('bots.js') + '\n' + read('ddplay.js') + '\n' + read('table.js') + exports);

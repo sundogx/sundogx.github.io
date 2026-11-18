@@ -17,7 +17,8 @@ function mySeat(t = T) { return SEATS.find(s => t.seats[s] && t.seats[s].kind ==
 function playKey(t) { return `${t.id}:${t.board}:${t.play.tricks.map(tr => tr.cards.map(pc => pc.card).join('')).join('|')}`; } // identifies a position in the play
 // Friends mode (online): robots' card play is worked out in a player's browser, which then receives the robot's
 // cards. Strangers mode keeps every hidden card on the server, and the robots play by heuristic there.
-function friendsMode(t) { return t.friends ?? !!t.private; }
+// Only private tables can have it: at a public table a stranger's browser would be handed the robots' cards.
+function friendsMode(t) { return !!t.private && (t.friends ?? true); }
 function dummySeat(t) { return t.contract ? partnerOf(t.contract.declarer) : null; }
 function turnSeat(t) {
   if (t.phase === 'auction') return auctionTurn(t.dealer, t.auction);
@@ -59,6 +60,7 @@ function finishBoard(t, declTricks) {
   t.history.push(rec);
   t.phase = 'done'; t.claim = null;
   sysMsg(t, `Board ${t.board}: ${c ? contractText(c) + ' ' + resultText(c, declTricks) : 'passed out'}, N-S ${sc >= 0 ? '+' : ''}${sc}`);
+  t.chat[t.chat.length - 1].res = t.board; // the result line (a team match holds it back from onlookers until both rooms have played the board)
 }
 
 // ---------- actions (each validated against the freshest state) ----------
@@ -91,6 +93,7 @@ const A = {
   },
   settings(t, patch) {
     if (t.host !== me.id) return false;
+    if ('friends' in patch && !t.private) { patch = { ...patch }; delete patch.friends; if (!Object.keys(patch).length) { toast('Friends mode is only for private tables'); return false; } }
     Object.assign(t, patch);
     const on = v => v ? 'on' : 'off';
     if ('locked' in patch) sysMsg(t, `Seats ${patch.locked ? 'locked' : 'unlocked'} by the host`);
@@ -120,10 +123,11 @@ const A = {
     t.lastActAt = Date.now();
     if (completedTricks(t.play).length === 13) finishBoard(t, tricksWon(t.play, t.contract).decl);
   },
-  claim(t, seat, n) {
+  claim(t, seat, n, seenLeft) { // seenLeft: the tricks left when the claimer chose n (more tricks may have finished since)
     if (t.phase !== 'play' || t.claim || seat === dummySeat(t)) return false;
     const left = 13 - completedTricks(t.play).length;
-    if (n < 0 || n > left) return false;
+    if ((seenLeft != null && seenLeft !== left) || n > left) { toast('The number of tricks left changed; claim again'); return false; }
+    if (n < 0) return false;
     const opp = sameSide(seat, t.contract.declarer)
       ? [nextSeat(t.contract.declarer), partnerOf(nextSeat(t.contract.declarer))]
       : [t.contract.declarer];
@@ -136,6 +140,9 @@ const A = {
     if (!accept) { sysMsg(t, `${SEAT_NAME[seat]} rejected the claim. Play continues.`); t.claim = null; return; }
     t.claim.acc[seat] = true; checkClaim(t);
   },
+  // A claim can be withdrawn until it is accepted. The claimer's cards are shown only to the opponents who
+  // must answer (never to the claimer's partner), so play can go on after a withdrawal or rejection as at a
+  // real table: only the claimer's side is hurt by what the opponents saw.
   cancelClaim(t, seat) { if (!t.claim || t.claim.by !== seat) return false; t.claim = null; sysMsg(t, `${SEAT_NAME[seat]} withdrew the claim`); },
   chat(t, text) {
     const s = mySeat(t);
@@ -177,6 +184,22 @@ function resolveRobotClaim(t) {
     }
   }
   checkClaim(t);
+}
+// Would undoing for this seat take back something after which more became visible: the opening lead
+// (dummy goes face up), or a call or card that robots have answered since (their calls or cards were seen)?
+// Online, such an undo needs the opponents' agreement (src/worker.js). Practice tables allow any undo.
+function undoReveals(t, seat) {
+  if (!seat || (t.phase !== 'auction' && t.phase !== 'play')) return false;
+  const flat = []; t.play.tricks.forEach(tr => tr.cards.forEach(pc => flat.push(pc)));
+  if (t.phase === 'play' && flat.length) {
+    let i = flat.length - 1;
+    while (i >= 0 && controllerOf(t, flat[i].seat) !== seat) i--;
+    if (i >= 0) return i === 0 || i < flat.length - 1;
+  }
+  if (flat.length) return true; // reopening the auction after the opening lead
+  let i = t.auction.length - 1;
+  while (i >= 0 && t.auction[i].by !== seat) i--;
+  return i >= 0 && (i < t.auction.length - 1 || t.phase === 'play');
 }
 function doUndo(t, seat) {
   if (!seat || (t.phase !== 'auction' && t.phase !== 'play') || t.claim) return false;
@@ -220,7 +243,6 @@ function canSee(t, seat) {
     if (seat === dummySeat(t) && dummyUp) return true;
     if (mine === dummySeat(t) && seat === t.contract.declarer && dummyUp) return true; // dummy watches partner play
     if (t.claim && t.claim.by === seat && t.claim.need.includes(mine)) return true;
-    if (t.claim && t.claim.by === seat && sameSide(seat, mine)) return true;
   }
   return false;
 }
