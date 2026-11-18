@@ -150,13 +150,13 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .tbx .ct .red { color: #c0281c; } .tbx .ct .blk { color: #000; } .tbx .ct .xx { color: #1f5fae; }
 
 .seat { display: inline-flex; flex-direction: column; gap: 4px; align-items: inherit; }
-.plate { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: #000000b0; color: #fff; border: 2px solid transparent; font-size: 13px; white-space: nowrap; max-width: 100%; }
+.plate { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 6px; background: #000000b0; color: #fff; border: 3px solid transparent; font-size: 13px; white-space: nowrap; max-width: 100%; width: 180px; height: 32px; box-sizing: border-box; } /* every seat's plate the same size */
 .plate .sl { font-weight: 700; font-family: var(--serif); font-size: 17px; line-height: 1; }
 .plate.vul { border: 3px solid #ff3b30; }
 .plate.turn { background: var(--brass); color: #000; border-color: #000; }
 .plate.vul.turn { border-color: #ff3b30; }
 .plate .yt { font-weight: 700; background: #000; color: var(--brass); border-radius: 4px; padding: 0 6px; font-size: 12px; }
-.plate .nm { overflow: hidden; text-overflow: ellipsis; max-width: 110px; }
+.plate .nm { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; text-align: left; }
 .plate .bot { font-size: 11px; opacity: .75; }
 .sitbtns { display: flex; gap: 4px; justify-content: inherit; }
 .sitbtns .btn { background: #ffffffcc; color: #000; border-color: #00000040; }
@@ -347,10 +347,12 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
   .myhand { height: 112px; }
   .rows { font-size: 14px; min-width: 0; padding: 4px 5px; }
-  .plate .nm { max-width: 64px; }
+  .plate .nm { min-width: 0; }
   .pos-left, .pos-right { min-width: 0; max-width: 100%; }
   .pos-left .seat, .pos-right .seat { max-width: 100%; }
   .pos-left .plate, .pos-right .plate { flex-wrap: wrap; white-space: normal; row-gap: 0; padding: 2px 6px; }
+  .plate { height: auto; min-height: 30px; }
+  .corner.tl { transform: scale(.7); transform-origin: top left; } /* board box and trick count fit the narrow corner */
   .rows .rk { padding: 1px 2px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }
