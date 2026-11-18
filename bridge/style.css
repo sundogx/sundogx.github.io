@@ -243,7 +243,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .agrid .c.cxx { color: #1f5fae; }
 .agrid .c.cp { color: #2e7d4f; }
 .agrid .c.alert { box-shadow: inset 0 0 0 2px #d32f2f; cursor: help; }
-.agrid .c.expl { cursor: help; }
+.agrid .c.expl { box-shadow: inset 0 0 0 2px var(--brass); cursor: help; }
+.agrid .c[data-alert]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .explain { position: absolute; z-index: 40; max-width: min(280px, calc(100vw - 16px)); background: #1b1b1b; color: #fff; font-size: 13px; line-height: 1.35; padding: 7px 10px; border-radius: 6px; box-shadow: 0 3px 10px #0006; pointer-events: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .felt .agrid { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(290px, 96%); box-shadow: 0 4px 14px #0004; }

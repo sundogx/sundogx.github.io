@@ -216,21 +216,57 @@ function showExplain(el, text) {
   setTimeout(() => document.addEventListener('pointerdown', hideExplain, { once: true }), 0);
 }
 function hideExplain() { clearTimeout(explainTimer); const p = document.getElementById('explainPop'); if (p) p.remove(); }
+// explained calls are focusable buttons: Enter or Space reads the explanation (before the bidding keys see it)
+document.addEventListener('keydown', e => {
+  const c = e.target && e.target.closest && e.target.closest('.agrid [data-alert]');
+  if (e.key === 'Escape' && document.getElementById('explainPop')) { hideExplain(); return; }
+  if (!c || (e.key !== 'Enter' && e.key !== ' ')) return;
+  e.preventDefault(); e.stopImmediatePropagation(); showExplain(c, c.dataset.alert);
+}, true);
+// What every call means by the robots' system (bidding.js), worked out once per auction and vulnerability:
+// render runs about once a card, so the explanations are cached by the calls made so far.
+const callDescCache = new Map();
+function callDescriptions(auction, vul) {
+  const key = (vul || '') + '|' + auction.map(a => a.by + a.call).join(' ');
+  let r = callDescCache.get(key);
+  if (r) return r;
+  r = auction.map(() => ({ text: null, alert: null }));
+  try {
+    const metas = auctionMetas(auction, vul);
+    r = auction.map((a, i) => ({ text: describeCall(auction, i, vul, metas), alert: (metas[i] && metas[i].alert) || null }));
+  } catch (e) { /* no explanations rather than no auction */ }
+  if (callDescCache.size > 40) callDescCache.delete(callDescCache.keys().next().value);
+  callDescCache.set(key, r);
+  return r;
+}
+// Robots explain their calls openly to everyone, partner included. A human's own alert is shown to everyone but
+// their partner. In the live auction only robots' calls are explained by the system; in a finished board's
+// record (another auction than the table's) every call is.
 function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul, viewer = mySeat(t)) {
   const order = ['W', 'N', 'E', 'S'];
   const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${s}</div>`);
   const off = order.indexOf(dealer);
   for (let i = 0; i < off; i++) cells.push('<div></div>');
+  const live = auction === t.auction;
+  const isRobot = s => { const o = t.seats && t.seats[s]; return (!!o && o.kind === 'robot') || !!(t.subs && t.subs[s]); };
+  const descs = callDescriptions(auction, vul);
   auction.forEach((a, i) => {
-    const hideAlert = viewer && partnerOf(a.by) === viewer;
+    const bySystem = !live || isRobot(a.by), d = descs[i] || {};
     const isBid = bidValue(a.call) >= 0;
     const red = isBid && isRed(a.call[1]);
-    const al = a.alert && !hideAlert, ak = al ? alertKind(a.alert, auction, i) : null;
-    const expl = al ? (ak && ak.kind === 'announce' ? `Announced: "${ak.say}". ${a.alert}` : ak ? `Alert: ${a.alert}` : a.alert) : '';
+    let text = null, alertText = null;
+    if (bySystem) {
+      // a robot's alert opens its explanation; an alert a human typed (in a board's record) is shown as typed
+      if (a.alert && !(d.text && d.text.startsWith(a.alert))) text = alertText = a.alert;
+      else { text = d.text || a.alert || null; alertText = a.alert || d.alert; }
+    } else if (a.alert && !(viewer && partnerOf(a.by) === viewer)) text = alertText = a.alert;
+    const ak = text ? alertKind(alertText, auction, i) : null;
+    const expl = !text ? '' : ak && ak.kind === 'announce' ? `Announced: "${ak.say}". ${text}` : ak ? `Alert: ${text}` : text;
     const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : 'bid';
     // the level is always black; only the suit symbol takes its suit's colour
     const txt = isBid ? `${a.call[0]}<span class="sy ${a.call[1] !== 'N' ? (red ? 'red' : 'blk') + ' s-' + a.call[1] : ''}">${SYM[a.call[1]]}</span>` : callText(a.call);
-    cells.push(`<div class="c ${kind} ${ak && ak.kind === 'alert' ? 'alert' : al ? 'expl' : ''}" aria-label="${callText(a.call)}" ${al ? `data-alert="${esc(expl)}" title="${esc(expl)}"` : ''}>${txt}</div>`);
+    const cls = !text ? '' : ak && ak.kind === 'alert' ? 'alert' : 'expl';
+    cells.push(`<div class="c ${kind} ${cls}" ${text ? `role="button" tabindex="0" aria-label="${esc(callText(a.call) + '. ' + expl)}" data-alert="${esc(expl)}" title="${esc(expl)}"` : `aria-label="${callText(a.call)}"`}>${txt}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
@@ -401,7 +437,7 @@ function renderSide(force) {
 }
 function renderAuctionPane(t) {
   if (t.masked) { $('pane-auction').innerHTML = '<p class="empty">In a team match, onlookers see each board once both rooms have played it.</p>'; return; }
-  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted. Tap any call to read what it means.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
+  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted; gold-outlined calls are explained. Tap any to read it.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
 }
 function renderChatPane(t) {
   const log = $('chatLog');
