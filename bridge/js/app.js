@@ -203,15 +203,33 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
 }
+// Board indicator: one edge per seat as seen at this table (red = that side vulnerable), D on the dealer's edge, board number inside.
+function boardBoxHTML(t, o) {
+  const edge = { [o.top]: 'top', [o.right]: 'right', [o.bottom]: 'bottom', [o.left]: 'left' };
+  const cols = SEATS.map(s => `border-${edge[s]}-color:${isVul(t.vul, s) ? '#c0281c' : '#f4f4f4'}`).join(';');
+  const dPos = edge[t.dealer];
+  return `<div class="bbx" style="${cols}" role="img" aria-label="Board ${t.board}, dealer ${SEAT_NAME[t.dealer]}, ${vulText(t.vul)}"><span class="dl ${dPos} ${isVul(t.vul, t.dealer) ? 'onred' : ''}">D</span><b>${t.board}</b></div>`;
+}
+// Trick count: a standing card for our side's tricks, a lying card for theirs, and the contract.
+function trickBoxHTML(t) {
+  const c = t.contract; if (!c || t.phase === 'auction') return '';
+  const side = mySeat(t) || c.declarer;
+  const done = completedTricks(t.play);
+  let ours = done.filter(tr => sameSide(trickWinner(tr, c.strain), side)).length, theirs = done.length - ours;
+  const last = t.phase === 'done' && t.history[t.history.length - 1];
+  if (last && last.contract && last.declTricks != null && ours + theirs !== 13) { // claim or concession: only the totals are known
+    ours = sameSide(side, c.declarer) ? last.declTricks : 13 - last.declTricks; theirs = 13 - ours;
+  }
+  const red = isRed(c.strain);
+  const ctr = `${c.level}<span class="${c.strain === 'N' ? '' : red ? 'red' : 'blk'}">${SYM[c.strain]}</span>${c.doubled === 1 ? '<span class="red">X</span>' : c.doubled === 2 ? '<span class="xx">XX</span>' : ''}`;
+  return `<div class="tbx" role="img" aria-label="${contractText(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us">${ours}</div><div class="ct">${ctr}<br>${SEAT_NAME[c.declarer]}</div><div class="them">${theirs}</div></div>`;
+}
 function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ? 'Both vulnerable' : v === 'NS' ? 'N-S vulnerable' : 'E-W vulnerable'; }
 
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   let html = '';
-  if (t.board) html += `<div class="corner tl"><b>Board ${t.board}</b>${t.match ? ' ' + t.match.room : ''}<br>Dealer ${SEAT_NAME[t.dealer]}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
-  if (t.contract && t.phase !== 'auction') {
-    html += `<div class="corner tr"><b>${contractText(t.contract)}</b></div>`;
-  }
+  if (t.board) html += `<div class="corner tl">${boardBoxHTML(t, o)}${trickBoxHTML(t)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   html += `<div class="pos-top">${seatBlock(t, o.top, 'top')}</div>`;
   html += `<div class="pos-left">${seatBlock(t, o.left, 'left')}</div>`;
   html += `<div class="pos-right">${seatBlock(t, o.right, 'right')}</div>`;
