@@ -103,6 +103,13 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .topbar .code { font-size: 13px; color: var(--ink-soft); }
 .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; align-items: start; }
 @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+/* side by side: the sidebar is as tall as the table (.felt height), and the chat log fills it */
+@media (min-width: 861px) {
+  .side { height: 530px; display: flex; flex-direction: column; box-sizing: border-box; }
+  .side .pane { flex: 1; max-height: none; min-height: 0; }
+  #pane-chat:not(.hidden) { display: flex; flex-direction: column; }
+  #pane-chat .chatlog { flex: 1; max-height: none; min-height: 0; }
+}
 
 .felt {
   position: relative; background: var(--felt);
@@ -122,15 +129,18 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .corner b { font-family: var(--serif); font-size: 15px; font-weight: 600; }
 .corner.tl { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .corner .room { font-size: 12px; }
-/* board indicator: edges coloured by vulnerability, D on the dealer's edge */
-.bbx { position: relative; box-sizing: content-box; width: 40px; height: 40px; border: 15px solid #f4f4f4; border-radius: 9px; background: #b9c9cb; outline: 1px solid #0006; outline-offset: -15px; display: grid; place-items: center; box-shadow: 0 1px 3px #0005; }
-.bbx b { font-size: 26px; font-weight: 500; color: #000; font-family: var(--sans); }
+/* board indicator: one edge per seat (red = vulnerable), split by diagonals, D on the dealer's edge */
+.bbx { --line: linear-gradient(45deg, #0000 calc(50% - .6px), #0008 calc(50% - .6px), #0008 calc(50% + .6px), #0000 calc(50% + .6px));
+  position: relative; width: 70px; height: 70px; border-radius: 9px; box-shadow: 0 1px 3px #0005;
+  background: var(--line), linear-gradient(-45deg, #0000 calc(50% - .6px), #0008 calc(50% - .6px), #0008 calc(50% + .6px), #0000 calc(50% + .6px)),
+    conic-gradient(var(--top) 0 45deg, var(--right) 45deg 135deg, var(--bottom) 135deg 225deg, var(--left) 225deg 315deg, var(--top) 315deg); }
+.bbx b { position: absolute; inset: 15px; background: #b9c9cb; border: 1px solid #0007; border-radius: 3px; display: grid; place-items: center; font-size: 26px; font-weight: 500; color: #000; font-family: var(--sans); }
 .bbx .dl { position: absolute; font-size: 12px; font-weight: 700; color: #000; line-height: 15px; }
 .bbx .dl.onred { color: #fff; }
-.bbx .dl.top { top: -15px; left: 50%; transform: translateX(-50%); }
-.bbx .dl.bottom { bottom: -15px; left: 50%; transform: translateX(-50%); }
-.bbx .dl.left { left: -11px; top: 50%; transform: translateY(-50%); }
-.bbx .dl.right { right: -11px; top: 50%; transform: translateY(-50%); }
+.bbx .dl.top { top: 0; left: 50%; transform: translateX(-50%); }
+.bbx .dl.bottom { bottom: 0; left: 50%; transform: translateX(-50%); }
+.bbx .dl.left { left: 3px; top: 50%; transform: translateY(-50%); }
+.bbx .dl.right { right: 3px; top: 50%; transform: translateY(-50%); }
 /* trick count: standing card = our tricks, lying card = theirs */
 .tbx { display: grid; grid-template-columns: 30px 37px; grid-template-rows: 44px 28px; gap: 0 3px; }
 .tbx .us, .tbx .them { background: #2f6f78; color: #fff; border: 1px solid #ffffffaa; border-radius: 6px; font-size: 18px; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 3px; font-family: var(--sans); }

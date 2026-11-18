@@ -187,7 +187,7 @@ function seatBlock(t, seat, where) {
 }
 function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul, viewer = mySeat(t)) {
   const order = ['W', 'N', 'E', 'S'];
-  const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${SEAT_NAME[s]}</div>`);
+  const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${s}</div>`);
   const off = order.indexOf(dealer);
   for (let i = 0; i < off; i++) cells.push('<div></div>');
   auction.forEach((a, i) => {
@@ -206,7 +206,7 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
 // Board indicator: one edge per seat as seen at this table (red = that side vulnerable), D on the dealer's edge, board number inside.
 function boardBoxHTML(t, o) {
   const edge = { [o.top]: 'top', [o.right]: 'right', [o.bottom]: 'bottom', [o.left]: 'left' };
-  const cols = SEATS.map(s => `border-${edge[s]}-color:${isVul(t.vul, s) ? '#c0281c' : '#f4f4f4'}`).join(';');
+  const cols = SEATS.map(s => `--${edge[s]}:${isVul(t.vul, s) ? '#c0281c' : '#f4f4f4'}`).join(';');
   const dPos = edge[t.dealer];
   return `<div class="bbx" style="${cols}" role="img" aria-label="Board ${t.board}, dealer ${SEAT_NAME[t.dealer]}, ${vulText(t.vul)}"><span class="dl ${dPos} ${isVul(t.vul, t.dealer) ? 'onred' : ''}">D</span><b>${t.board}</b></div>`;
 }
@@ -372,7 +372,7 @@ function renderAuctionPane(t) {
 function renderChatPane(t) {
   const log = $('chatLog');
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-  log.innerHTML = t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '<div class="empty">No messages yet.</div>';
+  log.innerHTML = t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '';
   if (atBottom) log.scrollTop = log.scrollHeight;
 }
 function renderResultsPane(t) {
@@ -523,7 +523,7 @@ function showClaimDialog() {
   m.querySelectorAll('[data-n]').forEach(b => b.addEventListener('click', () => {
     pick = +b.dataset.n; m.querySelectorAll('[data-n]').forEach(x => x.classList.toggle('sel', x === b)); $('doClaim').textContent = 'Claim ' + pick;
   }));
-  $('doClaim').addEventListener('click', () => { $('modalRoot').innerHTML = ''; doAct('claim', pick); });
+  $('doClaim').addEventListener('click', () => { closeModal(); doAct('claim', pick); });
 }
 
 
@@ -607,7 +607,7 @@ function renderSeatRequests() {
 // ----- spectators chat among themselves while a board is in play -----
 function renderChatHint() {
   const inPlay = T.phase === 'auction' || T.phase === 'play';
-  $('chatInput').placeholder = !T.local && !mySeat(T) && inPlay ? 'Message the other spectators' : 'Message the table';
+  $('chatInput').placeholder = !T.local && !mySeat(T) && inPlay ? 'Message the other spectators' : 'Table talk';
 }
 
 // ----- play under the same name on a second device -----
@@ -792,7 +792,7 @@ function showSettings() {
   bind('setLock', 'locked'); bind('setUndo', 'allowUndo'); bind('setKib', 'kibSee'); if ($('setUndoAsk')) bind('setUndoAsk', 'undoAsk'); if ($('setFriends')) bind('setFriends', 'friends');
   $('setTime').addEventListener('change', e => doAct('settings', { boardLimit: +e.target.value }));
   m.querySelectorAll('[data-kick]').forEach(b => b.addEventListener('click', () => { doAct('kick', b.dataset.kick); b.closest('.row').remove(); }));
-  if ($('setRedeal')) $('setRedeal').addEventListener('click', () => { $('modalRoot').innerHTML = ''; doAct('redeal'); });
+  if ($('setRedeal')) $('setRedeal').addEventListener('click', () => { closeModal(); doAct('redeal'); });
 }
 
 // ---------- clocks ----------
@@ -972,7 +972,7 @@ function openOnline(code) {
   if (T && !T.local) { // leaving another online table, e.g. switching team-match rooms
     T = null; selCard = null; pendingCall = null; selLevel = null;
     $('felt').innerHTML = '<div class="pos-center"><div class="waitmsg">Connecting…</div></div>';
-    $('myHand').innerHTML = ''; $('bidArea').classList.add('hidden'); $('modalRoot').innerHTML = '';
+    $('myHand').innerHTML = ''; $('bidArea').classList.add('hidden'); closeModal();
   }
   wasMyTurn = false; $('alertChk').checked = false; $('alertText').classList.add('hidden');
   setTimeout(() => { if (Net.code === code && !Net.gotState) toast('Still trying to reach the table. Check your connection.', 4000); }, 5000);
