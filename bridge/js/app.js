@@ -235,6 +235,10 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
 }
+// Red suit symbols in red wherever they appear as text (contracts, chat, results). Only text between tags is
+// touched, never attributes; the s-H / s-D classes keep the four-colour deck option working.
+const redSym = html => html.replace(/(^|>)([^<]+)/g, (m, a, b) => a + b.replace(/[♥♦]/g, x => `<span class="rs s-${x === '♥' ? 'H' : 'D'}">${x}</span>`));
+const contractHTML = c => redSym(esc(contractText(c)));
 // Board indicator: one edge per seat as seen at this table (red = that side vulnerable), D on the dealer's edge, board number inside.
 function boardBoxHTML(t, o) {
   const edge = { [o.top]: 'top', [o.right]: 'right', [o.bottom]: 'bottom', [o.left]: 'left' };
@@ -252,16 +256,14 @@ function trickBoxHTML(t) {
   if (last && last.contract && last.declTricks != null && ours + theirs !== 13) { // claim or concession: only the totals are known
     ours = sameSide(side, c.declarer) ? last.declTricks : 13 - last.declTricks; theirs = 13 - ours;
   }
-  const red = isRed(c.strain);
-  const ctr = `${c.level}<span class="${c.strain === 'N' ? '' : red ? 'red' : 'blk'}">${SYM[c.strain]}</span>${c.doubled === 1 ? '<span class="red">X</span>' : c.doubled === 2 ? '<span class="xx">XX</span>' : ''}`;
-  return `<div class="tbx" role="img" aria-label="${contractText(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us">${ours}</div><div class="ct">${ctr}<br>${SEAT_NAME[c.declarer]}</div><div class="them">${theirs}</div></div>`;
+  return `<div class="tbx" role="img" aria-label="${contractText(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us">${ours}</div><div class="them">${theirs}</div></div>`;
 }
 function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ? 'Both vulnerable' : v === 'NS' ? 'N-S vulnerable' : 'E-W vulnerable'; }
 
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   let html = '';
-  if (t.board) html += `<div class="corner tl">${boardBoxHTML(t, o)}${trickBoxHTML(t)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
+  if (t.board) html += `<div class="corner tl">${boardBoxHTML(t, o)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   html += `<div class="pos-top">${seatBlock(t, o.top, 'top')}</div>`;
   html += `<div class="pos-left">${seatBlock(t, o.left, 'left')}</div>`;
   html += `<div class="pos-right">${seatBlock(t, o.right, 'right')}</div>`;
@@ -293,7 +295,7 @@ function renderFelt() {
     } else if (t.phase === 'play') {
       if (!tricks.some(x => x.cards.length)) {
         const ld = nextSeat(t.contract.declarer);
-        center = `<div class="announce"><div class="note">The contract is</div><div class="ac">${contractText(t.contract)}</div><div>${ld === mine ? '<b>You</b> lead' : SEAT_NAME[ld] + ' leads'}</div></div>`;
+        center = `<div class="announce"><div class="note">The contract is</div><div class="ac">${contractHTML(t.contract)}</div><div>${ld === mine ? '<b>You</b> lead' : SEAT_NAME[ld] + ' leads'}</div></div>`;
       } else center = `<div class="waitmsg">${SEAT_NAME[win || nextSeat(t.contract.declarer)]} to lead</div>`;
     }
     const ts = turnSeat(t);
@@ -348,7 +350,7 @@ function resultBanner(t) {
   const mine = mySeat(t);
   const sideScore = !mine ? h.scoreNS : (sideOf(mine) === 'NS' ? h.scoreNS : -h.scoreNS);
   const label = mine ? 'Your side' : 'N-S';
-  return `<div class="banner"><h3>${h.contract ? contractText(h.contract) : 'Passed out'}</h3>
+  return `<div class="banner"><h3>${h.contract ? contractHTML(h.contract) : 'Passed out'}</h3>
     ${h.contract ? `<div class="big">${resultText(h.contract, h.declTricks)}</div><div>${h.declTricks} tricks for declarer</div>` : ''}
     <div style="margin-top:4px">${label}: <b>${sideScore > 0 ? '+' : ''}${sideScore}</b></div>
     <div class="row">${mine || t.local || isHost(t) ? '<button class="btn primary" data-next="1">Next board</button>' : ''}<button class="btn" data-record="${t.history.length - 1}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn" data-review="${t.history.length - 1}">Review play</button>` : ''}</div></div>`;
@@ -399,12 +401,12 @@ function renderSide(force) {
 }
 function renderAuctionPane(t) {
   if (t.masked) { $('pane-auction').innerHTML = '<p class="empty">In a team match, onlookers see each board once both rooms have played it.</p>'; return; }
-  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractText(t.contract)}</p>${tricksHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted. Tap any call to read what it means.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
+  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted. Tap any call to read what it means.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
 }
 function renderChatPane(t) {
   const log = $('chatLog');
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-  log.innerHTML = t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '';
+  log.innerHTML = redSym(t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '');
   if (atBottom) log.scrollTop = log.scrollHeight;
 }
 function renderResultsPane(t) {
@@ -448,9 +450,9 @@ function renderResultsPane(t) {
     if (!DD.failed) note += ' Par fills in once the analysis finishes.';
   }
   const any = t.history.length || (t.match && otherRoom && otherRoom.history.length);
-  $('pane-results').innerHTML = any ? `${t.match ? '' : `<div class="totals"><span>N-S ${ns}</span><span>E-W ${ew}</span></div>`}${summary}
+  $('pane-results').innerHTML = redSym(any ? `${t.match ? '' : `<div class="totals"><span>N-S ${ns}</span><span>E-W ${ew}</span></div>`}${summary}
     <table class="reslist"><tr>${head}</tr>${rowsR}</table><p class="note">${note}</p>
-    ${t.history.length ? '<div class="row"><button class="btn small" id="pbnAll">Download all boards (PBN)</button></div>' : ''}` : '<p class="empty">Finished boards appear here.</p>';
+    ${t.history.length ? '<div class="row"><button class="btn small" id="pbnAll">Download all boards (PBN)</button></div>' : ''}` : '<p class="empty">Finished boards appear here.</p>');
   const pa = $('pbnAll'); if (pa) pa.addEventListener('click', () => downloadText(`bridge-${t.id}.pbn`, t.history.map(h => pbnBoard(h, t)).join('\n\n') + '\n'));
 }
 const cShort = c => c ? `${c.level}${SYM[c.strain]}${c.doubled ? 'X'.repeat(c.doubled) : ''} ${c.declarer}` : 'Pass';
@@ -530,7 +532,7 @@ function showRecord(i) {
     }).join('')}</table><p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>`;
   }
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
-    <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractText(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
+    <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
     ${otherLine(h)}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
@@ -545,7 +547,7 @@ function otherLine(h) {
   if (!o && T.match && otherRoom) { o = otherRoom.history.find(x => x.board === h.board); label = T.match.room === 'Open' ? 'Closed room' : 'Open room'; }
   if (!o) return '';
   const im = T.match ? toImps((T.match.room === 'Open' ? h.scoreNS - o.scoreNS : o.scoreNS - h.scoreNS)) : toImps(h.scoreNS - o.scoreNS);
-  return `<p><b>${label}:</b> ${o.contract ? contractText(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMPs to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMPs to you` : 'No swing')}.</p>
+  return `<p><b>${label}:</b> ${o.contract ? contractHTML(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMPs to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMPs to you` : 'No swing')}.</p>
     ${o.auction ? `<details><summary class="note">Their auction</summary>${auctionGridHTML(T, o.auction, h.dealer, h.vul, null)}</details>` : ''}`;
 }
 function showClaimDialog() {
