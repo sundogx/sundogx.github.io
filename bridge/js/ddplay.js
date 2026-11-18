@@ -51,11 +51,13 @@ function ddView(t, seat) {
   for (const s of visible) known[s] = remainingHand(t.hands, play, s);
   const limits = {};
   for (const s of SEATS) if (!visible.includes(s)) limits[s] = ddAuctionLimits(t.auction || [], s);
-  return {
+  const view = {
     seat, vul: t.vul, contract: { level: c.level, strain: c.strain, doubled: c.doubled, declarer: decl },
     tricks: play.tricks.map(tr => ({ leader: tr.leader, cards: tr.cards.map(pc => ({ seat: pc.seat, card: pc.card })) })),
     known, limits,
   };
+  if (!play.tricks.length && typeof leadView === 'function') leadView(view, t); // opening lead: js/leads.js
+  return view;
 }
 
 function ddLegal(view) {
@@ -263,6 +265,7 @@ async function ddChoose(view, solve, opts = {}) {
   const legal = ddLegal(view);
   if (!ddWorthIt(view)) return null;
   const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  if (!view.tricks.length && opts.lead === 'conv' && view.prior && typeof leadChoose === 'function') return leadChoose(view, solve, opts); // js/leads.js
   const t0 = now(), k = opts.k || 20, minK = Math.min(k, opts.minK || 6), budget = opts.ms || Infinity;
   const deals = ddSample(view, k, opts.rand || Math.random);
   const results = [];

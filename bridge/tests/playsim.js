@@ -5,9 +5,9 @@
 //   def      both defenders by sampling, including the opening lead
 //   defnl    defenders by sampling, but the opening lead is the heuristic one
 //   lead     only the opening lead by sampling, everything else heuristic
-//   leadc    only the opening lead: the solver picks the suit, the card is the conventional one (leadct: and
-//            the heuristic's lead stands unless another is 30 points better on average)
-//   defc     defenders by sampling, with the conventional-card opening lead (defct: with the leadct rule)
+//   leadc    only the opening lead, by js/leads.js (leadChoose: solver plus lead prior; leadct is now the same)
+//   defc     defenders by sampling, with the js/leads.js opening lead (defct: the same)
+// The heuristic base robot leads with botLead (js/leads.js). tests/leadsim.js measures leads alone, more cheaply.
 // Reports, for the side whose play changed: IMPs per board and tricks per board (mean ± standard error),
 // how many boards changed, and the time per sampled decision.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');

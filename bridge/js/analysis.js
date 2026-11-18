@@ -205,8 +205,7 @@ function downloadText(name, text, type = 'text/plain') {
 // ---- Robot card play in practice games: double-dummy sampling (js/ddplay.js) in a worker of its own ----
 // robotDDCard(t, seat) resolves to the card the solver picks, or null (no need, too slow, or no solver),
 // in which case the robot plays its heuristic card. Only ddView(t, seat), what the robot may see, is sent.
-// Opening leads: the solver may only swap the heuristic's lead for another suit's conventional card that
-// scores 30+ points better on average (tests/playsim.js: pure solver leads measured slightly worse than the heuristic).
+// Opening leads go to robotDDLead below (js/leads.js), several workers at once.
 const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, slow: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30 };
 function robotDDWorker() {
   if (RobotDD.w) return RobotDD.w;
@@ -241,6 +240,7 @@ function robotDDSolve(view, prefer) {
   try {
     if (!ddWorthIt(view)) return Promise.resolve(null);
     if (!RobotDD.LEADS && !view.tricks.length) return Promise.resolve(null);
+    if (!view.tricks.length && view.prior && typeof leadPick === 'function') return robotDDLead(view);
   } catch (e) { console.error(e); return Promise.resolve(null); }
   const k = ++RobotDD.n;
   return new Promise(res => {
@@ -254,3 +254,33 @@ function robotDDSolve(view, prefer) {
   });
 }
 
+// Opening leads (js/leads.js): one decision per board, so it uses several workers at once (up to 4, leaving a
+// core free), each dealing and solving its share of the layouts within the time budget; the page pools the
+// results and picks the lead (leadPick: average IMPs against the other leads, plus the lead-rule prior).
+const LeadDD = { ws: [], n: 0, wait: new Map(), K: 48, BUDGET_MS: 1700, MIN: 8 };
+function leadWorkers() {
+  const want = Math.max(1, Math.min(4, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1));
+  while (LeadDD.ws.length < want) {
+    const w = new Worker('js/dds-worker.js');
+    w.onmessage = e => { const f = LeadDD.wait.get(e.data.k); if (f) { LeadDD.wait.delete(e.data.k); f(e.data.error ? null : e.data.results); } };
+    w.onerror = () => { LeadDD.ws = LeadDD.ws.filter(x => x !== w); try { w.terminate(); } catch (e) { } };
+    LeadDD.ws.push(w);
+  }
+  return LeadDD.ws;
+}
+function robotDDLead(view) {
+  let ws;
+  try { ws = leadWorkers(); } catch (e) { return Promise.resolve(null); }
+  const per = Math.ceil(LeadDD.K / ws.length);
+  const parts = ws.map(w => new Promise(res => {
+    const k = ++LeadDD.n;
+    const timer = setTimeout(() => { LeadDD.wait.delete(k); res(null); }, LeadDD.BUDGET_MS + 700);
+    LeadDD.wait.set(k, r => { clearTimeout(timer); res(r); });
+    try { w.postMessage({ k, leadSamples: view, opts: { k: per, minK: 2, ms: LeadDD.BUDGET_MS } }); } catch (e) { LeadDD.wait.delete(k); clearTimeout(timer); res(null); }
+  }));
+  return Promise.all(parts).then(rs => {
+    const results = [].concat(...rs.filter(Boolean));
+    if (results.length < LeadDD.MIN) return null;
+    return leadPick(view, leadCards(view.known[view.seat], view.contract.strain), results).card;
+  }).catch(() => null);
+}
