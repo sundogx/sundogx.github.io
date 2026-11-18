@@ -134,7 +134,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .sitbtns .btn { background: #ffffffcc; color: #000; border-color: #00000040; }
 .hiddenhand { font-size: 12px; opacity: .7; }
 .backs { display: inline-flex; padding-top: 2px; }
-.backs i { width: var(--cw); height: var(--ch); flex: none; border-radius: 5px; border: 1.5px solid #fff; box-sizing: border-box; background: #2f5d3a url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><rect width='24' height='24' fill='%232f5d3a'/><path d='M6 3c3 1 4 4 3 7-3-1-4-4-3-7z' fill='%2379a85a'/><path d='M6 3l3 7' stroke='%232f5d3a' stroke-width='.6'/><ellipse cx='17.5' cy='16.5' rx='2.6' ry='3' fill='%23b07a3c'/><path d='M14.6 14.4q2.9-2.6 5.8 0z' fill='%236b4423'/><path d='M17.5 11.6v1.4' stroke='%236b4423' stroke-width='.8'/><circle cx='19' cy='5' r='.9' fill='%23e8d9a0'/><circle cx='4.5' cy='19' r='.7' fill='%23e8d9a0'/></svg>") center / calc(var(--cw) * .5) repeat; box-shadow: -1px 0 0 #0003; }
+.backs i { width: var(--cw); height: var(--ch); flex: none; border-radius: 5px; border: 1.5px solid #fff; box-sizing: border-box; background: repeating-linear-gradient(45deg, #2c4f9e 0 3px, #4167c4 3px 6px); box-shadow: -1px 0 0 #0003; }
 .backs i + i { margin-left: calc(var(--cw) * -0.72); }
 
 /* compact (suit rows) hand */
