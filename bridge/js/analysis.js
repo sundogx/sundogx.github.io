@@ -27,8 +27,25 @@ function requestDD(h, urgent, firstStrain) {
   }
   pumpDD();
 }
-function makeWorker() {
+// Every solver worker gets the WebAssembly module compiled once by the page (it compiles its own if that fails).
+let ddWasmP = null;
+function ddWasm() {
+  if (!ddWasmP) ddWasmP = (async () => {
+    const r = await fetch('js/wasm/compiled.wasm'); if (!r.ok) throw new Error('solver not found');
+    return WebAssembly.compileStreaming && /wasm/.test(r.headers.get('content-type') || '') ? WebAssembly.compileStreaming(r) : WebAssembly.compile(await r.arrayBuffer());
+  })().catch(e => { ddWasmP = null; return null; });
+  return ddWasmP;
+}
+function ddNewWorker() {
   const w = new Worker('js/dds-worker.js');
+  ddWasm().then(mod => { if (mod) try { w.postMessage({ wasm: mod }); } catch (e) { } });
+  return w;
+}
+const ddCores = () => (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
+// Hand-record analysis waits while a robot is thinking (RobotDD, LeadDD below), so it doesn't slow the robot down.
+const ddRobotBusy = () => RobotDD.wait.size > 0 || LeadDD.wait.size > 0;
+function makeWorker() {
+  const w = ddNewWorker();
   w.job = null;
   w.onmessage = e => {
     const m = e.data, en = DD.cache.get(m.k);
@@ -52,13 +69,14 @@ function ddFail() { // give up for now; try again when the connection returns or
 function ddRetry() { if (DD.failed) { DD.failed = false; DD.workers = []; if (T) renderSide(true); } }
 window.addEventListener('online', ddRetry);
 function pumpDD() {
-  if (DD.failed) return;
+  if (DD.failed || !DD.queue.length) return; // workers are made when there is work
   if (!DD.workers.length) {
     try {
-      const n = Math.max(1, Math.min(2, (navigator.hardwareConcurrency || 2) - 1));
+      const n = ddCores() <= 4 ? 1 : 2;
       for (let i = 0; i < n; i++) DD.workers.push(makeWorker());
     } catch (err) { ddFail(); return; }
   }
+  if (ddRobotBusy()) return; // resumed by robotDDDone
   for (const w of DD.workers) {
     if (w.job || !DD.queue.length) continue;
     w.job = DD.queue.shift();
@@ -208,15 +226,18 @@ function downloadText(name, text, type = 'text/plain') {
 // Opening leads go to robotDDLead below (js/leads.js), several workers at once.
 // After the opening lead the robots also read the cards played so far (BEN-style play-consistency weighting,
 // js/ddplay.js ddConsistency): 96 layouts are dealt and the K that best fit the play so far are solved, weighted by fit.
-const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, slow: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30,
+const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30,
   DECL: { pool: 96, weigh: 1, wOpp: 0.8 }, DEF: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8 } };
 function robotDDWorker() {
   if (RobotDD.w) return RobotDD.w;
-  const w = RobotDD.w = new Worker('js/dds-worker.js');
+  const w = RobotDD.w = ddNewWorker();
+  w.busy = new Map(); // requests the worker hasn't answered yet (also those the page stopped waiting for): k -> sent at
   w.onmessage = e => {
     const m = e.data, f = RobotDD.wait.get(m.k);
+    w.busy.delete(m.k);
     if (m.error) { RobotDD.fails++; console.warn('robot solver:', m.error); } else if (m.card) RobotDD.fails = 0;
     if (f) { RobotDD.wait.delete(m.k); f(m.card || null); }
+    robotDDDone();
   };
   w.onerror = () => robotDDDrop(true);
   return w;
@@ -226,7 +247,9 @@ function robotDDDrop(failed) { // stop this worker; anything waiting gets the he
   RobotDD.w = null; if (failed) RobotDD.fails++;
   for (const f of RobotDD.wait.values()) f(null);
   RobotDD.wait.clear();
+  robotDDDone();
 }
+function robotDDDone() { if (!ddRobotBusy()) setTimeout(pumpDD, 0); } // a robot decision ended: let the analysis go on
 function robotDDCard(t, seat) {
   let view, prefer;
   try {
@@ -247,43 +270,63 @@ function robotDDSolve(view, prefer) {
   } catch (e) { console.error(e); return Promise.resolve(null); }
   const k = ++RobotDD.n;
   return new Promise(res => {
-    const timer = setTimeout(() => { // too slow: play the heuristic card, and restart a worker that keeps lagging
+    const timer = setTimeout(() => { // too slow: play the heuristic card. The worker finishes the job and goes on;
+      // it is restarted only if it seems stuck (an answer more than 10 seconds late)
       RobotDD.wait.delete(k); res(null);
-      if (++RobotDD.slow >= 2) { RobotDD.slow = 0; robotDDDrop(false); }
+      const w = RobotDD.w;
+      if (w && [...w.busy.values()].some(t0 => Date.now() - t0 > 10e3)) robotDDDrop(false); else robotDDDone();
     }, RobotDD.BUDGET_MS + 500);
-    RobotDD.wait.set(k, card => { clearTimeout(timer); RobotDD.slow = 0; res(card); });
-    try { robotDDWorker().postMessage({ k, play: view, opts: { k: RobotDD.K, minK: 8, ms: RobotDD.BUDGET_MS, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: RobotDD.DECL, defender: RobotDD.DEF } }); }
+    RobotDD.wait.set(k, card => { clearTimeout(timer); res(card); });
+    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: { k: RobotDD.K, minK: 8, ms: RobotDD.BUDGET_MS, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: RobotDD.DECL, defender: RobotDD.DEF } }); }
     catch (e) { RobotDD.wait.delete(k); clearTimeout(timer); robotDDDrop(true); res(null); }
   });
 }
 
-// Opening leads (js/leads.js): one decision per board, so it uses several workers at once (up to 4, leaving a
-// core free), each dealing and solving its share of the layouts within the time budget; the page pools the
-// results and picks the lead (leadPick: average IMPs against the other leads, plus the lead-rule prior).
+// Opening leads (js/leads.js): one decision per board, so it uses several workers at once (half the device's
+// cores, 1 to 4), each dealing and solving its share of the layouts within the time budget. Results stream back
+// one by one, so a worker that runs late still contributes what it has; the page pools them and picks the lead
+// (leadPick: average tricks plus the lead-rule prior). The workers are closed after the lead (each holds a solver's
+// memory) and made again for the next board, warmed up during the auction (robotDDWarm).
 const LeadDD = { ws: [], n: 0, wait: new Map(), K: 48, BUDGET_MS: 1700, MIN: 8 };
 function leadWorkers() {
-  const want = Math.max(1, Math.min(4, ((typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2) - 1));
+  const want = Math.max(1, Math.min(4, Math.floor(ddCores() / 2)));
   while (LeadDD.ws.length < want) {
-    const w = new Worker('js/dds-worker.js');
-    w.onmessage = e => { const f = LeadDD.wait.get(e.data.k); if (f) { LeadDD.wait.delete(e.data.k); f(e.data.error ? null : e.data.results); } };
+    const w = ddNewWorker();
+    w.onmessage = e => { const f = LeadDD.wait.get(e.data.k); if (f) f(e.data); };
     w.onerror = () => { LeadDD.ws = LeadDD.ws.filter(x => x !== w); try { w.terminate(); } catch (e) { } };
     LeadDD.ws.push(w);
   }
   return LeadDD.ws;
 }
+function leadWorkersClose() { if (LeadDD.wait.size) return; for (const w of LeadDD.ws) try { w.terminate(); } catch (e) { } LeadDD.ws = []; }
 function robotDDLead(view) {
   let ws;
   try { ws = leadWorkers(); } catch (e) { return Promise.resolve(null); }
   const per = Math.ceil(LeadDD.K / ws.length);
   const parts = ws.map(w => new Promise(res => {
-    const k = ++LeadDD.n;
-    const timer = setTimeout(() => { LeadDD.wait.delete(k); res(null); }, LeadDD.BUDGET_MS + 700);
-    LeadDD.wait.set(k, r => { clearTimeout(timer); res(r); });
-    try { w.postMessage({ k, leadSamples: view, opts: { k: per, minK: 2, ms: LeadDD.BUDGET_MS } }); } catch (e) { LeadDD.wait.delete(k); clearTimeout(timer); res(null); }
+    const k = ++LeadDD.n, got = [];
+    const end = r => { clearTimeout(timer); LeadDD.wait.delete(k); res(r); };
+    const timer = setTimeout(() => end(got), LeadDD.BUDGET_MS + 500); // late: keep what has arrived
+    LeadDD.wait.set(k, m => {
+      if (m.result) got.push(m.result);
+      else if (m.results || m.error) end(m.results || got);
+    });
+    try { w.postMessage({ k, leadSamples: view, opts: { k: per, minK: 2, ms: LeadDD.BUDGET_MS } }); } catch (e) { end(got); }
   }));
   return Promise.all(parts).then(rs => {
-    const results = [].concat(...rs.filter(Boolean));
+    leadWorkersClose();
+    robotDDDone();
+    const results = [].concat(...rs);
     if (results.length < LeadDD.MIN) return null;
     return leadPick(view, leadCards(view.known[view.seat], view.contract.strain), results).card;
-  }).catch(() => null);
+  }).catch(() => { leadWorkersClose(); robotDDDone(); return null; });
+}
+// Warm up the solver workers during the auction of a practice game, so the opening lead and the first cards
+// don't wait for workers to start (js/app.js calls this while robots bid). Cheap to call repeatedly.
+function robotDDWarm() {
+  if (RobotDD.fails >= 3 || typeof Worker === 'undefined') return;
+  try {
+    if (!RobotDD.w) robotDDWorker().postMessage({ warm: true });
+    if (RobotDD.LEADS && !LeadDD.ws.length) for (const w of leadWorkers()) w.postMessage({ warm: true });
+  } catch (e) { }
 }
