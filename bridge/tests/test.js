@@ -23,4 +23,8 @@ a(fc2.declarer,'N','first to bid');a(fc2.doubled,1,'dbl');
 const h=E.deal();a(Object.values(h).flat().length,52,'deal');a(new Set(Object.values(h).flat()).size,52,'uniq');
 a(E.trickWinner({cards:[{seat:'N',card:'SA'},{seat:'E',card:'H2'},{seat:'S',card:'SK'},{seat:'W',card:'D3'}]},'H'),'E','ruff');
 a(E.trickWinner({cards:[{seat:'N',card:'S2'},{seat:'E',card:'H2'},{seat:'S',card:'SK'},{seat:'W',card:'SA'}]},'N'),'W','nt');
+// opening-lead cards (js/leads.js)
+Object.assign(globalThis,E);const L=require('../js/leads.js');
+for(const [hold,nt,suit] of [['KQJ4','K','K'],['KQ74','4','K'],['KJT9','J','J'],['AJT4','J','A'],['A742','2','A'],['Q974','4','4'],['974','7','7'],['K7','K','K'],['AK74','A','A']]){
+ const cs=[...hold].map(r=>'S'+r);a(L.leadCardOf(cs,'N')[1],nt,'lead vs NT from '+hold);a(L.leadCardOf(cs,'H')[1],suit,'lead vs suit from '+hold);}
 console.log('done');

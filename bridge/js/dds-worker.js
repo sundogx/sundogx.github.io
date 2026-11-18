@@ -3,7 +3,7 @@
 // @bridge-tools/dd 0.2.2 (MIT); see wasm/NOTICE.txt. Every solve gets a fresh instance of the compiled module:
 // this build gives wrong answers if an instance is reused or re-initialised for another solve.
 // It also chooses robot cards by double-dummy sampling (js/ddplay.js): message { play: view, opts }.
-importScripts('wasm/compiled.js', 'engine.js', 'ddplay.js'); // create_dds_module; rules helpers; the sampler
+importScripts('wasm/compiled.js', 'engine.js', 'ddplay.js', 'leads.js'); // create_dds_module; rules helpers; the sampler; opening leads
 
 let modP = null;
 const compiled = () => modP || (modP = fetch('wasm/compiled.wasm').then(r => { if (!r.ok) throw new Error('solver not found'); return r.arrayBuffer(); }).then(b => WebAssembly.compile(b)).catch(err => { modP = null; throw err; }));
@@ -35,6 +35,14 @@ async function strain(hands, st, report) {
   }
 }
 self.onmessage = async e => {
+  if (e.data.leadSamples) { // opening lead: solver results on sampled layouts, pooled by the page (js/leads.js leadSample)
+    const { k, leadSamples, opts } = e.data;
+    try {
+      const mod = await compiled();
+      self.postMessage({ k, results: await leadSample(leadSamples, ddSolver(create_dds_module, mod), opts || {}) });
+    } catch (err) { self.postMessage({ k, results: null, error: String(err && err.message || err) }); }
+    return;
+  }
   if (e.data.play) { // robot card: { k, play: view (only what the robot may see), opts }
     const { k, play, opts } = e.data;
     try {

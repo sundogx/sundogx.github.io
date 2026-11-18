@@ -1,6 +1,7 @@
 // ===== Robots: card play and how robots answer claims (bidding is in js/bidding.js) =====
 if (typeof require !== 'undefined' && typeof SEATS === 'undefined') Object.assign(globalThis, require('./engine.js'));
 if (typeof require !== 'undefined' && typeof botCall === 'undefined') Object.assign(globalThis, require('./bidding.js'));
+if (typeof require !== 'undefined' && typeof botLead === 'undefined') Object.assign(globalThis, require('./leads.js'));
 // ---- Card play ----
 function botPlayOld(t, seat) {
   // t: table state; seat: seat whose card is chosen (may be dummy when declarer is robot)
@@ -148,7 +149,7 @@ function botPlay(t, seat) {
 
   // ---------- leading ----------
   if (!trick || trick.cards.length === 0) {
-    if (play.tricks.length === 0 && !onDeclSide) return botPlayOld(t, seat); // opening lead heuristics
+    if (play.tricks.length === 0 && !onDeclSide) return botLead(hands[seat], t.auction || [], c, seat); // opening lead: js/leads.js
     if (onDeclSide) {
       const other = pCards;
       const masters = legal.filter(isMaster);

@@ -13,6 +13,7 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `index.html`, `style.css` | The page's markup and styles. |
 | `js/engine.js` | Cards, the auction, legal plays, trick winners, scoring. |
 | `js/bidding.js` | Robot bidding: the 2/1 system below, and what every call in an auction means (robots read human partners with it). |
+| `js/leads.js` | Robot opening leads (see below). |
 | `js/bots.js` | Heuristic robot card play, and how robots answer claims. |
 | `js/ddplay.js` | Robot card play by double-dummy sampling (see below). |
 | `js/table.js` | The table itself: seats, the actions (bid, play, claim, undo…), who may see which hands. |
@@ -22,9 +23,9 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `js/app.js` | Everything on screen: drawing the table, bidding box, options, keyboard, lobby. |
 | `js/dds-worker.js`, `js/wasm/` | The WebAssembly solver (see below); it also picks the practice robots' cards. |
 | `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
-| `src/game.js` | **Generated** by `build.mjs` from `js/engine.js`, `js/bidding.js`, `js/bots.js`, `js/ddplay.js` and `js/table.js`, so the server runs exactly the same rules and robots as the page. Don't edit it; `npm run dev` and `npm run deploy` rebuild it. |
+| `src/game.js` | **Generated** by `build.mjs` from `js/engine.js`, `js/bidding.js`, `js/leads.js`, `js/bots.js`, `js/ddplay.js` and `js/table.js`, so the server runs exactly the same rules and robots as the page. Don't edit it; `npm run dev` and `npm run deploy` rebuild it. |
 | `sw.js` | Service worker: caches the app so practice works offline. Bump `CACHE` and keep `CORE` in step when files are added. |
-| `tests/` | `npm test` (rules, robots, bidding fuzz), `node tests/ddtest.js` (solver, robot sampler), `node tests/playsim.js` (robot card play, sampling against heuristic), `BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs` (a running server). Bidding: `node tests/bidddsim.js` (match against the old bidding, scored double-dummy; `--base=basebid` plays the 2/1 system before the constructive changes, `tests/fixtures/basebid.js`), `node tests/bidloss.js` (where uncontested auctions lose against the best double-dummy contract), `node tests/bidshow.js` (read auctions), `node tests/bidwhy.js` (why a robot made a call). |
+| `tests/` | `npm test` (rules, robots, bidding fuzz), `node tests/ddtest.js` (solver, robot sampler), `node tests/playsim.js` (robot card play, sampling against heuristic), `node tests/leadsim.js` (opening leads), `BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs` (a running server). Bidding: `node tests/bidddsim.js` (match against the old bidding, scored double-dummy; `--base=basebid` plays the 2/1 system before the constructive changes, `tests/fixtures/basebid.js`), `node tests/bidloss.js` (where uncontested auctions lose against the best double-dummy contract), `node tests/bidshow.js` (read auctions), `node tests/bidwhy.js` (why a robot made a call). |
 
 The page's scripts are plain scripts that share globals, loaded in the order above. Practice games run entirely in the page; online tables run on the server, which sends each person only the cards they may see.
 
@@ -81,8 +82,47 @@ The hand analysis runs DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to W
 
 ## Robot card play
 
-In practice games the robots choose their cards the way GIB and BEN do, by double-dummy sampling (`js/ddplay.js`). On a robot's turn the page sends a worker only what that robot may see: its own hand, dummy once it is face up (declarer sees both of its hands), the cards played so far, and the auction. The worker deals the unseen cards at random about 24 times, consistent with that: suits a player has shown out of, and the HCP ranges and suit lengths the auction showed (from `shown()` in `js/bidding.js`, plus the opening-bid ranges). It solves every layout for every legal card and plays the card with the best average score for its side. The heuristic robot (`botPlay`) breaks ties, which keeps sequence leads, signals and low-from-equals. It also plays outright when there is only one sensible card, when the solver takes more than about 1.5 seconds, or if the solver fails. The solver thinks during the robot's usual pause, so play is no slower than before. For the opening lead, the solver may only replace the heuristic's lead with another suit's conventional lead card that scores 30 points better on average. Leads chosen purely by the solver measured slightly worse.
+In practice games the robots choose their cards the way GIB and BEN do, by double-dummy sampling (`js/ddplay.js`). On a robot's turn the page sends a worker only what that robot may see: its own hand, dummy once it is face up (declarer sees both of its hands), the cards played so far, and the auction. The worker deals the unseen cards at random about 24 times, consistent with that: suits a player has shown out of, and the HCP ranges and suit lengths the auction showed (from `shown()` in `js/bidding.js`, plus the opening-bid ranges). It solves every layout for every legal card and plays the card with the best average score for its side. The heuristic robot (`botPlay`) breaks ties, which keeps sequence leads, signals and low-from-equals. It also plays outright when there is only one sensible card, when the solver takes more than about 1.5 seconds, or if the solver fails. The solver thinks during the robot's usual pause, so play is no slower than before.
 
-`node tests/playsim.js [boards] [K]` replays the same deals and auctions with one side's play changed. Measured against the heuristic with K = 20 layouts per decision: declarer play +2.6 ± 0.2 IMPs a board (+1.1 tricks, 400 boards), and defence +2.1 ± 0.3 IMPs a board (+0.8 tricks, 300 boards). A decision takes about 0.2 to 0.3 seconds on one core, and an opening lead about 1.4 seconds.
+### Opening leads
+
+The opening lead is the decision with the least information, so it has its own code, `js/leads.js`.
+
+- **The card in a suit** is the standard one: top of a sequence (KQJ, QJT, and KQT), the middle card of an interior sequence (K**J**T, Q**T**9, and A**J**T against notrump), the ace against a suit contract (no underleading aces), top of a doubleton, fourth best from an honour, and second highest from three or four small cards.
+- **The prior** rates leading each suit from the leader's holding and the auction, the way Bird and Anthias's *Winning Notrump Leads* and *Winning Suit Contract Leads* rate leads by simulation. It is a linear score on 25 features: sequences, AK, interior sequences, length, singletons and doubletons, unsupported kings, queens and aces, honour doubletons, partner's suit, the opponents' suits, unbid suits, majors against notrump, trumps, and trumps after dummy gave preference. The weights are fitted (ridge regression) to the double-dummy result of every lead on 1,500 robot auctions: `node tests/leadsim.js fit`. The fit agrees with the books:
+  - Sequences, AK and partner's suit are good leads.
+  - Unsupported kings and queens, and the opponents' suits, are bad leads.
+  - Against suit contracts, singletons and doubletons are good, and a trump lead is slightly bad.
+  - Against notrump, length and the majors help.
+- **The heuristic robot** (`botLead`, used in strangers mode and as the fallback) leads the suit with the best prior.
+- **The solver robot** (`leadChoose`, `leadPick`) deals the unseen cards up to 48 times, consistent with the auction (`leadLimits`). It solves each layout and leads the suit whose card takes the most defensive tricks on average, plus twice the prior.
+  - `leadLimits` uses the minimum *and* maximum HCP and suit lengths from `shown()`, and no five-card major for a direct 1NT-3NT.
+  - The prior steadies the choice, because ~24-48 layouts are a noisy estimate. Averaging IMPs or points instead of tricks measured about the same.
+  - The page splits the layouts between up to four workers (one fewer than the device's cores; `robotDDLead` in `js/analysis.js`) and pools the results. The decision takes at most about 1.7 seconds.
+  - `ddView` adds the limits and the prior to the robot's view (`leadView`), so in friends mode the browser doing the thinking needs nothing more.
+
+Measured with `node tests/leadsim.js` on 2,215 held-out boards. Each board is a robot auction, and every lead is scored by the true double-dummy result, with 24 layouts. The comparison is against the previously shipped rule: the old heuristic lead, replaced only by another suit's card that the solver rated 30 points better on 24 layouts.
+
+| Lead | IMPs a board | Tricks | Contracts set | Played out by the robots |
+|---|---|---|---|---|
+| Solver with prior (new) | +0.07 ± 0.03 | +0.03 | 50.4% (shipped 49.3%) | +0.08 ± 0.08 |
+| Heuristic `botLead` (new) | +0.01 ± 0.04 | +0.02 | 49.8% | +0.11 ± 0.08 |
+| Solver without prior | +0.02 ± 0.03 | +0.02 | 50.2% | +0.00 ± 0.08 |
+| Old heuristic alone | −0.03 ± 0.03 | −0.01 | 48.9% | +0.04 ± 0.06 |
+
+- Against games, the contract is now set more often: 3NT and higher 39.1% (was 37.7%), and suit games 46.1% (was 44.4%).
+- The last column plays every lead out with the heuristic robots instead of double-dummy.
+- Against the old heuristic alone, the new solver lead gains +0.10 ± 0.04 IMPs a board, and `botLead` +0.04 ± 0.04.
+- In the page the solver gets up to 48 layouts rather than 24. In tuning, more layouts helped slightly.
+
+For scale, an oracle that knew all four hands would gain only about +0.75 IMPs a board over the old heuristic, choosing among the same cards. Most of the value of a lead is a guess the auction can't settle.
+
+The neural-network leader of BEN (github.com/lorserker/ben) was considered and not used:
+- Its lead networks are small: an ONNX export of about 2.3 MB each, and onnxruntime-web is about 3 MB compressed.
+- But BEN is GPL-3.0.
+- The lead network reads the auction only through BEN's own bidding-info network, trained on GIB/BEN system auctions, which would need a JS port of its auction encoding.
+- BEN itself picks among the network's candidates by sampling and double-dummy solving, as here.
+
+`node tests/playsim.js [boards] [K]` replays the same deals and auctions with one side's play changed. Measured against the heuristic with K = 20 layouts per decision: declarer play +2.6 ± 0.2 IMPs a board (+1.1 tricks, 400 boards), and defence +2.1 ± 0.3 IMPs a board (+0.8 tricks, 300 boards). A decision takes about 0.2 to 0.3 seconds on one core; an opening lead at most about 1.7 seconds, shared between workers. (These playsim numbers predate `js/leads.js`: its base robot now leads with `botLead`, and its `lead*` variants with the solver lead above.)
 
 Online tables have a host setting, **Friends mode** (on by default for private tables, off for public ones). A Durable Object on the Workers Free plan gets about 10 ms of CPU time per invocation, and one solve of a full deal takes about 70 ms, so the server can't run the solver itself. In friends mode it sends the robot's view (`ddView`) to one connected player's browser (seated players first, in turn), which solves it and sends the card back (`think` and `thought` messages in `src/worker.js` and `js/net.js`). That browser then holds the robot's cards, which is why it is meant for friends. If no answer arrives within 2.5 seconds the robot plays its heuristic card. With friends mode off (strangers), no hidden card ever leaves the server and the robots play the heuristic.
