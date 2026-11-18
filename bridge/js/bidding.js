@@ -205,7 +205,7 @@ function natMean(ctx, call) {
   const pShown = P.mn[st] >= 3;
   // game forcing, a cheap raise of partner's major when game was there to bid: slam interest (fast arrival)
   if (pShown && MAJ(st) && !BID_OFF('slow') && ctx.quiet && ctx.gf && !ourGame(ctx) && lv === ctx.cheap(st) && lv < 4 && ctx.ok('4' + st) && !ctx.ours.some(x => x.m && x.m.agree === st) && pBid)
-    return MM(Me.lo + 3, 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st, f: 2, t: 'slow' });
+    return MM(Math.max(Me.lo + 3, BID_OFF('slowlo') ? 0 : 29 - SD() - Math.round(pExp(ctx))), 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st, f: 2, t: 'slow' });
   if (pShown) return MM(Me.lo, 37, { mn: { [st]: Math.max(3, 8 - P.mn[st]) }, agree: st });
   if (myBids.some(x => x.call[1] === st && !(x.m && x.m.art))) return MM(Me.lo, 37, { mn: { [st]: Math.min(7, Math.max(Me.mn[st] + 1, 6)) } });
   const lo = myBids.length ? Me.lo : pBid ? (lv >= 2 ? 10 : 6) : (lv >= 2 ? 10 : 8);
@@ -1416,7 +1416,7 @@ function runFromXX(ctx, adv) {
 // Partner's expected strength is a little above the bottom of what partner has shown. With a trump fit, slam
 // values come from losing-trick count (24 less both hands' losers) checked against points (high cards plus
 // shortness or length); in notrump from high cards alone.
-function pExp(ctx) { const P = ctx.P; return P.lo + Math.min(3, (Math.min(P.hi, P.lo + 9) - P.lo) * 0.3); }
+function pExp(ctx) { const P = ctx.P; return P.lo + Math.min(BID_K('pec') ?? 3, (Math.min(P.hi, P.lo + 9) - P.lo) * (BID_K('pef') ?? 0.3)); }
 function slamVal(ctx, h, tr) { // { pts, tricks } for a slam in tr, my hand plus what partner is expected to hold
   const pe = pExp(ctx);
   if (tr === 'N') return { pts: h.H + pe, tricks: 0 };
@@ -1438,7 +1438,7 @@ function ctlBidMeaning(ctx, call) {
   const tr = agreedMajor(ctx), st = call[1], lb = ctx.lb;
   if (!tr || st === tr || st === 'N' || !lb || !sameSide(lb.by, ctx.seat) || bidValue(call) >= bidValue('4' + tr) || +call[0] < 3) return null;
   if (ctx.ours.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art))) return null;
-  return Object.assign(MM(ctx.Me.lo + 2, 37, { art: true, f: 2, agree: tr, a: `Control bid: ace, king, singleton or void in ${SNAME[st]}; slam interest in ${SNAME[tr]}`, t: 'ctl' }), { ctlS: st });
+  return Object.assign(MM(Math.max(ctx.Me.lo + 2, BID_OFF('ctl2lo') ? 0 : 29 - SD() - Math.round(pExp(ctx))), 37, { art: true, f: 2, agree: tr, a: `Control bid: ace, king, singleton or void in ${SNAME[st]}; slam interest in ${SNAME[tr]}`, t: 'ctl' }), { ctlS: st });
 }
 function slamCtl(ctx, h, T, call) {
   if (BID_OFF('ctl2') || !ctx.quiet || !ctx.weOpened || !ctx.pards.length || !ctx.mine.length || ctlTrump(ctx) || rkcbTable(ctx)) return null;
