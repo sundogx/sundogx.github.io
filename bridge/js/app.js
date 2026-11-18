@@ -35,7 +35,7 @@ async function idFromSecret(secret) {
 const LOCAL_ACTS = {
   card: (s, seat, card) => controllerOf(s, seat) === mySeat(s) ? A.card(s, seat, card) : false,
   call: (s, call, alert) => A.call(s, mySeat(s), call, alert),
-  claim: (s, n) => A.claim(s, mySeat(s), n),
+  claim: (s, n, seenLeft) => A.claim(s, mySeat(s), n, seenLeft),
   respond: (s, accept) => A.respond(s, mySeat(s), accept),
   cancelClaim: s => A.cancelClaim(s, mySeat(s)),
   undo: s => A.undo(s, mySeat(s)),
@@ -131,13 +131,27 @@ function rowsHTML(cards, legal = [], seat = '') {
     const ranks = cs.length ? cs.map(c => legal.includes(c)
       ? `<button class="rk play ${c === selCard ? 'sel' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
       : `<button class="rk" disabled>${rankLabel(c[1])}</button>`).join('') : '<span class="void">–</span>';
-    return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''} s-${s}">${SYM[s]}</span>${ranks}</div>`;
+    return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''} s-${s}">${SYM[s]}</span><span class="rr">${ranks}</span></div>`;
   }).join('')}</div>`;
 }
 // a hand shown face up on the table: one column of overlapping cards per suit
-function colsHTML(cards, legal = [], seat = '', small = false) {
+function colsHTML(cards, legal = [], seat = '', small = false, budget = 0, maxW = 0) {
   const any = legal.length > 0;
-  return `<div class="dhand ${small ? 'sm' : ''}">${UI_SUITS.map(s => {
+  const n = Math.max(1, ...UI_SUITS.map(s => cards.filter(c => suitOf(c) === s).length));
+  const ch = cssPx('--ch', 92);
+  // a long suit steps its cards closer together, so the hand leaves room for the trick and keeps the plates on the felt
+  // never so close that the ranks are hidden, unless the suit would otherwise run off the felt
+  let step = 28;
+  if (budget && n > 1) {
+    step = Math.max(Math.round(cssPx('--cw', 64) * 0.4), Math.min(28, (budget - ch) / (n - 1)));
+    const hard = budget + 140; // the most this hand may take (the trick then shrinks)
+    if (ch + (n - 1) * step > hard) step = Math.max(14, (hard - ch) / (n - 1));
+  }
+  // too wide for its room (a narrow phone): the suits overlap sideways a little, the ranks stay readable
+  const cols = UI_SUITS.filter(s => cards.some(c => suitOf(c) === s)).length, cw = cssPx('--cw', 64);
+  const gap = maxW && cols > 1 ? Math.min(4, (maxW - cols * cw) / (cols - 1)) : 4;
+  const dgap = gap < 4 ? `;--dgap:${Math.round(Math.max(-0.45 * cw, gap))}px` : '';
+  return `<div class="dhand ${small ? 'sm' : ''}" style="--dstep:${Math.round(step)}px${dgap}">${UI_SUITS.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
     if (!cs.length) return '';
     return `<div class="dcol">${cs.map(c => {
@@ -161,6 +175,16 @@ function plateHTML(t, seat) {
   }
   return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="sr">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
 }
+const cssPx = (name, dflt) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || dflt;
+// the felt's inner width, height and side-column width as laid out (estimated before the first layout)
+function feltGeom() {
+  const f = $('felt'), cs = getComputedStyle(f);
+  const innerW = (f.clientWidth || 800) - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+  const cols = cs.gridTemplateColumns.split(' ').map(parseFloat).filter(x => x > 0);
+  const bx = f.querySelector('.bbx'), boxW = bx ? bx.getBoundingClientRect().width : 92;
+  // across the top, the room between the board box and the same margin on the right
+  return { innerW, h: f.clientHeight || 530, colW: cols.length === 3 ? cols[0] : (innerW - 12) * 1.5 / 4, topW: innerW - 2 * (boxW + 8) };
+}
 function seatBlock(t, seat, where) {
   const o = occupant(t, seat);
   const mine = mySeat(t);
@@ -174,16 +198,27 @@ function seatBlock(t, seat, where) {
     inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Take seat</button></div>`;
   }
   if (where !== 'bottom' && t.hands && t.phase !== 'waiting') {
+    const side = where !== 'top', g = feltGeom(), cwid = cssPx('--cw', 64);
+    // room for this hand: its own column at the sides; across the top, the width between the corners
+    const room = side ? g.colW : g.topW;
     if (canSee(t, seat)) {
-      const side = where !== 'top';
-      const fw = $('felt').clientWidth || 800;
-      const cwid = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
-      if (side && (fw - 36) * 1.5 / 4 < 4 * cwid + 12) inner += rowsHTML(currentCards(t, seat), myLegal(t, seat), seat);
-      else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side);
+      // a dummy across the top leaves the middle ~200px for the trick; at the sides it sits in the middle row
+      const budget = where === 'top' ? g.h - 300 : g.h - 216;
+      const cards = currentCards(t, seat), longest = Math.max(0, ...UI_SUITS.map(s => cards.filter(c => suitOf(c) === s).length));
+      // a short table (phone held sideways) can't fit a long suit as a column across the top: show suit rows instead
+      const tooTall = !side && cssPx('--ch', 92) + (longest - 1) * Math.round(cwid * 0.4) > budget + 100;
+      if ((side && room < 4 * cwid + 12) || tooTall) inner += rowsHTML(cards, myLegal(t, seat), seat);
+      else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side, budget, room);
     }
-    else { const n = currentCards(t, seat).length; inner += `<span class="backs" role="img" aria-label="${n} cards" title="${n} cards">${'<i></i>'.repeat(n)}</span>`; }
+    else {
+      const n = currentCards(t, seat).length;
+      // overlap the backs more when the hand would not fit its space (narrow felts, phones)
+      const step = n > 1 ? Math.max(2, Math.min(cwid * 0.28, (room - cwid - 2) / (n - 1))) : 0;
+      inner += `<span class="backs" role="img" aria-label="${n} cards" title="${n} cards" style="--bo:${(step - cwid).toFixed(1)}px">${'<i></i>'.repeat(n)}</span>`;
+    }
   }
-  return `<div class="seat">${inner}</div>`;
+  const topMax = where === 'top' ? ` style="max-width:${Math.max(160, Math.round(feltGeom().topW))}px"` : ''; // clear of the board box
+  return `<div class="seat"${topMax}>${inner}</div>`;
 }
 // ACBL Alert Procedure, as the robots' explanations map onto it: natural calls and the common conventions
 // (Stayman, Blackwood/RKCB and replies, strong 2C and 2D waiting, takeout/negative/responsive/penalty doubles,
@@ -230,7 +265,7 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : 'bid';
     // the level is always black; only the suit symbol takes its suit's colour
     const txt = isBid ? `${a.call[0]}<span class="sy ${a.call[1] !== 'N' ? (red ? 'red' : 'blk') + ' s-' + a.call[1] : ''}">${SYM[a.call[1]]}</span>` : callText(a.call);
-    cells.push(`<div class="c ${kind} ${ak && ak.kind === 'alert' ? 'alert' : al ? 'expl' : ''}" aria-label="${callText(a.call)}" ${al ? `data-alert="${esc(expl)}" title="${esc(expl)}"` : ''}>${txt}</div>`);
+    cells.push(`<div class="c ${kind} ${ak && ak.kind === 'alert' ? 'alert' : al ? 'expl' : ''}" aria-label="${callText(a.call)}${al ? (ak && ak.kind === 'alert' ? ', alerted' : ', explained') : ''}" ${al ? `data-alert="${esc(expl)}" data-ai="${i}" title="${esc(expl)}" tabindex="0" role="button"` : ''}>${txt}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
   return `<div class="agrid">${cells.join('')}</div>`;
@@ -273,8 +308,10 @@ function renderFelt() {
   if (t.phase === 'waiting') {
     const open = SEATS.filter(s => !t.seats[s]).map(s => SEAT_NAME[s]);
     center = `<div class="waitmsg">${mine ? 'Waiting for ' + open.join(', ') + '.<br><span class="note" style="color:inherit;opacity:.8">Invite friends with code ' + t.id + ' or this page\'s link, or add robots.</span>' : 'Choose a seat to play, or watch from here.'}</div>`;
+  } else if (t.masked) { // team-match onlooker: the board is hidden until both rooms have played it
+    center = `<div class="waitmsg">${t.phase === 'done' ? 'Waiting for the other room to finish this board.' : 'A board is in progress.'}<br><span class="note" style="color:inherit;opacity:.85">In a team match, onlookers see each board once both rooms have played it.</span></div>`;
   } else if (t.phase === 'auction') {
-    center = t.masked ? '<div class="waitmsg">A board is in progress.<br><span class="note" style="color:inherit;opacity:.85">In a team match, onlookers see each board once both rooms have played it.</span></div>' : auctionGridHTML(t);
+    center = auctionGridHTML(t);
   } else if (t.phase === 'play' || t.phase === 'done') {
     const tricks = t.play.tricks;
     const tr = tricks[tricks.length - 1];
@@ -287,7 +324,7 @@ function renderFelt() {
       if (trickHold.key !== key) { trickHold.key = key; trickHold.until = Date.now() + trickHoldMs(); clearTimeout(trickHold.timer); trickHold.timer = setTimeout(() => { if (T) renderFelt(); }, trickHoldMs() + 20); }
       cleared = Date.now() >= trickHold.until;
     }
-    if (tr && !cleared) {
+    if (tr && !cleared && t.phase !== 'done') { // once the board is over the result panel takes the middle (the play is in the hand record)
       center = `<div class="trick ${full && t.phase === 'play' ? 'full' : ''}" ${full && t.phase === 'play' ? 'data-cleartrick="1" title="Tap to clear"' : ''}>${tr.cards.map(pc => {
         const pos = Object.keys(o).find(k => o[k] === pc.seat);
         return `<div class="tslot ${pos}">${cardHTML(pc.card, pc.seat === win ? 'win' : '', 'tabindex="-1"')}</div>`;
@@ -312,8 +349,20 @@ function renderFelt() {
     bn += undoBanner(t);
   }
   const lastOK = t.phase === 'play' && completedTricks(t.play).length > 0;
-  html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}${bn ? `<div class="bwrap">${bn}</div>` : ''}</div>`;
+  html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}${bn ? `<div class="bwrap ${t.phase === 'done' ? 'done' : ''}">${bn}</div>` : ''}</div>`;
   $('felt').innerHTML = html;
+  fitTrick();
+  const g = $('felt').querySelector('.agrid'); if (g) g.scrollTop = g.scrollHeight; // a long auction scrolls; show the latest calls
+}
+// Shrink the trick's cards when the middle of the table is too small for them, so they never cover the hands or plates.
+function fitTrick() {
+  const tr = $('felt').querySelector('.trick'), pc = tr && tr.parentElement;
+  if (!tr || !pc.clientWidth) return;
+  const cs = getComputedStyle(tr), v = n => parseFloat(cs.getPropertyValue(n)) || 0;
+  const tw = v('--tw'), th = v('--th'), tg = v('--tg');
+  if (!tw || !th) return;
+  const k = Math.max(0.5, Math.min(1, (pc.clientWidth - 2) / (2 * (tw + tg)), (pc.clientHeight - 2) / (2 * th + 8)));
+  tr.style.setProperty('--tk', k.toFixed(3));
 }
 const TRICK_HOLD_MS = 1200;
 const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1;
@@ -367,21 +416,42 @@ function renderHand() {
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
   el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
 }
+const STRAIN_WORD = { C: 'clubs', D: 'diamonds', H: 'hearts', S: 'spades', N: 'notrump' };
+let bidFocus = null; // the bidding-box button that last had the focus
+let kbdNav = false;  // the last input was the keyboard: when your turn to bid comes back, the focus returns to the box
+document.addEventListener('keydown', e => { if (['Tab', 'Enter', ' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) kbdNav = true; }, true);
+document.addEventListener('pointerdown', () => { kbdNav = false; }, true);
+const bidSeated = t => !!(t.phase === 'auction' && mySeat(t) && !t.timeUp && !t.masked);
+const bidActive = () => !$('bidArea').classList.contains('hidden') && !$('bidArea').classList.contains('idle');
 function renderBidBox() {
   const t = T, mine = mySeat(t);
-  const show = t.phase === 'auction' && mine && turnSeat(t) === mine && !t.timeUp;
-  $('bidArea').classList.toggle('hidden', !show);
-  if (!show) { selLevel = null; pendingCall = null; $('bbConfirm').classList.add('hidden'); return; }
-  const legal = legalCalls(t.dealer, t.auction);
+  // While you sit in the auction the box stays in place (greyed out between your turns), so the page doesn't jump.
+  const seated = bidSeated(t);
+  const show = seated && turnSeat(t) === mine;
+  const area = $('bidArea'), ae = document.activeElement;
+  // the button that had the focus (keyboard users), to put it back after the box is redrawn
+  let keep = ae && area.contains(ae) && ['level', 'strain', 'call', 'confirmcall', 'cancelcall'].find(k => ae.dataset[k] !== undefined);
+  keep = keep ? `[data-${keep}="${ae.dataset[keep]}"]` : null;
+  if (keep) bidFocus = keep;
+  area.classList.toggle('hidden', !seated);
+  area.classList.toggle('idle', !!seated && !show);
+  if (!show) { selLevel = null; pendingCall = null; $('bbConfirm').classList.add('hidden'); }
+  if (!seated) return;
+  const legal = show ? legalCalls(t.dealer, t.auction) : [];
   const minLevel = [1, 2, 3, 4, 5, 6, 7].find(l => STRAINS.some(s => legal.includes(l + s)));
   if (selLevel && !STRAINS.some(s => legal.includes(selLevel + s))) selLevel = null;
-  $('bbLevels').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${selLevel === l ? 'sel' : ''}" data-level="${l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('');
+  $('bbLevels').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${selLevel === l ? 'sel' : ''}" data-level="${l}" aria-pressed="${selLevel === l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('');
   $('bbStrains').innerHTML = STRAINS.map(s => {
     const ok = selLevel && legal.includes(selLevel + s);
-    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s} ${ok && pendingCall === selLevel + s ? 'sel' : ''}" data-strain="${s}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
+    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s} ${ok && pendingCall === selLevel + s ? 'sel' : ''}" data-strain="${s}" aria-label="${selLevel ? selLevel + ' ' : ''}${STRAIN_WORD[s]}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
   }).join('');
   const ps = c => pendingCall === c ? 'sel' : '';
-  $('bbSpecial').innerHTML = `<button class="bcard pass ${ps('P')}" data-call="P">Pass</button><button class="bcard dbl ${ps('X')}" data-call="X" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl ${ps('XX')}" data-call="XX" ${legal.includes('XX') ? '' : 'disabled'}>XX</button>`;
+  $('bbSpecial').innerHTML = `<button class="bcard pass ${ps('P')}" data-call="P" ${show ? '' : 'disabled'}>Pass</button><button class="bcard dbl ${ps('X')}" data-call="X" aria-label="Double" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl ${ps('XX')}" data-call="XX" aria-label="Redouble" ${legal.includes('XX') ? '' : 'disabled'}>XX</button>`;
+  if (show && bidFocus && (keep || (kbdNav && (!document.activeElement || document.activeElement === document.body)))) {
+    const el = area.querySelector(bidFocus);
+    (el && !el.disabled ? el : area.querySelector('[data-call="P"]')).focus({ preventScroll: true }); // e.g. a strain that is no longer open: Pass
+  }
+  if (!show) return;
   if (pendingCall && !legal.includes(pendingCall)) pendingCall = null;
   const cf = $('bbConfirm');
   cf.classList.toggle('hidden', !pendingCall);
@@ -406,7 +476,7 @@ function renderAuctionPane(t) {
 function renderChatPane(t) {
   const log = $('chatLog');
   const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
-  log.innerHTML = redSym(t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '');
+  log.innerHTML = redSym(t.chat.length ? t.chat.map(m => m.sys ? `<div class="msg sys">${esc(m.text)}</div>` : `<div class="msg"><span class="who">${esc(t.local && m.from === me.id && m.name === 'Player' ? 'You' : m.name)}${m.seat ? ' (' + m.seat + ')' : m.kib ? ' (spectators)' : ''}:</span> ${esc(m.text)}</div>`).join('') : '');
   if (atBottom) log.scrollTop = log.scrollHeight;
 }
 function renderResultsPane(t) {
@@ -419,7 +489,7 @@ function renderResultsPane(t) {
     rowsR = t.history.map((h, i) => {
       const o = h.other; const im = o ? toImps(h.scoreNS - o.scoreNS) : null;
       if (im !== null) { imps += im; impN++; }
-      return `<tr class="click" data-record="${i}"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td>${o ? cShort(o.contract) + (o.contract ? ' ' + resultText(o.contract, o.declTricks) : '') : ''}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
+      return `<tr class="click" data-record="${i}" tabindex="0"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td>${o ? cShort(o.contract) + (o.contract ? ' ' + resultText(o.contract, o.declTricks) : '') : ''}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
     }).reverse().join('');
     if (impN) summary = `<p class="note" style="margin:-4px 0 8px">Against a table of four robots playing the same deals, N-S ${imps >= 0 ? 'won' : 'lost'} ${Math.abs(imps)} IMP${Math.abs(imps) === 1 ? '' : 's'} over ${impN} board${impN === 1 ? '' : 's'}.</p>`;
   } else if (t.match) {
@@ -434,7 +504,7 @@ function renderResultsPane(t) {
       const im = o && c ? toImps(o.scoreNS - c.scoreNS) : null;
       if (im !== null) { if (im > 0) t1 += im; else t2 -= im; }
       const i = t.history.findIndex(h => h.board === bd);
-      return `<tr ${i >= 0 ? `class="click" data-record="${i}"` : ''}><td>${bd}</td><td>${o ? cShort(o.contract) + (o.contract ? ' ' + resultText(o.contract, o.declTricks) : '') : '…'}</td><td class="num">${o ? o.scoreNS : ''}</td><td>${c ? cShort(c.contract) + (c.contract ? ' ' + resultText(c.contract, c.declTricks) : '') : '…'}</td><td class="num">${c ? c.scoreNS : ''}</td><td class="num">${im === null ? '' : im > 0 ? im + ' T1' : im < 0 ? -im + ' T2' : '0'}</td></tr>`;
+      return `<tr ${i >= 0 ? `class="click" data-record="${i}" tabindex="0"` : ''}><td>${bd}</td><td>${o ? cShort(o.contract) + (o.contract ? ' ' + resultText(o.contract, o.declTricks) : '') : '…'}</td><td class="num">${o ? o.scoreNS : ''}</td><td>${c ? cShort(c.contract) + (c.contract ? ' ' + resultText(c.contract, c.declTricks) : '') : '…'}</td><td class="num">${c ? c.scoreNS : ''}</td><td class="num">${im === null ? '' : im > 0 ? im + ' T1' : im < 0 ? -im + ' T2' : '0'}</td></tr>`;
     }).join('');
     summary = `<div class="totals"><span>Team 1: ${t1} IMPs</span><span>Team 2: ${t2} IMPs</span></div><p class="note" style="margin:-4px 0 8px">Team 1 sits N-S in the Open room and E-W in the Closed room.</p>`;
     note = 'A board is scored once both rooms have finished it.';
@@ -444,7 +514,7 @@ function renderResultsPane(t) {
       const par = parFor(h);
       const im = par ? toImps(h.scoreNS - par.scoreNS) : null;
       if (im !== null) { imps += im; impN++; }
-      return `<tr class="click" data-record="${i}"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td class="num">${par ? par.scoreNS : DD.failed ? '–' : '…'}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
+      return `<tr class="click" data-record="${i}" tabindex="0"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td class="num">${par ? par.scoreNS : DD.failed ? '–' : '…'}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
     }).reverse().join('');
     if (impN) summary = `<p class="note" style="margin:-4px 0 8px">N-S ${sgn(imps)} IMPs against par over ${impN} board${impN === 1 ? '' : 's'}.</p>`;
     if (!DD.failed) note += ' Par fills in once the analysis finishes.';
@@ -476,15 +546,24 @@ function render() {
   autoTab(T);
   if (selCard) { const ts = turnSeat(T); if (T.phase !== 'play' || !ts || !myLegal(T, ts).includes(selCard)) selCard = null; }
   const ae = document.activeElement; let keep = null;
-  if (ae && ae !== document.body && ae.dataset) for (const a of ['play', 'level', 'strain', 'call', 'confirmcall', 'cancelcall', 'claim', 'next', 'record', 'review']) {
-    if (ae.dataset[a] !== undefined) { keep = `[data-${a}="${ae.dataset[a]}"]`; break; }
+  if (ae && ae !== document.body && ae.dataset) for (const a of ['play', 'level', 'strain', 'call', 'confirmcall', 'cancelcall', 'claim', 'next', 'record', 'review', 'ai']) {
+    if (ae.dataset[a] !== undefined) { const box = ae.closest('#felt, #myHand, #bidArea, #side'); keep = `${box ? '#' + box.id + ' ' : ''}[data-${a}="${ae.dataset[a]}"]`; break; }
   }
+  // the table is shorter while the bidding box is below it (set before drawing, since the felt measures itself)
+  $('tableView').classList.toggle('bidding', bidSeated(T));
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
   if (keep && (!document.activeElement || document.activeElement === document.body)) { const el = document.querySelector(keep); if (el) el.focus({ preventScroll: true }); }
   lastRenderedVersion = T.version;
   refreshOtherRoom();
   if (T.hands && T.phase === 'done' && SEATS.every(s => T.hands[s].every(c => c[0] !== '?'))) requestDD(T.hands, true, T.contract ? T.contract.strain : null);
-  const mt = isMyTurn(T); if (mt && !wasMyTurn) beep(); wasMyTurn = mt;
+  const mt = isMyTurn(T);
+  if (mt && !wasMyTurn) {
+    beep();
+    // your turn to bid: bring the bidding box into view (laptops and phones may have it below the fold)
+    if (T.phase === 'auction' && bidActive() && !$('modalRoot').firstChild) $('bidArea').scrollIntoView({ block: 'nearest' });
+  }
+  wasMyTurn = mt;
+  claimFeedback(T); chatUnread(T);
   updateTitle();
   scheduleRobot();
 }
@@ -499,7 +578,8 @@ function closeModal() {
 }
 function modal(html) {
   if (!$('modalRoot').firstChild) modalReturn = document.activeElement;
-  $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box">${html}<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div></div></div>`;
+  // a close button that stays at the top while a long window (the hand record) scrolls, and one at the bottom
+  $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box"><div class="mtop"><button class="btn small mclose" data-close="1" aria-label="Close">✕</button></div>${html}<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div></div></div>`;
   const m = $('modalRoot').firstChild;
   setBackgroundInert(true);
   m.addEventListener('click', e => { if (e.target === m || e.target.dataset.close) closeModal(); });
@@ -512,7 +592,7 @@ function modal(html) {
     else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   });
   openRecord = null;
-  const b = m.querySelector('button'); if (b) b.focus();
+  const b = m.querySelector('button:not(.mclose):not(:disabled)') || m.querySelector('button'); if (b) b.focus({ preventScroll: true });
   return m;
 }
 function showLastTrick() {
@@ -551,14 +631,65 @@ function otherLine(h) {
     ${o.auction ? `<details><summary class="note">Their auction</summary>${auctionGridHTML(T, o.auction, h.dealer, h.vul, null)}</details>` : ''}`;
 }
 function showClaimDialog() {
+  if (!T || T.phase !== 'play' || T.claim) return;
   const left = 13 - completedTricks(T.play).length;
   let pick = left;
-  const m = modal(`<h3>Claim</h3><p>How many of the remaining ${left} tricks will your side take?</p><div class="numgrid">${Array.from({ length: left + 1 }, (_, n) => `<button class="btn ${n === left ? 'sel' : ''}" data-n="${n}">${n}</button>`).join('')}</div><div class="row"><button class="btn primary" id="doClaim">Claim ${left}</button><span class="note">Choosing 0 concedes the rest.</span></div>`);
+  const m = modal(`<h3>Claim</h3><p>How many of the remaining ${left} tricks will your side take?</p><div class="numgrid">${Array.from({ length: left + 1 }, (_, n) => `<button class="btn ${n === left ? 'sel' : ''}" data-n="${n}" aria-pressed="${n === left}">${n}</button>`).join('')}</div><div class="row"><button class="btn primary" id="doClaim">Claim ${left}</button><span class="note">Choosing 0 concedes the rest.</span></div>`);
   m.querySelectorAll('[data-n]').forEach(b => b.addEventListener('click', () => {
-    pick = +b.dataset.n; m.querySelectorAll('[data-n]').forEach(x => x.classList.toggle('sel', x === b)); $('doClaim').textContent = 'Claim ' + pick;
+    pick = +b.dataset.n; m.querySelectorAll('[data-n]').forEach(x => { x.classList.toggle('sel', x === b); x.setAttribute('aria-pressed', x === b); }); $('doClaim').textContent = 'Claim ' + pick;
   }));
-  $('doClaim').addEventListener('click', () => { closeModal(); doAct('claim', pick); });
+  $('doClaim').addEventListener('click', () => {
+    closeModal();
+    if (!T || T.phase !== 'play' || T.claim) { toast('The board moved on, so there is nothing to claim.'); return; }
+    // a trick finished while the dialog was open: ask again with the new number rather than send a claim that can't fit
+    if (13 - completedTricks(T.play).length !== left) { toast('A trick was completed meanwhile. Choose again.'); showClaimDialog(); return; }
+    const lc = T.chat[T.chat.length - 1];
+    claimWatch = { id: T.id, board: T.board, mark: lc ? chatKey(lc) : '' };
+    doAct('claim', pick, left); // the count shown, so a claim made against a stale count is refused
+  });
 }
+// Tell the claimer when a claim is turned down (otherwise it's only a line in the chat).
+let claimWatch = null;
+const chatKey = m => (m.n || m.ts || 0) + '|' + m.text;
+function claimFeedback(t) {
+  const mine = mySeat(t);
+  if (t.claim && mine && t.claim.by === mine && !claimWatch) claimWatch = { id: t.id, board: t.board, mark: '' };
+  if (!claimWatch || t.claim) return;
+  const w = claimWatch; claimWatch = null;
+  if (w.id !== t.id || w.board !== t.board || t.phase !== 'play') return; // accepted (board over), or another table
+  for (let i = t.chat.length - 1; i >= Math.max(0, t.chat.length - 10); i--) {
+    const m = t.chat[i];
+    if (w.mark && chatKey(m) === w.mark) return; // nothing new about the claim
+    if (!m.sys) continue;
+    if (/rejected the claim|claim lapsed/.test(m.text)) { toast(m.text.replace('rejected the claim', 'rejected your claim'), 4500); return; }
+    if (/withdrew the claim| claims \d+ of /.test(m.text)) return;
+  }
+}
+// An unread mark on the Chat tab (and the sidebar button) when someone writes while the chat is out of sight.
+let chatSeen = { id: null, n: 0, last: '' };
+function chatVisible() {
+  if (document.hidden || currentTab() !== 'chat' || $('tableView').classList.contains('hidden')) return false;
+  if (drawerMode.matches && !$('side').classList.contains('open')) return false;
+  const r = $('chatLog').getBoundingClientRect();
+  return r.bottom > 0 && r.top < window.innerHeight;
+}
+function chatUnread(t) {
+  const lc = t.chat[t.chat.length - 1], last = lc ? chatKey(lc) : '';
+  if (chatSeen.id !== t.id) chatSeen = { id: t.id, n: 0, last }; // a table you just opened: its old chat counts as read
+  if (last !== chatSeen.last) {
+    let fresh = 0;
+    for (let i = t.chat.length - 1; i >= 0; i--) { const m = t.chat[i]; if (chatKey(m) === chatSeen.last) break; if (!m.sys && m.from !== me.id) fresh++; }
+    chatSeen.last = last;
+    if (fresh && !chatVisible()) chatSeen.n += fresh;
+  }
+  if (chatSeen.n && chatVisible()) chatSeen.n = 0;
+  const on = chatSeen.n > 0;
+  const tab = document.querySelector('.tabs [data-tab="chat"]');
+  tab.classList.toggle('unread', on); $('sideBtn').classList.toggle('unread', on);
+  tab.setAttribute('aria-label', on ? `Chat, ${chatSeen.n} unread` : 'Chat');
+}
+const recheckUnread = () => { if (T && chatSeen.n && chatVisible()) chatUnread(T); };
+window.addEventListener('scroll', recheckUnread, { passive: true });
 
 
 // ---------- turn sound ----------
@@ -680,15 +811,29 @@ function releaseWakeLock() { wakeWanted = false; if (wakeLock) { wakeLock.releas
 document.addEventListener('visibilitychange', () => { if (!document.hidden && wakeWanted) ensureWakeLock(); });
 
 // ----- installable app and offline practice -----
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => { });
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  navigator.serviceWorker.register('sw.js').catch(() => { });
+  // a new version was installed while this page was open: offer to reload (it loads by itself next time anyway)
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'updated' || document.querySelector('.toast.update')) return;
+    const d = document.createElement('div'); d.className = 'toast update'; d.setAttribute('role', 'status');
+    d.innerHTML = 'A new version of the app is ready. <button class="btn small">Reload</button>';
+    d.querySelector('button').addEventListener('click', () => location.reload());
+    document.body.appendChild(d); setTimeout(() => d.remove(), 15000);
+  });
+}
 
 // ----- "More" menu on phones -----
 const drawerMode = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
 function syncSideInert() { $('side').inert = drawerMode.matches && !$('side').classList.contains('open'); }
-function setSide(open) { $('side').classList.toggle('open', open); $('sideBtn').setAttribute('aria-expanded', open); syncSideInert(); if (open) { const t = $('side').querySelector('[aria-selected=true]'); if (t) t.focus(); } else $('sideBtn').focus(); }
+function setSide(open) { $('side').classList.toggle('open', open); $('sideBtn').setAttribute('aria-expanded', open); syncSideInert(); if (open) { const t = $('side').querySelector('[aria-selected=true]'); if (t) t.focus(); } else $('sideBtn').focus(); recheckUnread(); }
 drawerMode.addEventListener('change', syncSideInert); syncSideInert();
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('side').classList.contains('open') && !$('modalRoot').firstChild) setSide(false); });
-$('sideBtn').addEventListener('click', () => setSide(!$('side').classList.contains('open')));
+$('sideBtn').addEventListener('click', () => {
+  if (drawerMode.matches) { if (!$('side').classList.contains('open') && $('sideBtn').classList.contains('unread')) { tabAuto = false; selectTab('chat'); } setSide(!$('side').classList.contains('open')); return; }
+  // phone held upright: the sidebar is below the table, so the button takes you to the chat
+  tabAuto = false; selectTab('chat'); $('side').scrollIntoView({ block: 'start' }); recheckUnread();
+});
 $('sideClose').addEventListener('click', () => setSide(false));
 $('moreBtn').addEventListener('click', () => {
   const bar = document.querySelector('.topbar'), open = !bar.classList.contains('open');
@@ -768,6 +913,17 @@ function showOptions() {
 document.addEventListener('click', e => { if (e.target.closest('[data-options]')) showOptions(); });
 
 // ---------- keyboard ----------
+// results rows and explained calls act like buttons for the keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && $('explainPop')) { hideExplain(); e.stopImmediatePropagation(); return; }
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const el = e.target.closest && e.target.closest('tr[data-record], .agrid [data-alert]');
+  if (!el || el !== e.target) return;
+  if (e.key === 'Enter' && pendingCall && bidActive() && !$('modalRoot').firstChild) return; // Enter confirms the call you picked
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (el.dataset.alert) { if ($('explainPop')) hideExplain(); else showExplain(el, el.dataset.alert); }
+  else showRecord(+el.dataset.record);
+}, true);
 const sortForHand = cards => cards.slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
 document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -782,7 +938,7 @@ document.addEventListener('keydown', e => {
   }
   if (!T) return;
   const onButton = tag === 'button' && (k === 'Enter' || k === ' ') && (e.target.matches('[data-play]') || (!pendingCall && !selCard));
-  if (T.phase === 'auction' && !$('bidArea').classList.contains('hidden')) {
+  if (T.phase === 'auction' && bidActive()) {
     const legal = legalCalls(T.dealer, T.auction);
     if (k === 'Enter' && pendingCall && !onButton) { sendCall(pendingCall, true); e.preventDefault(); return; }
     if (k === 'Escape' && pendingCall) { pendingCall = null; renderBidBox(); e.preventDefault(); return; }
@@ -814,7 +970,7 @@ function showSettings() {
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setLock" ${t.locked ? 'checked' : ''}> Lock seats, so only you can seat people</label>
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setUndo" ${t.allowUndo !== false ? 'checked' : ''}> Allow undo</label>
     ${t.local ? '' : `<label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setUndoAsk" ${t.undoAsk ? 'checked' : ''}> Opponents must agree to an undo</label>`}
-    ${t.local ? '' : `<label class="row" style="gap:8px;margin-bottom:4px"><input type="checkbox" id="setFriends" ${friendsMode(t) ? 'checked' : ''}> Friends mode: stronger robot card play</label>
+    ${t.local || !t.private ? '' : `<label class="row" style="gap:8px;margin-bottom:4px"><input type="checkbox" id="setFriends" ${friendsMode(t) ? 'checked' : ''}> Friends mode: stronger robot card play</label>
     <p class="note" style="margin:0 0 12px">The robots work out their cards in a player's browser, so their hands reach that browser. Turn it off when playing with strangers.</p>`}
     <label class="row" style="gap:8px;margin-bottom:8px"><input type="checkbox" id="setKib" ${t.kibSee !== false ? 'checked' : ''} ${t.match ? 'disabled' : ''}> Spectators see all four hands${t.match ? ' (never in a team match)' : ' (they then can\'t sit down mid-board)'}</label>
     <label class="row" style="gap:8px;margin-bottom:4px">Time per board <select id="setTime">${[0, 5, 7, 10, 15].map(m => `<option value="${m}" ${(t.boardLimit || 0) === m ? 'selected' : ''}>${m ? m + ' minutes' : 'No limit'}</option>`).join('')}</select></label>
@@ -903,6 +1059,7 @@ function sendChat() { const v = $('chatInput').value.trim(); if (!v) return; $('
 function selectTab(name) {
   document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.tab === name));
   ['auction', 'chat', 'results'].forEach(n => $('pane-' + n).classList.toggle('hidden', n !== name));
+  recheckUnread();
 }
 const currentTab = () => (document.querySelector('.tabs button[aria-selected=true]') || {}).dataset?.tab;
 let tabAuto = true, tabPhaseKey = null;
@@ -941,7 +1098,10 @@ function needName() {
   return true;
 }
 $('practiceBtn').addEventListener('click', () => {
-  const nm = me.name || $('nameInput').value.trim() || 'You';
+  // a name typed in the box counts (the chat uses it too), even if Save name wasn't pressed
+  const typed = $('nameInput').value.trim().slice(0, 20);
+  if (typed && typed !== me.name) { me.name = typed; saveMe(); }
+  const nm = me.name || 'You';
   const t = newTable({ name: 'Practice', local: true });
   t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: nm }, W: { kind: 'robot' } };
   startBoard(t);
@@ -991,18 +1151,20 @@ async function loadLobby() {
 }
 
 // ---------- navigation ----------
+// a window (hand record, options...) or call explanation left open must not stay over the next screen
+function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; }
 function showTableView() {
   $('home').classList.add('hidden'); $('tableView').classList.remove('hidden');
   clearInterval(lobbyTimer);
 }
 function openTable(t) { // practice
-  Net.close();
+  leaveModals(); Net.close();
   T = t; tKey = null; lastRenderedVersion = -1; otherRoom = null; watchers = 0; wasMyTurn = false; clockSkew = 0;
   showTableView(); render();
   history.replaceState(null, '', location.pathname);
 }
 function openOnline(code) {
-  clearTimeout(robotTimer); robotTimer = null;
+  clearTimeout(robotTimer); robotTimer = null; leaveModals();
   if (T && !T.local) { // leaving another online table, e.g. switching team-match rooms
     T = null; selCard = null; pendingCall = null; selLevel = null;
     $('felt').innerHTML = '<div class="pos-center"><div class="waitmsg">Connecting…</div></div>';
@@ -1016,7 +1178,7 @@ function openOnline(code) {
   });
 }
 function goHome() {
-  releaseWakeLock();
+  releaseWakeLock(); leaveModals();
   Net.close(); clearTimeout(robotTimer); robotTimer = null;
   T = null; tKey = null; DD.queue.length = 0; // stop analysing the table you left
   for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // ...and let it start again if you come back
