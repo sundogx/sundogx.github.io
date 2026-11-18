@@ -454,8 +454,9 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
 // claimSolver is an exact double-dummy search in plain JavaScript (the server can't run the WebAssembly solver,
 // and the page's is asynchronous): alpha-beta as a yes/no question ("can this side take n?"), one card of each run
 // of equals, a transposition table at the start of each trick keyed by the relative order of the cards left, and a
-// quick count of top winners for the side on lead. Up to 8 tricks left it takes a few milliseconds at worst
-// (tests/claimtest.js); past its node budget it answers null and the callers fall back to claimTopTricks.
+// quick count of top winners for the side on lead. Up to 7 tricks left it always finishes within the server budget
+// (p99 about 2 ms), 8 tricks 90% (p99 5 ms; tests/claimtest.js); past its node budget it answers null and the
+// callers fall back to claimTopTricks.
 const CL_SUIT = { S: 0, H: 1, D: 2, C: 3 }, CL_BUDGET = { budget: true };
 // Node budgets (about 0.4 microseconds a node): answering a claim, and a robot deciding whether to claim (tried at
 // each of its leads). The server has 10 ms of CPU for a whole request; a practice table in the page has more time.

@@ -26,12 +26,12 @@ const N = +process.argv[2] || 300;
     const hist = t.history.length;
     if (snap) { // the time a robot takes to decide whether to claim (measured apart; robotStep does it again)
       const by = G.controllerOf(t, G.turnSeat(t));
-      const c0 = performance.now(); G.robotClaimCount(t, by, 6000); const c = performance.now() - c0;
+      const c0 = process.cpuUsage(); G.robotClaimCount(t, by, 6000); const cu = process.cpuUsage(c0), c = (cu.user + cu.system) / 1000;
       cms.push(c);
     }
-    const t0 = performance.now();
+    const t0 = process.cpuUsage();
     const r = G.A.robotStep(t);
-    const d = performance.now() - t0; ms += d; steps++; if (d > maxStep) maxStep = d;
+    const du = process.cpuUsage(t0), d = (du.user + du.system) / 1000; ms += d; steps++; if (d > maxStep) maxStep = d;
     if (r === false) { errors++; console.log('robot step failed', t.phase); break; }
     if (t.history.length === hist) continue;
     boards++;
@@ -55,8 +55,8 @@ const N = +process.argv[2] || 300;
   const claimLines = t.chat.filter(m => / claims \d+ of /.test(m.text)).length;
   console.log(`${boards} boards, ${played} played, ${claims} ended by a robot claim (tricks left when claimed: ${JSON.stringify(byLeft)}; ${saved} tricks not played out)`);
   console.log(`claims vs double dummy: ${wrongDD} different. Played out by the robots instead: same result ${same}, declarer more ${better}, declarer fewer ${worse}`);
-  console.log(`robot step time: average ${(ms / steps).toFixed(2)} ms, max ${maxStep.toFixed(1)} ms; claim lines in the chat (last 120 lines): ${claimLines}; errors ${errors}`);
+  console.log(`robot step CPU time: average ${(ms / steps).toFixed(2)} ms, max ${maxStep.toFixed(1)} ms; claim lines in the chat (last 120 lines): ${claimLines}; errors ${errors}`);
   cms.sort((a, b) => a - b);
-  console.log(`deciding whether to claim (${cms.length} times): median ${cms[cms.length >> 1].toFixed(2)} ms, p99 ${cms[Math.floor(cms.length * 0.99)].toFixed(2)} ms, max ${cms[cms.length - 1].toFixed(2)} ms`);
+  console.log(`deciding whether to claim, CPU time (${cms.length} times): median ${cms[cms.length >> 1].toFixed(2)} ms, p99 ${cms[Math.floor(cms.length * 0.99)].toFixed(2)} ms, max ${cms[cms.length - 1].toFixed(2)} ms`);
   if (errors || wrongDD) process.exitCode = 1;
 })();
