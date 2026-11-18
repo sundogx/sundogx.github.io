@@ -104,9 +104,9 @@ const OFF = k => ((typeof globalThis !== 'undefined' && globalThis.BOT_OFF) || B
 // ---- Card play v2: finesses, hold-ups, covering honours, ruffing in the short hand, signals ----
 // Weights of the features in swF (a defender's lead after the opening lead) and dsF (a discard), by contract kind:
 // fitted to double-dummy results with tests/heurfit.js (ridge regression, x10).
-const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid'];
+const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid', 'aceNoK', 'masters2', 'trumpPassive', 'declRuffs', 'cashUrgent', 'intoTenace', 'noHonour', 'tenace', 'unseen'];
 const BOT_DISCARD_NAMES = ['hcp', 'len', 'masters', 'mateLen', 'mateMasters', 'dummyLen', 'guardDummy', 'unguards', 'voidToRuff', 'singleton', 'sigUp', 'sigDown', 'ledSuit', 'higherUnseen', 'unseen', 'longCards', 'trump'];
-const BOT_SWITCH_W = { NT: [1.9, -0.4, 0.6, -0.7, 0, 0.2, 1, 0, 0, 0, -0.1, 2.7, 0.2, -0.7, 2.2, 0, 0, -2.2, -0.2, 0.3, -1.5, -0.2, 0, 4.2], suit: [0.9, -0.5, 0.4, 0.4, -0.5, 0.4, 0.2, -4.2, -1.4, -0.2, 0.1, 1.7, 0, -0.2, 0.6, -0.2, 0, -1, 0.3, 1.1, -1, -0.4, 0.9, -0.6] };
+const BOT_SWITCH_W = { NT: [1, -0.6, 1.2, 0.2, 0, 0, 1.4, 0, 0, 0.2, 0.3, 2.7, 0, -0.7, 1.6, 0, 0, -2.1, 0.1, 1.8, -1, 0, 0, 1, -1.7, 2.9, 0, 0, 0, 0.6, 0.3, 0.8, 0.7], suit: [0.4, -0.3, 0.2, -0.1, -2.1, -0.2, 0.7, -3.4, -0.9, -0.6, 0, 1.5, 0.1, -0.2, 0.7, 0.1, 0.7, -0.6, 0.3, 0.3, -0.8, -0.4, 0.4, 0.4, -0.7, -0.3, 1.9, -0.8, 0, -0.3, 0.1, -0.4, 0] };
 const BOT_DISCARD_W = { declNT: [-0.2, 0.8, -0.3, 0, 0, 0, 0.1, -0.9, 0, -0.8, 0, 0, 0, 0.2, 0, 0.1, 0], declSuit: [-0.2, 0.5, 0.1, 0, -0.1, 0, 0.4, 0.1, 1.1, -0.6, 0, 0, 0, 0.4, 0, -0.2, 0], defNT: [0, 0.3, -0.3, 0, 0, -0.2, 0.5, -0.6, 0, -0.7, 0.2, -0.1, 0.1, 0.3, 0, 0.6, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
 function botFeatures(t, seat, kind) { const r = botPlay(t, seat, kind); return r && r.opts ? r : null; }
 let botWhy = ''; // which rule chose the last card (tests/heurstim.js leak report)
@@ -314,6 +314,12 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     };
     // features of leading each suit (weights fitted to double-dummy results by tests/heurfit.js)
     const bidBy = (who, s) => (t.auction || []).some(a => a.by === who && /^[1-7][CDHS]$/.test(a.call) && a.call[1] === s);
+    // dummy has a long suit it can run (discards for declarer's losers)
+    const dummyRun = s0 => SUITS.some(x => x !== s0 && x !== trump && of(dummyCards, x).length >= 4 && of(dummyCards, x).filter(isMaster).length >= 2);
+    // dummy holds a tenace (two honours with exactly one unseen card between them)
+    const dmTenace = dm => { const h = dm.filter(x => rankOf(x) >= 9).sort((a, b) => rankOf(b) - rankOf(a)); for (let i = 0; i + 1 < h.length; i++) { const gap = unseenAbove(h[i + 1]).filter(u => rankOf(u) < rankOf(h[i])).length; if (gap === 1 && isMaster(h[i])) return true; } return false; };
+    const myTenace = srt => { for (let i = 0; i + 1 < srt.length; i++) if (rankOf(srt[i + 1]) >= 9 && rankOf(srt[i]) - rankOf(srt[i + 1]) === 2 && !known.has(srt[0][0] + RANKS[rankOf(srt[i]) - 1])) return true; return false; };
+    const unseenN = s0 => { let n = 0; for (const r of RANKS) if (!known.has(s0 + r)) n++; return n; };
     const swF = s => {
       const dm = of(dummyCards, s), mine = of(my, s), dT = trump ? of(dummyCards, trump).length : 0, myT = trump ? of(my, trump).length : 0;
       const srt = mine.slice().sort((a, b) => rankOf(b) - rankOf(a)), side = trump && s !== trump;
@@ -331,6 +337,12 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
         bidBy(decl, s) ? 1 : 0, bidBy(dummy, s) ? 1 : 0, bidBy(partner, s) ? 1 : 0,
         dm.filter(isMaster).length, dm.length >= 4 && dm.some(x => rankOf(x) >= 10) ? 1 : 0,
         side && voidIn(partner, s) && !voidIn(partner, trump) ? 1 : 0, voidIn(decl, s) ? 1 : 0,
+        has('A') && !has('K') && !dm.some(x => x[1] === 'K') && !played.has(s + 'K') ? 1 : 0, Math.min(2, mine.filter(isMaster).length) === 2 ? 1 : 0,
+        s === trump && !mine.some(x => rankOf(x) >= 9 && !isMaster(x)) ? 1 : 0,
+        side && voidIn(decl, s) && !voidIn(decl, trump) ? 1 : 0,
+        mine.some(isMaster) && dummyRun(s) ? 1 : 0,
+        !dummyLeft && dmTenace(dm) ? 1 : 0, mine.every(x => rankOf(x) < 9) ? 1 : 0, myTenace(srt) ? 1 : 0,
+        unseenN(s) / 4,
       ];
     };
     if (want === 'switch') return cand.length > 1 ? { group: trump ? 'suit' : 'NT', opts: cand.map(s => ({ f: swF(s), card: leadCardIn(s) })) } : null;
@@ -412,7 +424,7 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
         return R('3rdVoid', low(winners));
       }
       const k = x => unseenAbove(x).length, kmin = Math.min(...winners.map(k));
-      const lim = voidIn(second, led) ? kmin : Math.max(1, kmin);
+      const lim = voidIn(second, led) || (kmin === 0 && !OFF('3safe') && (() => { const q = suitCount(); return q.sure >= q.need; })()) ? kmin : Math.max(1, kmin);
       return R(lim > kmin ? '3rdFin' : '3rdTop', low(winners.filter(x => k(x) <= lim)));
     }
     // defender third hand: high, but cheapest of equals
