@@ -100,6 +100,9 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
         const may = sameSide(s, ct.declarer) ? [ct.declarer, dummy] : i ? [s, dummy] : [s];
         check(Object.keys(v.known).sort().join() === may.sort().join(), 'view shows ' + Object.keys(v.known));
         check(!JSON.stringify(v).includes('"hands"'), 'view carries the hands');
+        // everyone here plays botPlay, the play model of ddConsistency, so the real layout fits the play perfectly
+        const real = {}; for (const x of SEATS) real[x] = remainingHand(hands, t.play, x);
+        check(D.ddConsistency(v, real) === 1, 'real layout does not fit the play');
         for (const h of D.ddSample(v, 5, seededRand('s' + g + i))) {
           const all = SEATS.flatMap(x => h[x]), played = [...playedCards(t.play)];
           check(new Set(all.concat(played)).size === 52 && all.length + played.length === 52, 'not a deck');

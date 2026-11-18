@@ -3,7 +3,7 @@
 // @bridge-tools/dd 0.2.2 (MIT); see wasm/NOTICE.txt. Every solve gets a fresh instance of the compiled module:
 // this build gives wrong answers if an instance is reused or re-initialised for another solve.
 // It also chooses robot cards by double-dummy sampling (js/ddplay.js): message { play: view, opts }.
-importScripts('wasm/compiled.js', 'engine.js', 'ddplay.js'); // create_dds_module; rules helpers; the sampler
+importScripts('wasm/compiled.js', 'engine.js', 'bots.js', 'ddplay.js'); // create_dds_module; rules helpers; the heuristic robot (the sampler's play model); the sampler
 
 let modP = null;
 const compiled = () => modP || (modP = fetch('wasm/compiled.wasm').then(r => { if (!r.ok) throw new Error('solver not found'); return r.arrayBuffer(); }).then(b => WebAssembly.compile(b)).catch(err => { modP = null; throw err; }));
