@@ -17,6 +17,7 @@ const gameLevel = st => st === 'N' ? 3 : MAJ(st) ? 4 : 5;
 const vulK = (ctx, k) => { const v = BID_OFF('vul') || BID_OFF(k) ? 0 : ctx.weVul ? (ctx.theyVul ? 1 : 2) : ctx.theyVul ? -1 : 0; return (v < 0 && BID_OFF(k + 'L')) || (v > 0 && BID_OFF(k + 'S')) ? 0 : v; };
 
 const BID_K = k => ((typeof globalThis !== 'undefined' && globalThis.BID_K) || {})[k]; // tuning knobs for tests
+const SD = () => BID_K('sd') ?? 2; // how much lighter than the textbook point counts the slam tries below are
 
 // ---- Hand evaluation ----
 const HONV = { A: 4, K: 3, Q: 2, J: 1 };
@@ -384,8 +385,8 @@ function respJ2N2(ctx) { // responder after 1M - 2NT - opener's rebid
   const om = ctx.pLast.m;
   const rk = h => {
     if (openSuits(ctx, h, t)) return false;
-    if (om.tag === 'jshort') { const s = Object.keys(om.mx)[0]; const waste = h.sp[s] - (h.has[s].includes('A') ? 4 : 0); return h.H - waste >= 16; }
-    return h.H + om.lo >= 32;
+    if (om.tag === 'jshort') { const s = Object.keys(om.mx)[0]; const waste = h.sp[s] - (h.has[s].includes('A') ? 4 : 0); return h.H - waste >= 16 - SD(); }
+    return h.H + om.lo >= 32 - SD();
   };
   if (bidValue('4N') > bidValue(r)) T.push(T_('4N', rk, MM(13, 37, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })));
   if (r !== '4' + t) T.push(T_('4' + t, () => true, MM(13, 15, { t: 'signoff' })));
@@ -396,7 +397,7 @@ function rebSplinter(ctx) {
   const t = ctx.seq[0][1], s = ctx.pLast.m.short || Object.keys(ctx.pLast.m.mx)[0];
   const useful = h => h.H - (h.sp[s] - (h.has[s].includes('A') ? 4 : 0));
   return [
-    T_('4N', h => useful(h) >= 15 && openSuits(ctx, h, t) === 0 && keycards(h, t) >= 2, MM(15, 21, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })),
+    T_('4N', h => useful(h) >= 15 - SD() && openSuits(ctx, h, t) === 0 && keycards(h, t) >= 2, MM(15, 21, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })),
     T_('4' + t, () => true, MM(11, 17, { t: 'signoff' })),
   ];
 }
@@ -441,8 +442,11 @@ function reb1m(ctx) { // opener after 1m - response
     T.push(T_('P', () => true, MM(11, 14)));
     return T;
   }
-  if (c1 === '2N') return [T_('3N', h => h.H >= 13 || (h.H >= 12 && h.L[t] >= 6), MM(13, 18)), T_('3' + t, h => h.L[t] >= 6, MM(11, 12, { mn: { [t]: 6 } })), T_('P', () => true, MM(11, 12))];
-  if (c1 === '3N') return [T_('P', () => true, ANY())];
+  if (c1 === '2N') return [...(BID_OFF('q4') ? [] : [T_('4N', h => h.H >= 19 && h.semi, MM(19, 21, { t: 'quant', a: 'Quantitative: invites 6NT' }))]), T_('3N', h => h.H >= 13 || (h.H >= 12 && h.L[t] >= 6), MM(13, 18)), T_('3' + t, h => h.L[t] >= 6, MM(11, 12, { mn: { [t]: 6 } })), T_('P', () => true, MM(11, 12))];
+  if (c1 === '3N') return BID_OFF('q4') ? [T_('P', () => true, ANY())] : [ // 13-15 balanced opposite: slam on combined points
+    T_('6N', h => h.H >= 19, MM(19, 21)),
+    T_('4N', h => h.H >= 17 && h.semi, MM(17, 18, { t: 'quant', a: 'Quantitative: invites 6NT' })),
+    T_('P', () => true, ANY())];
   if (c1 === '2C' && t === 'D') return reb21(ctx);
   if (!/^1[DHS]$/.test(c1)) return null;
   // responder bid a suit at the one level
@@ -493,14 +497,14 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     return T;
   }
   if (c2 === '2' + r && MAJ(r)) {
-    T.push(T_('4N', h => supPts(h, r) + 12 >= 33 && openSuits(ctx, h, r) === 0, MM(19, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })));
+    T.push(T_('4N', h => supPts(h, r) + 12 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(19, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })));
     T.push(T_('4' + r, h => supPts(h, r) >= 12, MM(12, 18)));
     T.push(T_('3' + r, h => supPts(h, r) >= 10, MM(10, 11, { inv: true, a: 'Invites game' })));
     T.push(T_('P', () => true, MM(6, 9)));
     return T;
   }
-  if (c2 === '3' + r && MAJ(r)) return [T_('4N', h => supPts(h, r) + 16 >= 33 && openSuits(ctx, h, r) === 0, MM(17, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('4' + r, h => supPts(h, r) >= 8, MM(8, 16)), T_('P', () => true, MM(6, 7))];
-  if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 && openSuits(ctx, h, r) === 0, MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
+  if (c2 === '3' + r && MAJ(r)) return [T_('4N', h => supPts(h, r) + 16 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(17, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('4' + r, h => supPts(h, r) >= 8, MM(8, 16)), T_('P', () => true, MM(6, 7))];
+  if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
   if (c2 === '2N') { // 18-19 balanced
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6, MM(6, 12, { mn: { [r]: 6 } })), T_('3' + r, h => h.L[r] >= 5 && !h.bal, MM(6, 37, { mn: { [r]: 5 }, f: 1 })));
     if (r === 'H') T.push(T_('3S', h => h.L.S >= 4 && h.H <= 14, MM(6, 37, { mn: { S: 4 }, f: 1, a: '4 spades (opener may have 4 too)' })));
@@ -508,7 +512,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     return T;
   }
   if (c2 === '3' + t) { // 16-18, six cards
-    T.push(T_('4N', h => h.H >= 17 && h.L[t] >= 2, MM(17, 37, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })));
+    T.push(T_('4N', h => h.H >= 17 - SD() && h.L[t] >= 2, MM(17, 37, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })));
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6 && h.H >= 7, MM(7, 37)));
     T.push(T_('3N', h => h.H >= 8 && SUITS.filter(s => s !== t).every(s => stopper(h, s) || s === r && h.L[r] >= 4), MM(8, 37)));
     T.push(T_('5' + t, h => h.H >= 10 && h.L[t] >= 2, MM(10, 37)));
@@ -1524,7 +1528,7 @@ function tablesFor(ctx) {
         const t = c0[1];
         if (c1 === '1N') return reb1M1N(ctx);
         if (c1 === '2' + t) return reb1M2M(ctx);
-        if (c1 === '3' + t && m1.tag === 'limit') return [T_('4N', h => h.H >= 20 && openSuits(ctx, h, t) === 0, MM(20, 21, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })), T_('4' + t, h => ownPts(h, t) >= 14 || (m1.lo <= 3 && false), MM(13, 21)), T_('P', () => true, MM(11, 13))];
+        if (c1 === '3' + t && m1.tag === 'limit') return [T_('4N', h => h.H >= 20 - SD() && openSuits(ctx, h, t) === 0, MM(20, 21, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })), T_('4' + t, h => ownPts(h, t) >= 14 || (m1.lo <= 3 && false), MM(13, 21)), T_('P', () => true, MM(11, 13))];
         if (m1.tag === 'jacoby') return reb1MJ(ctx);
         if (m1.tag === 'splinter') return rebSplinter(ctx);
         if (m1.tag === '21') return reb21(ctx);
@@ -1645,10 +1649,10 @@ function natural(ctx, h, reserved) {
       const m4 = fourNTMeaning(ctx);
       if (m4.tag === 'rkcb' && m4.trump === strain) return '4N';
     }
-    if (strain === 'N' && totLo >= 33 && ok('6N')) return '6N';
+    if (strain === 'N' && totLo >= 33 - SD() && ok('6N')) return '6N';
     if (strain === 'N' && ok('4N') && cheapS <= 4 && P.nt) return '4N';
     const c6 = (target === 7 && totLo >= 37 ? 7 : 6) + strain;
-    if (ok(c6) && (totLo >= 32 || fitLen >= 9)) return c6;
+    if (ok(c6) && (totLo >= 32 - SD() || fitLen >= 9)) return c6;
     target = gl;
   }
   if (ours) {
