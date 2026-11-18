@@ -2,7 +2,8 @@
 // The solver is DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to WebAssembly, from the npm package
 // @bridge-tools/dd 0.2.2 (MIT); see wasm/NOTICE.txt. Every solve gets a fresh instance of the compiled module:
 // this build gives wrong answers if an instance is reused or re-initialised for another solve.
-importScripts('wasm/compiled.js'); // defines create_dds_module
+// It also chooses robot cards by double-dummy sampling (js/ddplay.js): message { play: view, opts }.
+importScripts('wasm/compiled.js', 'engine.js', 'ddplay.js'); // create_dds_module; rules helpers; the sampler
 
 let modP = null;
 const compiled = () => modP || (modP = fetch('wasm/compiled.wasm').then(r => { if (!r.ok) throw new Error('solver not found'); return r.arrayBuffer(); }).then(b => WebAssembly.compile(b)).catch(err => { modP = null; throw err; }));
@@ -12,7 +13,6 @@ async function fresh() {
   inst._dds_init();
   return inst;
 }
-const RANKS = '23456789TJQKA';
 // One strain, all four declarers: declarer's tricks per seat (13 minus what the defender on lead can take).
 async function strain(hands, st, report) {
   const hand = s => ['S', 'H', 'D', 'C'].map(su => hands[s].filter(c => c[0] === su)
@@ -35,6 +35,15 @@ async function strain(hands, st, report) {
   }
 }
 self.onmessage = async e => {
+  if (e.data.play) { // robot card: { k, play: view (only what the robot may see), opts }
+    const { k, play, opts } = e.data;
+    try {
+      const mod = await compiled();
+      const r = await ddChoose(play, ddSolver(create_dds_module, mod), opts || {});
+      self.postMessage({ k, card: r ? r.card : null, samples: r ? r.samples : 0, ms: r ? Math.round(r.ms) : 0 });
+    } catch (err) { self.postMessage({ k, card: null, error: String(err && err.message || err) }); }
+    return;
+  }
   const { k, h, st } = e.data;
   try { await strain(h, st, (decl, s2, v) => self.postMessage({ k, decl, st: s2, v })); }
   catch (err) { setTimeout(() => { throw err; }); return; } // reaches the page's worker.onerror
