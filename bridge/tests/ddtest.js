@@ -26,19 +26,16 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
 }
 
 (async () => {
+  const D = require('../js/ddplay.js');
   const mod = await WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm')));
-  const fresh = async () => { // one instance per solve: this build is wrong when an instance is reused
-    const inst = await create({ instantiateWasm: (imports, cb) => { WebAssembly.instantiate(mod, imports).then(i => cb(i, mod)); return {}; } });
-    inst._dds_init(); return inst;
-  };
+  // One instance for every solve, as in the page (js/dds-worker.js): DDS keeps its transposition table between
+  // solves of the same or a similar deal, so reuse is what needs checking. FRESH=1 gives every solve a new instance.
+  const fresh = () => D.ddInstance(create, mod), FRESH = !!process.env.FRESH;
+  const shared = await fresh();
   async function dds(hands, strain, leader) { // N-S tricks
-    const hs = s => ['S', 'H', 'D', 'C'].map(su => hands[s].filter(c => c[0] === su).sort((a, b) => RANKS.indexOf(b[1]) - RANKS.indexOf(a[1])).map(c => c[1]).join('') || '-').join('.');
-    const inst = await fresh();
-    const dp = inst.allocateUTF8('N:' + SEATS.map(hs).join(' ')), op = inst._malloc(13 * 12 + 64);
-    const ix = SEATS.indexOf(leader);
-    inst._dds_solve_board({ S: 0, H: 1, D: 2, C: 3, N: 4 }[strain], ix, 0, 0, 0, 0, 0, 0, dp, op);
-    let best = -1;
-    for (let i = 0; i < 13; i++) { if (inst.getValue(op + i * 12, 'i32') <= 0) break; best = Math.max(best, inst.getValue(op + i * 12 + 8, 'i32')); }
+    const inst = FRESH ? await fresh() : shared;
+    const r = D.ddSolveRaw(inst, { S: 0, H: 1, D: 2, C: 3, N: 4 }[strain], SEATS.indexOf(leader), [], D.ddPBN(hands));
+    const best = Math.max(-1, ...r.map(x => x.tricks));
     return sideOf(leader) === 'NS' ? best : hands.N.length - best;
   }
   let bad = 0; const games = +process.argv[2] || 200;
@@ -53,7 +50,7 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
 
   // The robot's solver call (js/ddplay.js ddRun): mid-trick positions, a result for every legal card
   // (DDS lists one card of each run of equals; ddRun fills in the rest). Checked card by card against brute force.
-  const D = require('../js/ddplay.js'), solve = D.ddSolver(create, mod);
+  const solve = D.ddSolver(create, mod, { fresh: FRESH });
   function bruteCard(h, trick, strain, mover) { // tricks for mover's side from here, trick = cards so far incl. mover's
     function rec(h, trick, turn) {
       if (trick.length === 4) { const w = trickWinner({ cards: trick }, strain), r = sameSide(w, mover) ? 1 : 0; return h[w].length === 0 ? r : r + rec(h, [], w); }
@@ -83,6 +80,24 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
     }
   }
   console.log('mid-trick cards', cards, 'mismatches', bad2);
+
+  // Full deals and sampled layouts of one view (similar deals, where DDS keeps its table), several leaders and
+  // strains in a row: the reused instance against a fresh instance for every solve.
+  let deals = 0, bad4 = 0;
+  const nFull = Math.max(4, Math.round(games / 50));
+  for (let g = 0; g < nFull; g++) {
+    const base = deal(seededRand('full' + g + Math.random()));
+    const known = g % 2 ? ['N', 'S'] : ['W'], pool = SEATS.filter(s => !known.includes(s)).flatMap(s => base[s]);
+    for (let j = 0; j < 4; j++) {
+      const h = { ...base }, cs = pool.slice().sort(() => Math.random() - .5);
+      SEATS.filter(s => !known.includes(s)).forEach((s, i) => h[s] = cs.slice(i * 13, i * 13 + 13));
+      const strain = ['N', 'S', 'H', 'D', 'C'][(g + j) % 5], leader = SEATS[(g + j) % 4];
+      const job = { trump: { S: 0, H: 1, D: 2, C: 3, N: 4 }[strain], first: SEATS.indexOf(leader), trick: [], pbn: D.ddPBN(h), hands: h, mover: leader };
+      const a = D.ddRun(shared, job), b = D.ddRun(await fresh(), job);
+      deals++; if (JSON.stringify(a) !== JSON.stringify(b)) { bad4++; if (bad4 < 4) console.log('full deal mismatch', job.pbn, strain, leader, JSON.stringify(a), JSON.stringify(b)); }
+    }
+  }
+  console.log('full deals, reused vs fresh instance', deals, 'mismatches', bad4);
 
   // The robot's view holds only cards it may see, and sampled layouts agree with everything it knows.
   const Bots = require('../js/bots.js'); globalThis.shown = Bots.shown;
@@ -115,5 +130,5 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
     }
   }
   console.log('robot view and sampler checks', bad3 ? 'FAILED ' + bad3 : 'ok');
-  process.exit(bad || bad2 || bad3 ? 1 : 0);
+  process.exit(bad || bad2 || bad3 || bad4 ? 1 : 0);
 })();

@@ -179,15 +179,22 @@ async function leadChoose(view, solve, opts = {}) {
   if (results.length < Math.min(opts.k || 24, opts.minK || 6)) return null;
   return { ...leadPick(view, cands, results, opts), samples: results.length, ms: leadNow() - t0 };
 }
-// The solver's results ({card: defenders' tricks}) on up to opts.k layouts, as many as fit in opts.ms.
+// The solver's results ({card: defenders' tricks}) on up to opts.k layouts, as many as fit in opts.ms: it stops
+// before a solve that would probably end past the budget (elapsed + the average solve so far), once it has opts.minK.
+// opts.onResult(r) is called after each solve (the page's workers stream their results, js/dds-worker.js).
 // The page runs this in several workers at once and pools the results (js/analysis.js robotDDLead).
 async function leadSample(view, solve, opts = {}) {
   const t0 = leadNow(), k = opts.k || 24, minK = Math.min(k, opts.minK || 6), budget = opts.ms || Infinity;
   const results = [];
   const D = leadDD();
+  let solving = 0;
   for (const h of D.ddSample(view, k, opts.rand || Math.random)) {
-    if (results.length >= minK && leadNow() - t0 > budget) break;
-    results.push(await solve(D.ddJob(view, h)));
+    const t = leadNow();
+    if (results.length >= minK && t - t0 + (results.length ? solving / results.length : 0) > budget) break;
+    const r = await solve(D.ddJob(view, h));
+    solving += leadNow() - t;
+    results.push(r);
+    if (opts.onResult) opts.onResult(r);
   }
   return results;
 }

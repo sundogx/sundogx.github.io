@@ -210,21 +210,30 @@ function ddJob(view, hands) {
   const leader = cur.length ? tr.leader : view.seat;
   return { trump: DD_TRUMP[view.contract.strain], first: SEATS.indexOf(leader), trick: cur, pbn: ddPBN(hands), hands, mover: view.seat };
 }
-// Runs one job on a fresh solver instance (this build is wrong if an instance is reused).
+// Runs one job on a solver instance (create_dds_module from js/wasm/compiled.js, after _dds_init). Instances are
+// reused: DDS keeps its transposition table only for the same or a similar deal, as in its own batch calls, and
+// tests/ddtest.js checks reused instances against brute force and against fresh instances.
 // Returns { card: tricks the mover's side takes from here on, including the current trick } for every card the mover may play.
+function ddBuffers(inst) { // input (PBN) and output buffers, allocated once per instance
+  return inst.ddIO || (inst.ddIO = { dp: inst._malloc(128), op: inst._malloc(13 * 12 + 64) });
+}
+function ddSolveRaw(inst, trump, first, trick, pbn) { // -> [{ suit, rank, tricks }] as DDS lists them
+  const { dp, op } = ddBuffers(inst);
+  for (let i = 0; i < pbn.length; i++) inst.setValue(dp + i, pbn.charCodeAt(i), 'i8');
+  inst.setValue(dp + pbn.length, 0, 'i8');
+  for (let i = 0; i < 13 * 3; i++) inst.setValue(op + i * 4, -1, 'i32'); // stale results must never be read
+  const tc = [0, 1, 2].map(i => trick[i] ? [DD_SUIT[trick[i][0]], rankOf(trick[i]) + 2] : [0, 0]);
+  inst._dds_solve_board(trump, first, tc[0][0], tc[0][1], tc[1][0], tc[1][1], tc[2][0], tc[2][1], dp, op);
+  const out = [];
+  for (let i = 0; i < 13; i++) {
+    const rank = inst.getValue(op + i * 12, 'i32'); if (rank < 2 || rank > 14) break;
+    out.push({ suit: inst.getValue(op + i * 12 + 4, 'i32'), rank, tricks: inst.getValue(op + i * 12 + 8, 'i32') });
+  }
+  return out;
+}
 function ddRun(inst, job) {
-  const dp = inst.allocateUTF8(job.pbn), op = inst._malloc(13 * 12 + 64);
   const listed = {};
-  try {
-    for (let i = 0; i < 13 * 3; i++) inst.setValue(op + i * 4, -1, 'i32');
-    const tc = [0, 1, 2].map(i => job.trick[i] ? [DD_SUIT[job.trick[i][0]], rankOf(job.trick[i]) + 2] : [0, 0]);
-    inst._dds_solve_board(job.trump, job.first, tc[0][0], tc[0][1], tc[1][0], tc[1][1], tc[2][0], tc[2][1], dp, op);
-    for (let i = 0; i < 13; i++) {
-      const rank = inst.getValue(op + i * 12, 'i32'); if (rank < 2 || rank > 14) break;
-      const suit = inst.getValue(op + i * 12 + 4, 'i32'), tricks = inst.getValue(op + i * 12 + 8, 'i32');
-      listed['SHDC'[suit] + RANKS[rank - 2]] = tricks;
-    }
-  } finally { inst._free(op); inst._free(dp); }
+  for (const r of ddSolveRaw(inst, job.trump, job.first, job.trick, job.pbn)) listed['SHDC'[r.suit] + RANKS[r.rank - 2]] = r.tricks;
   if (!Object.keys(listed).length) throw new Error('DDS returned no result');
   // DDS lists one card of each run of equals; give the others the same result
   const mine = new Set(job.hands[job.mover]), held = new Set(SEATS.flatMap(s => job.hands[s]));
@@ -244,12 +253,22 @@ function ddRun(inst, job) {
   }
   return out;
 }
-// A solve function for ddChoose: createModule is create_dds_module (wasm/compiled.js), wasmModule the compiled WebAssembly.Module.
-function ddSolver(createModule, wasmModule) {
+// A solver instance: createModule is create_dds_module (wasm/compiled.js), wasmModule the compiled WebAssembly.Module.
+async function ddInstance(createModule, wasmModule) {
+  const inst = await createModule({ instantiateWasm: (imports, cb) => { WebAssembly.instantiate(wasmModule, imports).then(i => cb(i, wasmModule)); return {}; } });
+  inst._dds_init();
+  return inst;
+}
+// A solve function for ddChoose, on one instance made on first use and kept. If a solve fails (the instance
+// may be broken, e.g. out of memory), the instance is dropped and the solve retried once on a new one.
+// opts.fresh: a new instance for every solve instead (for tests).
+function ddSolver(createModule, wasmModule, opts = {}) {
+  let inst = null;
+  const get = async () => inst || (inst = await ddInstance(createModule, wasmModule));
   return async job => {
-    const inst = await createModule({ instantiateWasm: (imports, cb) => { WebAssembly.instantiate(wasmModule, imports).then(i => cb(i, wasmModule)); return {}; } });
-    inst._dds_init();
-    return ddRun(inst, job);
+    if (opts.fresh) return ddRun(await ddInstance(createModule, wasmModule), job);
+    try { return ddRun(await get(), job); }
+    catch (err) { inst = null; return ddRun(await get(), job); }
   };
 }
 
@@ -350,9 +369,12 @@ async function ddChoose(view, solve, opts = {}) {
     if (opts.weigh) weights = order.slice(0, k).map(i => ws[i]);
   } else deals = ddSample(view, k, rand);
   const results = [];
+  let solving = 0; // stop before a solve that would probably end past the budget
   for (const h of deals) {
-    if (results.length >= minK && now() - t0 > budget) break;
+    const t = now();
+    if (results.length >= minK && t - t0 + (results.length ? solving / results.length : 0) > budget) break;
     results.push(await solve(ddJob(view, h)));
+    solving += now() - t;
   }
   if (results.length < minK) return null;
   if (weights) { const m = Math.max(...weights.slice(0, results.length)); weights = m > 0 ? weights.slice(0, results.length).map(x => x / m) : null; }
@@ -368,4 +390,4 @@ async function ddChoose(view, solve, opts = {}) {
   return r;
 }
 
-if (typeof module !== 'undefined') module.exports = { ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolver, ddPick, ddWorthIt, ddChoose };
+if (typeof module !== 'undefined') module.exports = { ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose };

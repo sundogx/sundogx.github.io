@@ -15,22 +15,14 @@ Object.assign(globalThis, require('../js/engine.js'));
 const RANKS_DD = '23456789TJQKA';
 const wasmDir = path.join(__dirname, '..', 'js', 'wasm');
 
-if (!isMainThread) { // solver worker: one deal at a time, a fresh DDS instance for every solve
-  const create = require(path.join(wasmDir, 'compiled.js'));
-  const modP = WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm')));
+if (!isMainThread) { // solver worker: one deal at a time, on one DDS instance (js/ddplay.js ddSolveRaw)
+  const create = require(path.join(wasmDir, 'compiled.js')), D = require('../js/ddplay.js');
+  const instP = WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm'))).then(mod => D.ddInstance(create, mod));
   parentPort.on('message', async ({ id, hands }) => {
-    const mod = await modP;
-    const hs = s => ['S', 'H', 'D', 'C'].map(su => hands[s].filter(c => c[0] === su)
-      .sort((a, b) => RANKS_DD.indexOf(b[1]) - RANKS_DD.indexOf(a[1])).map(c => c[1]).join('') || '-').join('.');
-    const dealStr = 'N:' + SEATS.map(hs).join(' ');
+    const inst = await instP, dealStr = D.ddPBN(hands);
     const table = { N: {}, E: {}, S: {}, W: {} };
     for (const st of ['N', 'S', 'H', 'D', 'C']) for (const [ix, decl] of SEATS.entries()) {
-      const inst = await create({ instantiateWasm: (imports, cb) => { WebAssembly.instantiate(mod, imports).then(i => cb(i, mod)); return {}; } });
-      inst._dds_init();
-      const dp = inst.allocateUTF8(dealStr), op = inst._malloc(13 * 12 + 64);
-      inst._dds_solve_board({ S: 0, H: 1, D: 2, C: 3, N: 4 }[st], (ix + 1) & 3, 0, 0, 0, 0, 0, 0, dp, op);
-      let best = -1;
-      for (let i = 0; i < 13; i++) { if (inst.getValue(op + i * 12, 'i32') <= 0) break; best = Math.max(best, inst.getValue(op + i * 12 + 8, 'i32')); }
+      const best = Math.max(-1, ...D.ddSolveRaw(inst, { S: 0, H: 1, D: 2, C: 3, N: 4 }[st], (ix + 1) & 3, [], dealStr).map(r => r.tricks));
       if (best < 0 || best > 13) throw new Error('DDS returned no result');
       table[decl][st] = 13 - best;
     }
