@@ -107,6 +107,8 @@ const OFF = k => ((typeof globalThis !== 'undefined' && globalThis.BOT_OFF) || B
 const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid', 'aceNoK', 'masters2', 'trumpPassive', 'declRuffs', 'cashUrgent', 'intoTenace', 'noHonour', 'tenace', 'unseen'];
 const BOT_DISCARD_NAMES = ['hcp', 'len', 'masters', 'mateLen', 'mateMasters', 'dummyLen', 'guardDummy', 'unguards', 'voidToRuff', 'singleton', 'sigUp', 'sigDown', 'ledSuit', 'higherUnseen', 'unseen', 'longCards', 'trump'];
 const BOT_SWITCH_W = { NT: [1.6, 0.1, 1.1, 0.1, 0, 0.1, 1.2, 0, 0, -0.1, 0.6, 1.8, 0.2, -0.8, 0.9, 0, 0, -1.9, 0.1, 2.3, -0.7, 0.8, 0, 2, -1.3, 2.9, 0, 0, 0, 0.7, 0.4, 0.4, 0.3], suit: [0.5, 0, 0.3, -0.2, -1.7, 0, 0.8, -2.9, -0.8, -0.3, 0.2, 0.7, 0, -0.2, 0.5, 0, 0.5, -0.9, 0.2, 0.3, -0.5, -0.1, 0.6, -0.5, -0.4, 0.2, 2, 0.4, 0, -0.7, -0.1, 0.1, -0.2] };
+const BOT_DLEAD_NAMES = ['rule', 'trump', 'trumpOppLeft', 'trumpNone', 'partnerRuffs', 'shortRuffs', 'oppRuffs', 'sure', 'gain', 'lost', 'myMasters', 'cashSure', 'oppLen', 'shortFirst', 'towardTenace', 'ruffRisk', 'crossruff', 'len', 'noHonour', 'toPartner', 'trumpShort', 'givesTrick', 'partnerMasters', 'trumpLong'];
+const BOT_DLEAD_W = { NT: [1.1, 0, 0, 0, 0, 0, 0, 1.2, 1.1, -0.2, 0.7, 1.2, -0.6, 0.3, 0.6, 0, 0, -0.2, 0.6, 2, 0, -4.7, -0.4, 0], suit: [1.1, -1, 0.5, -1.5, 2.4, -0.5, -1.3, 0.8, 0.8, 0.4, 0.1, 0.5, 0, 0.1, 0.5, -1.6, 0.9, -0.3, 0.5, 0.3, -0.5, -2.2, 0.2, -0.8] };
 const BOT_DISCARD_W = { declNT: [0, 0.6, -0.9, 0, 0, 0, 0.1, -0.6, 0, 0, 0, 0, 0, 0.2, 0, 0.4, 0], declSuit: [-0.1, 0.3, -0.2, -0.1, 0.2, -0.1, 0.3, -0.3, 0.3, -0.5, 0, 0, 0, 0.2, 0.1, 0.1, 0], defNT: [0, 0.3, -0.3, 0, 0, -0.2, 0.5, -0.6, 0, -0.7, 0.2, -0.1, 0.1, 0.3, 0, 0.6, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
 function botFeatures(t, seat, kind) { const r = botPlay(t, seat, kind); return r && r.opts ? r : null; }
 let botWhy = ''; // which rule chose the last card (tests/heurstim.js leak report)
@@ -229,10 +231,8 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     return R('devLow', low(A));
   };
 
-  // ---------- leading ----------
-  if (!trick || trick.cards.length === 0) {
-    if (play.tricks.length === 0 && !onDeclSide) return R('L48', botLead(hands[seat], t.auction || [], c, seat)); // opening lead: js/leads.js
-    if (onDeclSide) {
+  // the declaring side on lead: the rules (declPlan first), then the fitted choice of suit (dlF, BOT_DLEAD_W) may override
+  const declRule = () => {
       const other = pCards;
       const masters = legal.filter(isMaster);
       if (!OFF('plan')) { const p = declPlan(); if (p) return p; }
@@ -274,6 +274,52 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       const best = SUITS.filter(s => of(my, s).length && s !== trump).sort((a, b) => (of(my, b).length + of(other, b).length) - (of(my, a).length + of(other, a).length))[0];
       if (best) { const m = of(my, best); const seq = m.sort((a, b) => rankOf(b) - rankOf(a)); return R('establish', seq.length >= 2 && rankOf(seq[0]) - rankOf(seq[1]) === 1 && rankOf(seq[0]) >= 9 ? seq[0] : low(m)); }
       return R('L89', low(legal));
+      };
+  // the card the declaring side leads in a suit: a master from the short hand, low toward partner's higher cards,
+  // the top of a sequence, else low
+  const declCardIn = s => {
+    const mine = of(legal, s).sort((a, b) => rankOf(b) - rankOf(a)), oth = of(pCards, s).sort((a, b) => rankOf(b) - rankOf(a));
+    const mm = mine.filter(isMaster);
+    if (mm.length && (mine.length <= oth.length || !oth.some(isMaster))) return mm[0];
+    if (oth.length && rankOf(oth[0]) > rankOf(mine[0])) return mine[mine.length - 1];
+    if (mm.length || solid(mine[0])) return mine[0];
+    return mine[mine.length - 1];
+  };
+  let dlInfo = null;
+  const dlF = (s, rc) => {
+    if (!dlInfo) dlInfo = suitCount();
+    const { info, sure, need } = dlInfo, I = info[s], side = !!trump && s !== trump;
+    const oppT = trump ? info[trump].O.length : 0, myT = trump ? info[trump].A.length : 0, pT = trump ? info[trump].B.length : 0;
+    const lho = nextSeat(seat), rho = partnerOf(lho);
+    const card = s === suitOf(rc) ? rc : declCardIn(s);
+    const oth = I.B, mineM = I.A.filter(isMaster).length, othM = I.B.filter(isMaster).length;
+    const ten = oth.length >= 2 && isMaster(oth[0]) && unseenAbove(oth[1]).length === 1;
+    return [
+      s === suitOf(rc) ? 1 : 0, s === trump ? 1 : 0, s === trump && oppT ? 1 : 0, s === trump && !oppT ? 1 : 0,
+      side && !oth.length && pT ? 1 : 0, side && !oth.length && pT && pT < myT ? 1 : 0,
+      side && oppT && ((voidIn(lho, s) && !voidIn(lho, trump)) || (voidIn(rho, s) && !voidIn(rho, trump))) ? 1 : 0,
+      Math.min(I.sure, 5), I.dev - I.sure, I.lost, mineM, sure >= need ? Math.min(I.sure, 5) : 0, I.O.length,
+      I.A.length <= oth.length && mineM ? 1 : 0, ten ? 1 : 0, side && oppT && I.O.length <= 3 ? 1 : 0,
+      side && !oth.length && pT && myT && SUITS.some(x => x !== trump && x !== s && !info[x].A.length && info[x].B.length) ? 1 : 0,
+      I.A.length + oth.length, Math.max(I.A.length ? rankOf(I.A[0]) : -1, oth.length ? rankOf(oth[0]) : -1) < 9 ? 1 : 0,
+      othM && !mineM ? 1 : 0, s === trump && sure < need ? 1 : 0,
+      !isMaster(card) && !solid(card) && !(oth.length && rankOf(oth[0]) > rankOf(card)) ? 1 : 0,
+      othM, s === trump && oppT && myT + pT >= 2 * oppT ? 1 : 0,
+    ];
+  };
+
+  // ---------- leading ----------
+  if (!trick || trick.cards.length === 0) {
+    if (play.tricks.length === 0 && !onDeclSide) return R('L48', botLead(hands[seat], t.auction || [], c, seat)); // opening lead: js/leads.js
+    if (onDeclSide) {
+      const rc = declRule(), rwhy = botWhy;
+      const cand = SUITS.filter(s => of(legal, s).length);
+      if (want === 'lead') return cand.length > 1 ? { group: trump ? 'suit' : 'NT', opts: cand.map(s => ({ f: dlF(s, rc), card: s === suitOf(rc) ? rc : declCardIn(s) })) } : null;
+      if (OFF('dlfit') || cand.length < 2 || !BOT_DLEAD_W[trump ? 'suit' : 'NT']) return R(rwhy, rc);
+      const W = BOT_DLEAD_W[trump ? 'suit' : 'NT'];
+      let best = null, bs = -1e9;
+      for (const s of cand) { const v = dlF(s, rc).reduce((a, x, i) => a + x * W[i], 0); if (v > bs) { bs = v; best = s; } }
+      return best === suitOf(rc) ? R(rwhy, rc) : R('dlFit', declCardIn(best));
     }
     // defender leading later in the hand
     const firstLead = play.tricks[0].cards[0];
@@ -550,4 +596,4 @@ function simulateBoard(hands, dealer, vul) {
   const d = tricksWon(t.play, contract).decl;
   return { auction, contract, declTricks: d, scoreNS: scoreNS(contract, d, vul), tricks: t.play.tricks };
 }
-if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown };
+if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : k === "lead" ? BOT_DLEAD_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown };
