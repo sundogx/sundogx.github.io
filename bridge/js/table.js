@@ -123,8 +123,11 @@ const A = {
     t.lastActAt = Date.now();
     if (completedTricks(t.play).length === 13) finishBoard(t, tricksWon(t.play, t.contract).decl);
   },
+  // A claim of n of the remaining tricks (0 concedes them all). Robot opponents answer at once (resolveRobotClaim);
+  // the claimer's partner never has to agree. Not while an undo request is open (online), nor by dummy.
   claim(t, seat, n, seenLeft) { // seenLeft: the tricks left when the claimer chose n (more tricks may have finished since)
     if (t.phase !== 'play' || t.claim || seat === dummySeat(t)) return false;
+    if (t.undoReq) { toast('Answer the undo request first'); return false; }
     const left = 13 - completedTricks(t.play).length;
     if ((seenLeft != null && seenLeft !== left) || n > left) { toast('The number of tricks left changed; claim again'); return false; }
     if (n < 0) return false;
@@ -132,7 +135,8 @@ const A = {
       ? [nextSeat(t.contract.declarer), partnerOf(nextSeat(t.contract.declarer))]
       : [t.contract.declarer];
     t.claim = { by: seat, tricks: n, need: opp, acc: {} };
-    sysMsg(t, `${SEAT_NAME[seat]} claims ${n} of the remaining ${left} tricks`);
+    const o = occupant(t, seat);
+    sysMsg(t, `${SEAT_NAME[seat]}${o && o.kind === 'robot' ? ' (robot)' : ''} claims ${n} of the remaining ${left} tricks`);
     resolveRobotClaim(t);
   },
   respond(t, seat, accept) {
@@ -154,6 +158,7 @@ const A = {
   robotStep(t, hint) { // hint: { key, card } worked out ahead (the page's solver); used only if the position is unchanged
     const ts = turnSeat(t); if (!ts) return false;
     if (t.claim) return false;
+    if (robotClaim(t)) return;
     const ctrl = controllerOf(t, ts);
     const o = occupant(t, ctrl);
     if (!o || o.kind !== 'robot') return false;
@@ -171,19 +176,37 @@ function checkClaim(t) {
   sysMsg(t, 'Claim accepted');
   finishBoard(t, done + declExtra);
 }
+// Robot opponents answer a claim at once: they accept it if the claimer's side takes that many tricks double dummy
+// (claimAccept in js/bots.js). The server also answers for stand-in robots (src/worker.js tidyPresence).
 function resolveRobotClaim(t) {
   const c = t.claim; if (!c) return;
+  let ok = null;
   for (const s of c.need) {
-    const ctrl = controllerOf(t, s);
-    const o = occupant(t, ctrl);
+    const o = occupant(t, controllerOf(t, s));
     if (o && o.kind === 'robot') {
-      const left = 13 - completedTricks(t.play).length;
-      const ok = c.tricks <= sureTricks(t, c.by) || c.tricks === 0 || (c.tricks < left && c.tricks <= sureTricks(t, c.by) + 0);
+      if (ok === null) ok = claimAccept(t, c.by, c.tricks);
       if (!ok) { sysMsg(t, `Robot ${SEAT_NAME[s]} rejected the claim. Play continues.`); t.claim = null; return; }
       c.acc[s] = true;
     }
   }
   checkClaim(t);
+}
+// A robot on lead at the start of a trick claims when the rest is clear (robotClaimCount in js/bots.js: the
+// double-dummy result, and the same however the cards it can't see lie). Only for its own side's play: a
+// defender robot whose partner is a person leaves that to them; and not when time is up (the robots just finish)
+// or within two tricks of a claim of its side that was turned down. Shared by practice and the server.
+function robotClaim(t) {
+  if (t.phase !== 'play' || t.claim || t.timeUp || t.undoReq) return false;
+  const by = controllerOf(t, turnSeat(t)), o = occupant(t, by);
+  if (!o || o.kind !== 'robot') return false;
+  if (by !== t.contract.declarer) { const p = occupant(t, partnerOf(by)); if (!p || p.kind !== 'robot') return false; }
+  const done = completedTricks(t.play).length, side = sideOf(by);
+  const last = t.robotClaimAt && t.robotClaimAt.b === t.board && t.robotClaimAt.side === side ? t.robotClaimAt.d : -9;
+  if (done < last + 2) return false;
+  const n = robotClaimCount(t, by, ROBOT_CLAIM_NODES);
+  if (n == null) return false;
+  t.robotClaimAt = { b: t.board, d: done, side };
+  return A.claim(t, by, n) !== false;
 }
 // Would undoing for this seat take back something after which more became visible: the opening lead
 // (dummy goes face up), or a call or card that robots have answered since (their calls or cards were seen)?

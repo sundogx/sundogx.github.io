@@ -284,29 +284,6 @@ function announceBoth(t, other) {
   if (t.chat.length > 120) t.chat.splice(0, t.chat.length - 120);
   return n;
 }
-const rankIx = c => '23456789TJQKA'.indexOf(c[1]);
-
-// A robot declarer claims the rest when every card in the hand on lead is a sure winner:
-// nothing higher is out in its suit, and the defenders can't ruff it.
-function robotClaim(t) {
-  if (t.phase !== 'play' || t.claim) return false;
-  const tr = t.play.tricks[t.play.tricks.length - 1];
-  if (tr && tr.cards.length < 4) return false;
-  const leader = G.turnSeat(t), decl = t.contract.declarer;
-  if (!sameSideSeat(leader, decl)) return false;
-  const done = G.completedTricks(t.play).length, left = 13 - done;
-  const lastAt = t.robotClaimAt && t.robotClaimAt.b === t.board ? t.robotClaimAt.d : -9;
-  if (left < 2 || done < lastAt + 2) return false;
-  const trump = t.contract.strain === 'N' ? null : t.contract.strain;
-  const o1 = SEATS[(SEATS.indexOf(leader) + 1) % 4], o2 = SEATS[(SEATS.indexOf(leader) + 3) % 4];
-  const opp = [...G.remainingHand(t.hands, t.play, o1), ...G.remainingHand(t.hands, t.play, o2)];
-  const oppTrumps = trump ? opp.some(c => c[0] === trump) : false;
-  const mine = G.remainingHand(t.hands, t.play, leader);
-  const sure = mine.every(c => !opp.some(x => x[0] === c[0] && rankIx(x) > rankIx(c)) && (c[0] === trump || !oppTrumps));
-  if (!sure) return false;
-  t.robotClaimAt = { b: t.board, d: done };
-  return A.claim(t, decl, left) !== false;
-}
 
 // Seat a human who's back, mark one who left, and keep stand-in robots tidy.
 function tidyPresence(t) {
@@ -323,13 +300,14 @@ function tidyPresence(t) {
   if (t.undoReq && (!human(t.undoReq.by) || t.undoReq.need.some(s => !human(s)))) {
     t.undoReq = null; G.sysMsg(t, 'The undo request lapsed because a seat changed');
   }
-  // A claim lapses if the claimer's seat is empty; a robot (table robot or stand-in) answers for its seat.
+  // A claim lapses if the claimer's seat is empty; a robot (table robot or stand-in) answers for its seat, with the
+  // exact double-dummy check (G.claimAccept). Robots claim themselves in A.robotStep (js/table.js robotClaim).
   if (t.claim && !t.seats[G.controllerOf(t, t.claim.by)]) { t.claim = null; G.sysMsg(t, 'The claim lapsed because the claimer left. Play continues.'); }
   const c = t.claim;
   if (c) for (const s of c.need) {
     const ctrl = G.controllerOf(t, s), o = t.seats[ctrl];
     if ((t.subs[ctrl] || (o && o.kind === 'robot')) && !c.acc[s] && t.claim) {
-      const ok = c.tricks === 0 || c.tricks <= G.sureTricks(t, c.by);
+      const ok = G.claimAccept(t, c.by, c.tricks);
       G.setMe({ id: '' });
       A.respond(t, s, ok);
       if (!ok) t.chat[t.chat.length - 1].text = `The robot ${t.subs[ctrl] ? 'playing for' : 'at'} ${G.SEAT_NAME[s]} rejected the claim. Play continues.`;
@@ -586,7 +564,6 @@ export class TableRoom extends DurableObject {
       const hint = th && th.done && th.card && th.key === key ? { key, card: th.card } : null;
       const ok = await this.apply({}, t => {
         const ts = G.turnSeat(t), o = G.occupant(t, G.controllerOf(t, ts));
-        if (!t.timeUp && robotClaim(t)) return;
         if (o.kind === 'robot') return A.robotStep(t, hint);
         // stand-in for an away player: same robot logic, played for that seat
         if (t.phase === 'auction') { const r = G.botCall(t.hands[ts], ts, t.dealer, t.auction, t.vul); return A.call(t, ts, r.call, r.alert); }
