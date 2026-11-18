@@ -1646,7 +1646,7 @@ function natural(ctx, h, reserved) {
     if (h.L[myLong] >= 6 || !pS || h.L[pS] < 2) strain = myLong; else strain = pS;
   }
   const gl = gameLevel(strain);
-  const lvlFor = t => t >= 37 ? 7 : t >= (BID_K('n6') ?? 31) ? 6 : t >= (strain === 'N' || MAJ(strain) ? ((ctx.quiet || !BID_OFF('game24c')) && !BID_OFF('game24') ? 24 : 25) : (BID_K('g5m') ?? 27)) ? gl : t >= 23 ? Math.min(gl - 1, 3) : t >= 20 ? (strain === 'N' && !BID_OFF('nt2') ? 1 : 2) : t >= 17 ? 1 : 0;
+  const lvlFor = t => t >= 37 ? 7 : t >= (BID_K('n6') ?? 31) ? 6 : t >= (strain === 'N' || MAJ(strain) ? ((ctx.quiet || !BID_OFF('game24c')) && !BID_OFF('game24') ? (BID_K('g4') ?? 24) : 25) : (BID_K('g5m') ?? 27)) ? gl : t >= 23 ? Math.min(gl - 1, 3) : t >= 20 ? (strain === 'N' && !BID_OFF('nt2') ? 1 : 2) : t >= 17 ? 1 : 0;
   let target = lvlFor((total + totLo) / 2 >= (BID_K('n6') ?? 31) ? total : Math.min(total, (BID_K('n6') ?? 31) - 0.5));
   if (!pBid && !fit && !(h.L[strain] >= 6 && myV >= 12)) target = Math.min(target, 0);
   const oppNT = ctx.theirs.some(x => bidValue(x.call) >= 0 && x.call[1] === 'N' && x.m && x.m.nt);
