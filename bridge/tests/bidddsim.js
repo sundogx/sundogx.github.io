@@ -5,7 +5,9 @@
 //
 // Usage: node tests/bidddsim.js [boards=1000] [seed=1] [--worst=10] [--self] [--cats] [--base=oldbid]
 //   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
-//   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4)
+//   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4;
+//                basebid3: before the third round of bidding work, c0d8685)
+//   --k=a:1,b:2  tuning knobs of js/bidding.js (BID_K)
 //   --worst=k  print the k boards the new system lost most on (hands and both auctions); with --best, gained most on
 //   --self     also report each system in self-play against par
 // Double-dummy tables are cached in the OS temp folder (bridge-dd-<seed>.json), so reruns are fast.
@@ -36,6 +38,7 @@ const N = +pos[0] || 1000, SEED = pos[1] || '1';
 const WORST = +((flags.find(f => f.startsWith('--worst')) || '').split('=')[1] || 0);
 const SELF = flags.includes('--self');
 globalThis.BID_OFF = ((flags.find(f => f.startsWith('--off=')) || '--off=').slice(6)).split(',').filter(Boolean); // switch off named features of js/bidding.js
+globalThis.BID_K = Object.fromEntries(((flags.find(f => f.startsWith('--k=')) || '--k=').slice(4)).split(',').filter(Boolean).map(x => [x.split(':')[0], +x.split(':')[1]])); // tuning knobs: --k=name:value,...
 const BASE = (flags.find(f => f.startsWith('--base=')) || '--base=oldbid').split('=')[1];
 const NEW = require('../js/bidding.js'), OLD = require('./fixtures/' + BASE + '.js');
 const { parScore } = require('../js/par.js');
