@@ -131,21 +131,22 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .corner .room { font-size: 12px; }
 /* board indicator: one edge per seat (red = vulnerable), split by diagonals, D on the dealer's edge */
 .bbx { --line: linear-gradient(45deg, #0000 calc(50% - .6px), #0008 calc(50% - .6px), #0008 calc(50% + .6px), #0000 calc(50% + .6px));
-  position: relative; width: 70px; height: 70px; border-radius: 9px; box-shadow: 0 1px 3px #0005;
+  position: relative; width: 92px; height: 92px; border-radius: 11px; box-shadow: 0 1px 3px #0005;
   background: var(--line), linear-gradient(-45deg, #0000 calc(50% - .6px), #0008 calc(50% - .6px), #0008 calc(50% + .6px), #0000 calc(50% + .6px)),
     conic-gradient(var(--top) 0 45deg, var(--right) 45deg 135deg, var(--bottom) 135deg 225deg, var(--left) 225deg 315deg, var(--top) 315deg); }
-.bbx b { position: absolute; inset: 15px; background: #b9c9cb; border: 1px solid #0007; border-radius: 3px; display: grid; place-items: center; font-size: 26px; font-weight: 500; color: #000; font-family: var(--sans); }
-.bbx .dl { position: absolute; font-size: 12px; font-weight: 700; color: #000; line-height: 15px; }
+.bbx b { position: absolute; inset: 20px; background: #b9c9cb; border: 1px solid #0007; border-radius: 3px; display: grid; place-items: center; font-size: 34px; font-weight: 500; color: #000; font-family: var(--sans); }
+.bbx .dl { position: absolute; font-size: 15px; font-weight: 700; color: #000; line-height: 20px; }
 .bbx .dl.onred { color: #fff; }
 .bbx .dl.top { top: 0; left: 50%; transform: translateX(-50%); }
 .bbx .dl.bottom { bottom: 0; left: 50%; transform: translateX(-50%); }
-.bbx .dl.left { left: 3px; top: 50%; transform: translateY(-50%); }
-.bbx .dl.right { right: 3px; top: 50%; transform: translateY(-50%); }
+.bbx .dl.left { left: 5px; top: 50%; transform: translateY(-50%); }
+.bbx .dl.right { right: 5px; top: 50%; transform: translateY(-50%); }
 /* trick count: standing card = our tricks, lying card = theirs */
-.tbx { display: grid; grid-template-columns: 30px 37px; grid-template-rows: 44px 28px; gap: 0 3px; margin-top: 10px; }
-.tbx .us, .tbx .them { background: #2f6f78; color: #fff; border: 1px solid #ffffffaa; border-radius: 6px; font-size: 18px; display: flex; justify-content: center; align-items: flex-end; padding-bottom: 3px; font-family: var(--sans); }
-.tbx .us { grid-row: 1 / 3; grid-column: 1; }
-.tbx .them { grid-row: 2; grid-column: 2; align-items: center; padding-bottom: 0; }
+.tbx { position: relative; width: 82px; height: 62px; margin-top: 12px; }
+/* two plain cards, overlapping: a standing card for our tricks, one lying across its foot for theirs */
+.tbx .us, .tbx .them { position: absolute; background: #fff; color: #1b1b1b; border: 1px solid #0000002e; border-radius: 5px; box-shadow: 0 1px 2px #0002; font-size: 17px; font-weight: 600; font-family: var(--sans); display: flex; }
+.tbx .us { left: 0; top: 0; width: 34px; height: 54px; z-index: 1; justify-content: center; padding-top: 4px; box-sizing: border-box; }
+.tbx .them { left: 20px; top: 28px; width: 56px; height: 32px; justify-content: flex-end; align-items: center; padding-right: 10px; box-sizing: border-box; color: #6b6b6b; }
 .rs { color: var(--card-red); }
 
 .seat { display: inline-flex; flex-direction: column; gap: 4px; align-items: inherit; }
@@ -187,7 +188,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .tslot .card .cr, .tslot .card .cs { font-size: 28px; left: 6px; }
 .tslot .card .cr { top: 4px; } .tslot .card .cs { top: 33px; }
 .tslot .card .cb { font-size: 44px; }
-.tslot .card.win { box-shadow: 0 0 0 1.5px #c9a227aa; }
+.tslot .card.win { box-shadow: 0 0 0 2.5px #e0b000; }
 
 /* four-colour deck option */
 html[data-deck="4"] .s-D { color: #e06500 !important; }
@@ -349,7 +350,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
   .pos-left .seat, .pos-right .seat { max-width: 100%; }
   .pos-left .plate, .pos-right .plate { flex-wrap: wrap; white-space: normal; row-gap: 0; padding: 2px 6px; }
   .plate { height: auto; min-height: 30px; }
-  .corner.tl { transform: scale(.7); transform-origin: top left; } /* board box and trick count fit the narrow corner */
+  .corner.tl { transform: scale(.6); transform-origin: top left; } /* board box and trick count fit the narrow corner */
   .rows .rk { padding: 1px 2px; }
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }

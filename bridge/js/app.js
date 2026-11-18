@@ -256,7 +256,7 @@ function trickBoxHTML(t) {
   if (last && last.contract && last.declTricks != null && ours + theirs !== 13) { // claim or concession: only the totals are known
     ours = sameSide(side, c.declarer) ? last.declTricks : 13 - last.declTricks; theirs = 13 - ours;
   }
-  return `<div class="tbx" role="img" aria-label="${contractText(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us">${ours}</div><div class="them">${theirs}</div></div>`;
+  return `<div class="tbx" role="img" aria-label="${contractText(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us" title="${mySeat(t) ? 'Your side' : 'Declarer\'s side'}">${ours}</div><div class="them" title="Opponents">${theirs}</div></div>`;
 }
 function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ? 'Both vulnerable' : v === 'NS' ? 'N-S vulnerable' : 'E-W vulnerable'; }
 
