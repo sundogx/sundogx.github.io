@@ -61,7 +61,11 @@ if (isMainThread) {
   const { K, variants, seed } = workerData;
   let solve = null;
   const NEW = JSON.parse(process.env.NEW || '{}');
-  const CUR = { lead: 'conv', leadTol: 30 }; // what the page uses (js/analysis.js robotDDSolve)
+  // what the page uses (js/analysis.js RobotDD and robotDDSolve). CUR_JSON overrides it, e.g. to test a new baseline.
+  const CUR = JSON.parse(process.env.CUR_JSON || 'null') || { lead: 'conv', leadTol: 30, minK: 8,
+    declarer: { pool: 96, weigh: 1, wOpp: 0.8 }, defender: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8 } };
+  // options for one decision: the variant's options X override the base's, also its declarer/defender settings
+  const merge = (base, X) => X ? { ...base, ...X, declarer: { ...base.declarer, ...X, ...X.declarer }, defender: { ...base.defender, ...X, ...X.defender } } : base;
   async function playOut(hands, auction, ct, vul, useDD, rand, extra = {}) { // useDD(seat, cardIndex) -> bool, or the options for that card
     const t = { hands, auction, contract: ct, vul, play: { tricks: [] } };
     let dec = 0, ms = 0;
@@ -71,7 +75,8 @@ if (isMainThread) {
       let card = prefer;
       const u = useDD(s, i);
       if (u) {
-        const r = await D.ddChoose(D.ddView(t, s), solve, { k: K, prefer, rand, ...extra, ...(typeof u === 'object' ? u : {}) });
+        const o = merge({ k: K, prefer, rand, ...extra }, typeof u === 'object' ? u : null);
+        const r = await D.ddChoose(D.ddView(t, s, o), solve, o);
         if (r) { card = r.card; if (!(u === true && extra === CUR)) { dec++; ms += r.ms; } } // n-variants: time only the decisions with the new options
       }
       applyPlay(t.play, ct, s, card);
