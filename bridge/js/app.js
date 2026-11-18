@@ -187,7 +187,7 @@ function seatBlock(t, seat, where) {
 }
 function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul, viewer = mySeat(t)) {
   const order = ['W', 'N', 'E', 'S'];
-  const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${s}</div>`);
+  const cells = order.map(s => `<div class="h ${isVul(vul, s) ? 'vul' : ''}" title="${SEAT_NAME[s]}${isVul(vul, s) ? ', vulnerable' : ''}">${SEAT_NAME[s]}</div>`);
   const off = order.indexOf(dealer);
   for (let i = 0; i < off; i++) cells.push('<div></div>');
   auction.forEach((a, i) => {
@@ -197,7 +197,7 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const al = a.alert && !hideAlert;
     const kind = a.call === 'X' ? 'cx' : a.call === 'XX' ? 'cxx' : a.call === 'P' ? 'cp' : 'bid';
     // the level is always black; only the suit symbol takes its suit's colour
-    const txt = isBid ? `${a.call[0]}<span class="sy ${a.call[1] !== 'N' ? (red ? 'red' : 'blk') + ' s-' + a.call[1] : ''}">${SYM[a.call[1]]}</span>` : a.call === 'P' ? 'P' : a.call;
+    const txt = isBid ? `${a.call[0]}<span class="sy ${a.call[1] !== 'N' ? (red ? 'red' : 'blk') + ' s-' + a.call[1] : ''}">${SYM[a.call[1]]}</span>` : callText(a.call);
     cells.push(`<div class="c ${kind} ${al ? 'alert' : ''}" aria-label="${callText(a.call)}" ${al ? `data-alert="${esc(a.alert)}" title="${esc(a.alert)}"` : ''}>${txt}</div>`);
   });
   if (t.phase === 'auction' && auction === t.auction) cells.push('<div class="c">?</div>');
