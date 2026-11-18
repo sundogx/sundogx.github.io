@@ -44,6 +44,7 @@ const N = +pos[0] || 1000, SEED = pos[1] || '1';
 const WORST = +((flags.find(f => f.startsWith('--worst')) || '').split('=')[1] || 0);
 const SELF = flags.includes('--self');
 globalThis.BID_OFF = ((flags.find(f => f.startsWith('--off=')) || '--off=').slice(6)).split(',').filter(Boolean); // switch off named features of js/bidding.js
+globalThis.BID_K = Object.fromEntries(((flags.find(f => f.startsWith('--k=')) || '--k=').slice(4)).split(',').filter(Boolean).map(x => [x.split(':')[0], +x.split(':')[1]])); // tuning knobs: --k=name:value,...
 const BASE = (flags.find(f => f.startsWith('--base=')) || '--base=oldbid').split('=')[1];
 const NEW = require('../js/bidding.js'), OLD = require('./fixtures/' + BASE + '.js');
 const { parScore } = require('../js/par.js');

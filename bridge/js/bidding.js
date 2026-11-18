@@ -16,6 +16,8 @@ const gameLevel = st => st === 'N' ? 3 : MAJ(st) ? 4 : 5;
 // vulnerability for my side: 2 unfavourable (we vulnerable, they not), 1 both vulnerable, 0 neither, -1 favourable
 const vulK = (ctx, k) => { const v = BID_OFF('vul') || BID_OFF(k) ? 0 : ctx.weVul ? (ctx.theyVul ? 1 : 2) : ctx.theyVul ? -1 : 0; return (v < 0 && BID_OFF(k + 'L')) || (v > 0 && BID_OFF(k + 'S')) ? 0 : v; };
 
+const BID_K = k => ((typeof globalThis !== 'undefined' && globalThis.BID_K) || {})[k]; // tuning knobs for tests
+
 // ---- Hand evaluation ----
 const HONV = { A: 4, K: 3, Q: 2, J: 1 };
 function evalHand(hand) {
@@ -167,6 +169,9 @@ function dblMeaning(ctx) {
   // I opened, they overcalled and it came back to me: reopening double
   if (ctx.first && ctx.first.by === ctx.seat && ourBids.length === 1 && ctx.pards.length === 0 && lv <= 2 && ctx.rhoCall === 'P' && lb.by === ctx.lho && ctx.theirs.length === 1)
     return MM(12, 37, { mx: { [st]: 2 }, a: 'Reopening double: takeout, short in their suit', t: 'xreopen' });
+  // I opened, partner passed, RHO came in: takeout with a strong hand
+  if (!BID_OFF('xstrong') && ctx.first && ctx.first.by === ctx.seat && ourBids.length === 1 && ctx.pards.length === 0 && lv <= 2 && lb.by === ctx.rho && ctx.theirs.length === 1 && ctx.mine.length === 1)
+    return MM(16, 37, { mx: { [st]: 2 }, a: 'Takeout double: strong hand (16+), short in their suit', t: 'xreopen' });
   return MM(10, 37, { mn: { [st]: 3 }, a: 'Penalty', t: 'xpen' });
 }
 
@@ -504,6 +509,8 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6 && h.H >= 7, MM(7, 37)));
     T.push(T_('3N', h => h.H >= 8 && SUITS.filter(s => s !== t).every(s => stopper(h, s) || s === r && h.L[r] >= 4), MM(8, 37)));
     T.push(T_('5' + t, h => h.H >= 10 && h.L[t] >= 2, MM(10, 37)));
+    if (MAJ(r) && !BID_OFF('j3m')) T.push(T_('3' + r, h => h.L[r] >= 5 && h.H >= 8, MM(8, 37, { mn: { [r]: 5 }, f: 1, a: 'Forcing: 5+ cards, asks for 3-card support' })));
+    if (!BID_OFF('j3m')) T.push(T_('3N', h => h.H >= 10, MM(8, 37)));
     T.push(T_('P', () => true, MM(6, 9)));
     return T;
   }
@@ -531,6 +538,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   T.push(T_('4' + r, h => MAJ(r) && h.L[r] >= 6 && h.H >= 12, MM(12, 16, { mn: { [r]: 6 } })));
   T.push(T_('3' + r, h => h.L[r] >= 6 && h.H >= 10 && h.H <= 12, MM(10, 12, { mn: { [r]: 6 }, inv: true })));
   if (ctx.cheap('N') === 2) T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && h.semi && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true })));
+  if (ctx.cheap('N') === 1 && !BID_OFF('j2n')) T.push(T_('2N', h => h.H >= 11 && h.H <= 12 && h.semi, MM(11, 12, { nt: true, inv: true, a: 'Invites 3NT: 11-12 points' })));
   T.push(T_('3' + t, h => h.L[t] >= (t === 'C' ? 4 : 4) && h.H >= 10 && h.H <= 12 && ctx.cheap(t) <= 3, MM(10, 12, { mn: { [t]: 4 }, agree: t, inv: true })));
   if (ctx.cheap(r) === 2) T.push(T_('2' + r, h => h.L[r] >= 6 && h.H <= 10, MM(6, 10, { mn: { [r]: 6 } })));
   if (ctx.cheap(t) === 2 && o !== t) T.push(T_('2' + t, h => h.L[t] >= 3 && h.L[t] >= h.L[o] && h.H <= 10, MM(6, 10, { mn: { [t]: 3 } })));
@@ -593,7 +601,8 @@ function ntSystem(ctx) {
   const after = ctx.ours.slice(b.k);           // the NT bid and our calls since
   const k = after.length, isOpener = x.by === ctx.seat, c = i => after[i] ? after[i].call : null;
   if (b.interfered) { const lb = !BID_OFF('leb') && lebensohl(ctx, b, after); if (lb !== false) return lb; return (k === 1 && !isOpener) ? ntInterference(ctx, lo) : null; }
-  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = 32 - lo, six = 33 - lo;
+  const ovc2N = !one && !sameSide(ctx.first.by, x.by) && !BID_OFF('o2n'); // over their weak two the 2NT overcaller's partner raises with less
+  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = 32 - lo, six = 33 - lo;
   const T = [];
   const trA = s => `Transfer: 5+ ${SNAME[s]}`;
   if (!isOpener && k === 1) {
@@ -1293,9 +1302,66 @@ function compMore(ctx) {
       return T.concat([{ nat: true }]);
     }
   }
+  // 1x (X) XX and they ran: doubles are for penalty, opener's pass is forcing, the redoubler doubles or bids
+  if (!BID_OFF('xxrun')) { const r = afterXXRun(ctx); if (r) return r; }
+  if (!BID_OFF('xreb')) { const r = doublerRebid(ctx); if (r) return r; }
+  // I opened, partner passed, RHO came in: strong takeout double, else natural
+  if (!BID_OFF('xstrong') && ctx.weOpened && ctx.opener === ctx.seat && /^1[CDHS]$/.test(ctx.first.call) && ctx.ours.length === 1 && ctx.pards.length === 0 && ctx.theirs.length === 1 && ctx.lb === ctx.theirs[0] && ctx.lb.by === ctx.rho && ctx.ok('X')) {
+    const dm = dblMeaning(ctx), os = ctx.lb.call[1];
+    if (dm.tag === 'xreopen' && os !== 'N' && !(ctx.lb.m && ctx.lb.m.art)) return [T_('X', h => h.H >= 16 && h.L[os] <= 2 && !(h.L[ctx.first.call[1]] >= 6 && h.L[os] >= 2), dm), { nat: true }];
+  }
   // Support doubles: 1x - 1M by partner, RHO doubles or bids up to 2♥; X (XX over a double) = exactly 3-card support
   if (!BID_OFF('supx') && supXSpot(ctx)) return supXTable(ctx);
   if (!BID_OFF('supx') && pl && pl.m && pl.m.tag === 'supx' && ctx.rhoCall === 'P' && ctx.mine.length === 1 && ctx.myLast.i === pl.i - 2) return afterSupX(ctx);
+  return null;
+}
+function doublerRebid(ctx) { // I made a takeout double, partner advanced in a suit without jumping, RHO passed
+  const pl = ctx.pLast, ml = ctx.myLast;
+  if (ctx.weOpened || ctx.mine.length !== 1 || ctx.pards.length !== 1 || !ml || ml.call !== 'X' || !ml.m || ml.m.tag !== 'xto' || ctx.rhoCall !== 'P') return null;
+  if (!pl || pl.i < ml.i || ctx.lb !== pl || bidValue(pl.call) < 0 || !pl.m || pl.m.art || pl.m.f || pl.m.inv || pl.m.hi > 11) return null;
+  const s = pl.call[1], their = ctx.oppSuits, bal = ml.m.lo <= 9 ? 3 : 0; // after a balancing double partner has bid some of my values
+  const stops = h => their.every(x => stopper(h, x)), nt = ctx.cheap('N'), T = [];
+  if (s === 'N') {
+    if (nt <= 3) T.push(T_('3N', h => h.H >= 19 - bal, MM(19 - bal, 37, { nt: true })));
+    T.push(T_('P', () => true, ANY()));
+    return T;
+  }
+  const gl = gameLevel(s), l = ctx.cheap(s), sp = h => supPts(h, s);
+  if (MAJ(s) && l <= 4) T.push(T_('4' + s, h => h.L[s] >= 4 && sp(h) >= 22 - bal, MM(22 - bal, 37, { mn: { [s]: 4 }, agree: s })));
+  if (nt <= 3) T.push(T_('3N', h => h.H >= (nt === 3 ? 17 : 20) - bal && stops(h) && !(MAJ(s) && h.L[s] >= 4), MM((nt === 3 ? 17 : 20) - bal, 37, { nt: true, stop: their })));
+  if (l + 1 < gl && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= 4 && sp(h) >= 19 - bal, MM(19 - bal, 21, { mn: { [s]: 4 }, agree: s, inv: true, a: 'Invites game: strong double with support' })));
+  if (l < gl && l <= 3) T.push(T_(l + s, h => h.L[s] >= 4 && sp(h) >= 16 - bal, MM(16 - bal, 18, { mn: { [s]: 4 }, agree: s, inv: true })));
+  if (nt <= 2) T.push(T_(nt + 'N', h => h.semi && h.H >= 18 - bal && stops(h), MM(18 - bal, 20, { nt: true, stop: their, a: nt === 1 ? '18-20 points, balanced' : 'Strong, balanced, invites game' })));
+  for (const x of ['S', 'H', 'D', 'C']) if (x !== s && !their.includes(x) && ctx.cheap(x) <= 3) T.push(T_(ctx.cheap(x) + x, h => h.L[x] >= 5 && h.H >= 18 - bal && longest(h, their) === x && h.L[s] <= 3, MM(18 - bal, 37, { mn: { [x]: 5 } })));
+  T.push(T_('P', () => true, MM(ml.m.lo, 17 - bal)));
+  return T;
+}
+function afterXXRun(ctx) {
+  if (!ctx.weOpened || !/^1[CDHS]$/.test(ctx.first.call) || ctx.ours.length < 2) return null;
+  const xx = ctx.ours[1];
+  if (xx.call !== 'XX' || !xx.m || xx.m.tag !== 'xx' || xx.by === ctx.first.by) return null;
+  const run = ctx.theirs.filter(y => y.i > xx.i && bidValue(y.call) >= 0);
+  if (run.length !== 1 || ctx.lb !== run[0] || run[0].call[1] === 'N' || (run[0].m && run[0].m.art) || bidValue(run[0].call) >= bidValue('2' + ctx.first.call[1])) return null;
+  const y = run[0].call[1], t = ctx.first.call[1], T = [];
+  const pen = (lo, n) => MM(lo, 37, { mn: { [y]: n }, a: `Penalty (after our redouble)`, t: 'xpen' });
+  const pl = ctx.pLast;
+  if (pl && pl.call === 'X' && pl.i > run[0].i && ctx.rhoCall === 'P' && lastNonPass(ctx.prefix) === ctx.prefix[pl.i]) return [T_('P', () => true, ANY())]; // partner doubled them: defend
+  if (ctx.ours.length !== 2) return null;
+  if (ctx.seat === ctx.first.by && ctx.rhoCall !== 'P' && ctx.mine.length === 1) { // opener, directly over the runout
+    T.push(T_('X', h => h.L[y] >= 4 && hon(h, y, 'AKQJT') >= 2, pen(11, 4)));
+    T.push(T_('P', h => !(h.L[t] >= 6 && h.L[y] <= 1) && !(h.sh[0] >= 5 && h.sh[1] >= 5 && h.L[y] <= 1), MM(11, 21, { a: 'Forcing pass: partner doubles or bids', t: 'fpass' })));
+    return T.concat([{ nat: true }]);
+  }
+  if (ctx.seat === xx.by && ctx.mine.length === 1 && !ctx.items.some(x => x.by === ctx.p && x.i > xx.i && x.call !== 'P')) { // the redoubler, opener passed
+    const nt = ctx.cheap('N');
+    T.push(T_('X', h => h.L[y] >= 3 && (hon(h, y, 'AKQJT') >= 1 || h.L[y] >= 4), pen(10, 3)));
+    if (nt <= 3) T.push(T_('3N', h => h.H >= 14 && stopper(h, y), MM(14, 37, { nt: true, stop: [y] })));
+    T.push(T_(ctx.cheap(t) + t, h => h.L[t] >= (MAJ(t) ? 3 : 4) && ctx.cheap(t) <= 3, MM(10, 37, { mn: { [t]: MAJ(t) ? 3 : 4 }, agree: t })));
+    if (nt <= 2) T.push(T_(nt + 'N', h => stopper(h, y), MM(10, 13, { nt: true, stop: [y] })));
+    for (const s of ['S', 'H', 'D', 'C']) if (s !== y && s !== t && ctx.cheap(s) <= 2) T.push(T_(ctx.cheap(s) + s, h => h.L[s] >= 4 && longest(h, [y, t]) === s, MM(10, 37, { mn: { [s]: 4 }, f: 1 })));
+    T.push(T_('X', () => true, pen(10, 2)));
+    return T;
+  }
   return null;
 }
 function supXSpot(ctx) {
@@ -1616,7 +1682,7 @@ function natural(ctx, h, reserved) {
     }
     // a long suit of my own: compete once at a low level
     const ls = longest(h, opp);
-    if (!fit && h.L[ls] >= 6 && hon(h, ls, 'AKQJ') >= 2 && myV >= 11 && ctx.cheap(ls) <= 2 && ok(ctx.cheap(ls) + ls) && !ctx.mine.some(x => x.call[1] === ls && +x.call[0] >= 2)) return ctx.cheap(ls) + ls;
+    if (!fit && h.L[ls] >= 6 && hon(h, ls, 'AKQJ') >= 2 && myV >= 11 && (ctx.cheap(ls) <= 2 || (ctx.cheap(ls) === 3 && myV >= (BID_K('ls3') ?? 15) && !BID_OFF('ls3'))) && ok(ctx.cheap(ls) + ls) && !ctx.mine.some(x => x.call[1] === ls && +x.call[0] >= 2)) return ctx.cheap(ls) + ls;
   }
   if (forcedGF || ctx.forced) return forcedBid(ctx, h, ok, fit);
   return 'P';
