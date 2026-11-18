@@ -48,6 +48,8 @@ Measured with `node tests/bidddsim.js` against the previous natural bidding (bot
 
 The constructive changes above (slam valuation, control bids, the grand slam try and queen-ask fix, jump shifts, 2NT 18-19 rebids, responder's forcing new suit, no passing below game with values, 24-point games, 2♣-2♦-3NT responses) were tuned on 9,000 boards and measured on 4,000 held-out boards against the 2/1 system before them (`--base=basebid`): **+0.064 ± 0.025 IMPs a board**, with 170 boards bid differently (the gain comes from those). Inverted minor raises, Drury and help-suit game tries measured slightly negative (-0.001 to -0.004 a board on the tuning boards) and were left out; so was fast-arrival meaning for jumps to game.
 
+The competitive changes above (vulnerability, support and responsive doubles, both lebensohls, sacrifices, defence to and after a strong 2♣, the system staying on over interference, running from a redouble, 24-point games in contested auctions too, and inviting 2NT only with 23+ combined) were tuned on 9,000 boards and measured on 4,000 held-out boards against the bidding with the constructive changes but none of these: **+0.27 ± 0.04 IMPs a board** (+0.38 ± 0.05 against `--base=basebid`). Against opponents who make a random call 15% of the time (as a human might), they gain about +0.28 IMPs a table. Cappelletti over their 1NT and sounder preempts and weak jump overcalls when vulnerable measured slightly worse and were left out. `node tests/bidddsim.js ... --off=supx,leb,...` switches features off by name to measure them.
+
 ## Deploy the server (once)
 
 You need a free Cloudflare account (dash.cloudflare.com/sign-up) and Node.js.
