@@ -1,5 +1,5 @@
-// The robots' 2/1 bidding at commit 84c20b4 (bridge/js/bidding.js), unchanged except for the engine path: the
-// baseline that `node tests/bidddsim.js --vs=basebid` measures later changes against. Not loaded by the page or the server.
+// The robots' 2/1 bidding before the constructive-bidding work (js/bidding.js at 84c20b4), kept unchanged
+// as the baseline for: node tests/bidddsim.js --base=basebid. Not loaded by the page or the server.
 // ===== Robot bidding: 2/1 Game Forcing =====
 // The system is written as tables. For each situation (worked out from the auction alone) a table lists the
 // calls the system allows, each with the hands that make it (`w`) and what it shows (`m`). The robot makes the

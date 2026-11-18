@@ -443,7 +443,9 @@ function reb1m(ctx) { // opener after 1m - response
     T.push(T_('3' + r, h => h.L[r] >= 4 && supPts(h, r) >= 16, MM(15, 18, { mn: { [r]: 4 }, agree: r, inv: true, a: 'Invites game' })));
     T.push(T_('2' + r, h => h.L[r] >= 4, MM(11, 15, { mn: { [r]: 4 }, agree: r })));
   }
-  for (const s of ['H', 'S']) if (s !== r && ctx.ok('1' + s) && bidValue('1' + s) > bidValue(c1)) T.push(T_('1' + s, h => h.L[s] >= 4 && !(h.bal && h.H >= 18 && false), MM(11, 21, { mn: { [s]: 4 } })));
+  if (!BID_OFF('jumpshift')) for (const s of ['S', 'H', 'D', 'C']) if (s !== t && s !== r && ctx.cheap(s) + 1 <= 3 && !(s === 'S' && ctx.cheap(s) === 1 && t === 'H')) // jump shift: 19+, game forcing
+    T.push(T_((ctx.cheap(s) + 1) + s, h => h.L[s] >= 4 && h.L[t] >= 4 && !h.semi && (h.H >= 19 || (h.H >= 17 && ltc(h) <= 4)) && longest(h, [t]) === s, MM(18, 21, { mn: { [s]: 4, [t]: 4 }, f: 2, a: 'Jump shift: 19+ points, game forcing', t: 'js' })));
+  for (const s of ['H', 'S']) if (s !== r && ctx.ok('1' + s) && bidValue('1' + s) > bidValue(c1)) T.push(T_('1' + s, h => h.L[s] >= 4 && !(h.bal && h.H >= 18 && h.H <= 19 && !BID_OFF('2nt1819')), MM(11, 21, { mn: { [s]: 4 } })));
   if (r === 'D') T.push(T_('2D', h => h.L.D >= 4 && !h.bal && h.H <= 15, MM(11, 15, { mn: { D: 4 }, agree: 'D' })));
   T.push(T_('2N', h => h.semi && h.H >= 18 && h.H <= 19, MM(18, 19, { bal: true, nt: true })));
   T.push(T_('1N', h => h.semi && h.H <= 14, MM(11, 14, { bal: true, nt: true, mx: MAJ(r) ? { [r]: 3 } : {} })));
@@ -493,6 +495,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 && openSuits(ctx, h, r) === 0, MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
   if (c2 === '2N') { // 18-19 balanced
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6, MM(6, 12, { mn: { [r]: 6 } })), T_('3' + r, h => h.L[r] >= 5 && !h.bal, MM(6, 37, { mn: { [r]: 5 }, f: 1 })));
+    if (r === 'H') T.push(T_('3S', h => h.L.S >= 4 && h.H <= 14, MM(6, 37, { mn: { S: 4 }, f: 1, a: '4 spades (opener may have 4 too)' })));
     T.push(T_('6N', h => h.H >= 15, MM(15, 37)), T_('4N', h => h.H >= 13, MM(13, 14, { t: 'quant', a: 'Quantitative: invites 6NT' })), T_('3N', () => true, MM(6, 12)));
     return T;
   }
@@ -517,15 +520,17 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
       const fc = ctx.cheap(f4) + f4;
       if (+fc[0] <= 3) T.push(T_(fc, h => h.H >= 13 && !(stopper(h, f4) && h.semi && h.H <= 15), MM(13, 37, { art: true, f: 2, a: 'Fourth suit forcing: artificial, game forcing', t: 'fsf' })));
       T.push(T_('3N', h => h.H >= 13 && stopper(h, f4), MM(13, 16, { nt: true, stop: [f4] })));
-      T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && stopper(h, f4) && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true, stop: [f4] })));
-      T.push(T_(ctx.cheap('N') + 'N', h => h.H <= 10 && stopper(h, f4) && ctx.cheap('N') === 1, MM(6, 10, { nt: true })));
+      if (ctx.cheap('N') === 2) T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && stopper(h, f4) && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true, stop: [f4] })));
+      if (ctx.cheap('N') === 1) T.push(T_(ctx.cheap('N') + 'N', h => h.H <= 10 && stopper(h, f4) && ctx.cheap('N') === 1, MM(6, 10, { nt: true })));
     }
   }
   // opener rebid his suit, or showed a lower suit: natural
+  if (!BID_OFF('newsuitf')) for (const x of ['C', 'D', 'H', 'S']) if (x !== t && x !== r && x !== o && x !== f4 && ctx.cheap(x) <= 3 && !(+c2[0] === 1 && MAJ(x) && ctx.cheap(x) === 1)) // a new (third) suit by responder: forcing
+    T.push(T_(ctx.cheap(x) + x, h => h.H >= 12 && h.L[x] >= (MAJ(x) ? 4 : 5) && !(h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s))) && !(MAJ(r) && h.L[r] >= 6), MM(12, 37, { mn: { [x]: MAJ(x) ? 4 : 5 }, f: 1, t: 'nsf' })));
   T.push(T_('3N', h => h.H >= 13 && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(13, 16, { nt: true })));
   T.push(T_('4' + r, h => MAJ(r) && h.L[r] >= 6 && h.H >= 12, MM(12, 16, { mn: { [r]: 6 } })));
   T.push(T_('3' + r, h => h.L[r] >= 6 && h.H >= 10 && h.H <= 12, MM(10, 12, { mn: { [r]: 6 }, inv: true })));
-  T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && h.semi && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true })));
+  if (ctx.cheap('N') === 2) T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && h.semi && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true })));
   T.push(T_('3' + t, h => h.L[t] >= (t === 'C' ? 4 : 4) && h.H >= 10 && h.H <= 12 && ctx.cheap(t) <= 3, MM(10, 12, { mn: { [t]: 4 }, agree: t, inv: true })));
   if (ctx.cheap(r) === 2) T.push(T_('2' + r, h => h.L[r] >= 6 && h.H <= 10, MM(6, 10, { mn: { [r]: 6 } })));
   if (ctx.cheap(t) === 2 && o !== t) T.push(T_('2' + t, h => h.L[t] >= 3 && h.L[t] >= h.L[o] && h.H <= 10, MM(6, 10, { mn: { [t]: 3 } })));
@@ -553,7 +558,7 @@ function nmfCont(ctx) {
     T.push(T_('3' + fitS, h => h.L[fitS] + ctx.P.mn[fitS] >= 8 && ctx.cheap(fitS) <= 3, MM(11, 12, { agree: fitS, inv: true })));
   }
   T.push(T_('3N', h => h.H >= 13 || (ctx.pLast.m.lo >= 14 && h.H >= 11), MM(12, 17)));
-  T.push(T_(ctx.cheap('N') + 'N', h => ctx.cheap('N') === 2, MM(11, 12, { inv: true })));
+  if (ctx.cheap('N') === 2) T.push(T_(ctx.cheap('N') + 'N', h => ctx.cheap('N') === 2, MM(11, 12, { inv: true })));
   T.push(T_('P', () => true, ANY()));
   return T;
 }
@@ -1122,12 +1127,16 @@ function rkcbTable(ctx) {
     return [T_('6' + t2, h => h.has[t2].includes('Q') || h.L[t2] >= 5, MM(0, 37, { art: false, a: `Has the ${SNAME[t2]} queen`, t: 'qr' })), T_(ctx.cheap(t2) + t2, () => true, MM(0, 37, { a: `No ${SNAME[t2]} queen`, t: 'qr' }))];
   }
   if (pl.m.tag === 'place') return [T_('P', () => true, ANY())];
+  if (pl.m.tag === 'kask') { // answer the grand slam try
+    const t2 = pl.m.trump, sk = h => SUITS.filter(s => s !== t2 && h.has[s].includes('K')).length;
+    return [T_('7' + t2, h => sk(h) >= 2 || (sk(h) >= 1 && h.L[t2] >= 5), MM(0, 37, { t: 'place' })), T_('6' + t2, () => true, MM(0, 37, { t: 'place' }))];
+  }
   if (ml && ml.m && ml.m.tag === 'rkcb' && pl.m.tag === 'rkr') return rkcbPlace(ctx, pl, tr);
   if (ml && ml.m && ml.m.tag === 'qask' && pl.m.tag === 'qr') {
     const hasQ = +pl.call[0] === 6;
     return [
       T_('7' + tr, h => ctx.rk && hasQ && false, MM(0, 37, { t: 'place' })),
-      T_('6' + tr, h => hasQ || ctx.cheap(tr) === 6, MM(0, 37, { t: 'place' })),
+      T_('6' + tr, h => hasQ || (ctx.cheap(tr) === 6 && BID_OFF('qfix')), MM(0, 37, { t: 'place' })),
       T_('P', () => true, MM(0, 37, { t: 'place' }))];
   }
   return null;
@@ -1137,7 +1146,7 @@ function rkcbPlace(ctx, pl, tr) {
   const decide = h => {
     const mine = keycards(h, tr);
     let theirs = opts[0];
-    if (opts.length > 1 && mine + opts[1] <= 5 && (mine + opts[0] <= 2 && ctx.P.lo >= 12 || mine + opts[0] < 2)) theirs = opts[1];
+    if (opts.length > 1 && mine + opts[1] <= 5 && (mine + opts[0] <= 2 && ctx.P.lo >= (BID_OFF('rkinfer') ? 12 : 9) || mine + opts[0] < 2)) theirs = opts[1];
     const missing = 5 - mine - theirs;
     const qKnown = pl.m.q === true || h.has[tr].includes('Q') || (h.L[tr] + ctx.P.mn[tr] >= 10);
     const tot = supPts(h, tr) + ctx.P.lo;
@@ -1150,11 +1159,13 @@ function rkcbPlace(ctx, pl, tr) {
       return '6' + tr;
     }
     if (qKnown && tot >= 36) return '7' + tr;
+    if (qKnown && tot >= 32 && ctx.ok('5N') && !BID_OFF('kask')) return '5N';
     return '6' + tr;
   };
   const T = [];
   const ask = qaskCall(pl.call, tr);
   for (const c of ['P', '5' + tr, '6' + tr, '7' + tr]) if (c === 'P' || ctx.ok(c)) T.push(T_(c, h => decide(h) === c, MM(0, 37, { t: 'place' })));
+  if (ctx.ok('5N')) T.push(T_('5N', h => decide(h) === '5N', MM(0, 37, { art: true, f: 1, t: 'kask', trump: tr, a: `Grand slam try: all key cards and the ${SNAME[tr]} queen are held; bid seven with a side king and extra trump length, or two side kings` })));
   if (ask) T.push(T_(ask, h => decide(h) === ask, MM(0, 37, { art: true, t: 'qask', trump: tr, a: `Asks for the ${SNAME[tr]} queen` })));
   T.push(T_('6' + tr, () => true, MM(0, 37, { t: 'place' })));
   return T;
@@ -1324,12 +1335,101 @@ function runFromXX(ctx, adv) {
   return T;
 }
 
+// ---- Slam judgement (constructive auctions) ----
+// Partner's expected strength is a little above the bottom of what partner has shown. With a trump fit, slam
+// values come from losing-trick count (24 less both hands' losers) checked against points (high cards plus
+// shortness or length); in notrump from high cards alone.
+function pExp(ctx) { const P = ctx.P; return P.lo + Math.min(3, (Math.min(P.hi, P.lo + 9) - P.lo) * 0.3); }
+function slamVal(ctx, h, tr) { // { pts, tricks } for a slam in tr, my hand plus what partner is expected to hold
+  const pe = pExp(ctx);
+  if (tr === 'N') return { pts: h.H + pe, tricks: 0 };
+  // kings, queens and jacks opposite partner's singleton or void are worth little
+  const waste = BID_OFF('waste') ? 0 : SUITS.filter(s => s !== tr && ctx.P.mx[s] <= 1).reduce((t, s) => t + h.sp[s] - (h.has[s].includes('A') ? 4 : 0), 0);
+  const mine = (h.L[tr] >= Math.max(5, ctx.P.mn[tr]) ? ownPts(h, tr) : supPts(h, tr)) - waste;
+  const pL = Math.max(3, Math.min(10, 7.5 - (pe - 12) / 3));
+  return { pts: mine + pe, tricks: 24 - ltc(h) - pL };
+}
+function slamAsk(ctx, h, T, call) { // the call chosen stops below slam, but a fit and slam values say: ask for key cards
+  if (BID_OFF('slamask') || !ctx.quiet || !ctx.weOpened || !ctx.pards.length || !ctx.mine.length || !ctx.ok('4N')) return null;
+  if (call === '4N' || (bidValue(call) >= 0 && +call[0] >= 6) || rkcbTable(ctx) || (ctx.pLast.m && ctx.pLast.m.tag === 'signoff')) return null;
+  if (ctx.ours.some(x => x.call === '4N' || (x.m && /^(rkcb|quant|rkr|qask|place)$/.test(x.m.tag)))) return null;
+  const ds = T ? T.filter(d => d.c === '4N') : [];
+  if (ds.length) return null; // the table has its own slam test
+  const m = natMean(ctx, '4N');
+  if (!m || m.tag !== 'rkcb' || !m.trump) return null;
+  const tr = m.trump;
+  if (h.L[tr] + ctx.P.mn[tr] < 8 || h.L[tr] < 2) return null;
+  return slamZone(ctx, h, tr) ? '4N' : null;
+}
+// Control bids: once a major is agreed in a game-forcing auction, a new suit below four of the major shows
+// first- or second-round control (ace, king, singleton or void) and slam interest, cheapest first. With every
+// side suit controlled between the two hands, ask for key cards; without interest, sign off in four of the major.
+function ctlTrump(ctx) {
+  if (BID_OFF('ctl') || !ctx.quiet || !ctx.weOpened || !ctx.gf || !ctx.mine.length || !ctx.pards.length) return null;
+  let tr = null;
+  for (const x of ctx.ours) if (x.m && x.m.agree) tr = x.m.agree;
+  if (!tr || !MAJ(tr) || ctx.Me.mn[tr] + ctx.P.mn[tr] < 8) return null;
+  const lb = ctx.lb;
+  if (!lb || !sameSide(lb.by, ctx.seat) || bidValue(lb.call) >= bidValue('4' + tr)) return null;
+  if (ctx.ours.some(x => x.call === '4N' || (x.m && /^(rkcb|quant|jacoby|splinter)$/.test(x.m.tag) && x === ctx.pLast))) return null;
+  if (ctx.pLast.m && ctx.pLast.m.tag === 'jacoby') return null;
+  return tr;
+}
+function ctlTable(ctx) {
+  const tr = ctlTrump(ctx); if (!tr) return null;
+  const shownBy = who => new Set(ctx.ours.filter(x => x.by === who && x.m && x.m.tag === 'ctl').map(x => x.m.ctlS));
+  const pCtl = shownBy(ctx.p), myCtl = shownBy(ctx.seat);
+  const ctl = (h, s) => h.has[s].includes('A') || h.has[s].includes('K') || h.L[s] <= 1;
+  const side = SUITS.filter(s => s !== tr);
+  const pCued = pCtl.size > 0;
+  const interest = h => { const v = slamVal(ctx, h, tr); if (h.L[tr] + ctx.P.mn[tr] < 8) return false; return v.pts >= SLAM_PTS - (pCued ? 2 : 1) || (v.pts >= SLAM_PTS - (pCued ? 3 : 2) && v.tricks >= SLAM_TR); };
+  const allCovered = h => side.every(s => ctl(h, s) || pCtl.has(s));
+  const T = [];
+  T.push(T_('4N', h => interest(h) && allCovered(h) && slamVal(ctx, h, tr).pts >= SLAM_PTS - (pCued ? 1 : 0), MM(ctx.Me.lo, 37, { t: 'rkcb', trump: tr, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)` })));
+  const cues = side.map(s => ctx.cheap(s) + s).filter(c => bidValue(c) < bidValue('4' + tr) && ctx.ok(c)).sort((a, b) => bidValue(a) - bidValue(b));
+  for (const c of cues) {
+    const s = c[1];
+    T.push(T_(c, h => interest(h) && ctl(h, s) && !(myCtl.has(s)), Object.assign(MM(ctx.Me.lo, 37, { art: true, f: 1, agree: tr, a: `Control bid: ace, king, singleton or void in ${SNAME[s]}; slam interest in ${SNAME[tr]}`, t: 'ctl' }), { ctlS: s })));
+  }
+  T.push(T_('4' + tr, () => true, MM(ctx.Me.lo, 37, { agree: tr, t: 'signoff' })));
+  return T;
+}
+// 2♣-2♦-3NT (25-27 balanced): responder raises to slam on points, invites with 4NT, or transfers to a major.
+function resp2C3N(ctx) {
+  return [
+    T_('7N', h => h.H >= 12, MM(12, 37)),
+    T_('6N', h => h.H >= 8 && h.sh[0] <= 6, MM(8, 11)),
+    T_('4N', h => h.H >= 6 && h.sh[0] <= 5, MM(6, 7, { t: 'quant', a: 'Quantitative: invites 6NT' })),
+    T_('4H', h => h.L.S >= 6, MM(0, 37, { mn: { S: 6 }, art: true, a: 'Texas transfer: 6+ spades', t: 'texas' })),
+    T_('4D', h => h.L.H >= 6, MM(0, 37, { mn: { H: 6 }, art: true, a: 'Texas transfer: 6+ hearts', t: 'texas' })),
+    T_('P', () => true, MM(0, 5)),
+  ];
+}
+function natRescue(ctx, h, T, call) { // a table with no fitting call fell back to natural bidding, which passed below game
+  // only because the natural call is listed in the table with a different hand: bid it if it means nothing artificial
+  if (BID_OFF('rescue') || call !== 'P' || !T || !ctx.quiet || !ctx.weOpened || !ctx.pards.length || ourGame(ctx)) return null;
+  if (T.some(d => d.c === 'P' && !d.nat && d.w(h))) return null;
+  const c = natural(ctx, h, new Set());
+  if (c === 'P' || !ctx.ok(c)) return null;
+  const ds = T.filter(d => d.c === c);
+  if (ds.some(d => d.m.art || d.m.tag === 'signoff')) return null;
+  return c;
+}
+const SLAM_PTS = 31, SLAM_TR = 12;
+function slamZone(ctx, h, tr) { // worth a slam try: values, and no side suit where we may have two fast losers
+  if (BID_OFF('slamzone')) return false;
+  const v = slamVal(ctx, h, tr);
+  if (tr === 'N') return v.pts >= 31;
+  return (v.pts >= SLAM_PTS + 2 || (v.pts >= SLAM_PTS && v.tricks >= SLAM_TR)) && openSuits(ctx, h, tr) === 0;
+}
+
 // ---- Which table applies ----
 function tablesFor(ctx) {
   const see = seeThrough(ctx); if (see) return see;
   const rk = rkcbTable(ctx); if (rk) return rk;
   if (!ctx.first) return openingTable(ctx);
   const nt = ntSystem(ctx); if (nt) return nt;
+  const cb = ctlTable(ctx); if (cb) return cb;
   const seq = ctx.seq, k = seq.length, pl = ctx.pLast;
   if (ctx.quiet && ctx.weOpened) {
     const c0 = seq[0];
@@ -1368,6 +1468,7 @@ function tablesFor(ctx) {
       if (/^1[HS]$/.test(c0) && m0.tag === 'splinter') return [T_('P', () => true, ANY())];
       if (pl.m && pl.m.inv && pl.m.agree && !pl.m.art) { const s = pl.m.agree; return acceptInv(ctx, gameLevel(s) + s, ctx.Me.lo + Math.min(2, (ctx.Me.hi - ctx.Me.lo) / 2)); }
       if (/^1[CDH]$/.test(c0) && /^1[DHS]$/.test(c1)) return resp1mReb(ctx);
+      if (c0 === '2C' && c1 === '2D' && seq[2] === '3N' && !BID_OFF('2c3n')) return resp2C3N(ctx);
       if (c0 === '2C' && c1 === '2D') return resp2C2(ctx);
       if (/^2[DHS]$/.test(c0) && m0.tag === 'feature') return featCont(ctx);
       return null;
@@ -1375,6 +1476,7 @@ function tablesFor(ctx) {
     if (k === 4 && ctx.opener === ctx.seat) {
       const m3 = pl.m || ANY();
       if (m3.tag === 'nmf') return nmfAnswer(ctx);
+      if (m3.tag === 'texas' && seq[0] === '2C') { const s = seq[3] === '4D' ? 'H' : 'S'; return [T_('4' + s, () => true, MM(25, 27, { art: true, a: 'Completes the transfer' }))]; }
       if (m3.tag === 'fsf') return fsfAnswer(ctx);
       if (m3.inv && m3.agree && !m3.art && !ctx.gf) { const s = m3.agree; return acceptInv(ctx, gameLevel(s) + s, ctx.Me.lo + Math.min(2, (ctx.Me.hi - ctx.Me.lo) / 2)); }
       if (seq[2] === '2N' && /^1[HS]$/.test(seq[1]) && seq[3] === '3' + seq[1][1]) { const r = seq[1][1]; return [T_('4' + r, h => h.L[r] >= 3, ANY()), T_('3N', () => true, ANY())]; }
@@ -1438,7 +1540,7 @@ function natural(ctx, h, reserved) {
     if (h.L[myLong] >= 6 || !pS || h.L[pS] < 2) strain = myLong; else strain = pS;
   }
   const gl = gameLevel(strain);
-  const lvlFor = t => t >= 37 ? 7 : t >= 33 ? 6 : t >= (strain === 'N' || MAJ(strain) ? 25 : 28) ? gl : t >= 23 ? Math.min(gl - 1, 3) : t >= 20 ? (strain === 'N' && !BID_OFF('nt2') ? 1 : 2) : t >= 17 ? 1 : 0;
+  const lvlFor = t => t >= 37 ? 7 : t >= 33 ? 6 : t >= (strain === 'N' || MAJ(strain) ? ((ctx.quiet || !BID_OFF('game24c')) && !BID_OFF('game24') ? 24 : 25) : 28) ? gl : t >= 23 ? Math.min(gl - 1, 3) : t >= 20 ? (strain === 'N' && !BID_OFF('nt2') ? 1 : 2) : t >= 17 ? 1 : 0;
   let target = lvlFor((total + totLo) / 2 >= 33 ? total : Math.min(total, 32.5));
   if (!pBid && !fit && !(h.L[strain] >= 6 && myV >= 12)) target = Math.min(target, 0);
   const oppNT = ctx.theirs.some(x => bidValue(x.call) >= 0 && x.call[1] === 'N' && x.m && x.m.nt);
@@ -1453,6 +1555,7 @@ function natural(ctx, h, reserved) {
   const cheapS = ctx.cheap(strain);
   const lnp = lastNonPass(ctx.prefix);
   // slam
+  if (target < 6 && pBid && ctx.quiet && (fit || strain === 'N') && (ctx.gf || ourGame(ctx) || total >= 28) && (ok('4N') || slamVal(ctx, h, strain).pts >= 34) && slamZone(ctx, h, strain)) target = 6;
   if (target >= 6 && strain !== 'N' && openSuits(ctx, h, strain) > 0) target = gl;
   if (target >= 6 && pBid) {
     if (strain !== 'N' && fit && ok('4N') && !ctx.ours.some(x => x.call === '4N') && openSuits(ctx, h, strain) === 0) {
@@ -1561,6 +1664,7 @@ function chooseCall(hand, seat, auction, vul) {
     for (const d of T) { if (d.nat) break; if (d.c && ctx.ok(d.c) && d.w(h)) { call = d.c; break; } }
   }
   if (!call) call = natural(ctx, h, new Set(T ? T.filter(d => d.c).map(d => d.c) : []));
+  call = slamAsk(ctx, h, T, call) || natRescue(ctx, h, T, call) || call;
   return { call, alert: explainCall(auction, seat, call, metas, vul).alert };
 }
 // vul ('None', 'NS', 'EW', 'Both') is optional: without it the robots bid as if nobody were vulnerable.

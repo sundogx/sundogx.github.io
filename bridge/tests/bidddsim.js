@@ -3,10 +3,10 @@
 // Each final contract is scored with the double-dummy tricks from DDS (js/wasm), so card play does not
 // matter. Reports IMPs per board for the new system (± standard error) and both systems against par.
 //
-// Usage: node tests/bidddsim.js [boards=1000] [seed=1] [--worst=10] [--self] [--cats] [--vs=basebid]
+// Usage: node tests/bidddsim.js [boards=1000] [seed=1] [--worst=10] [--self] [--cats] [--base=oldbid]
 //   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
-//   --vs=name  the baseline system: tests/fixtures/<name>.js (default oldbid)
-//   --worst=k  print the k boards the new system lost most on (hands and both auctions)
+//   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4)
+//   --worst=k  print the k boards the new system lost most on (hands and both auctions); with --best, gained most on
 //   --self     also report each system in self-play against par
 // Double-dummy tables are cached in the OS temp folder (bridge-dd-<seed>.json), so reruns are fast.
 const { Worker, isMainThread, parentPort } = require('worker_threads');
@@ -44,8 +44,8 @@ const N = +pos[0] || 1000, SEED = pos[1] || '1';
 const WORST = +((flags.find(f => f.startsWith('--worst')) || '').split('=')[1] || 0);
 const SELF = flags.includes('--self');
 globalThis.BID_OFF = ((flags.find(f => f.startsWith('--off=')) || '--off=').slice(6)).split(',').filter(Boolean); // switch off named features of js/bidding.js
-const VS = (flags.find(f => f.startsWith('--vs=')) || '--vs=oldbid').slice(5);
-const NEW = require('../js/bidding.js'), OLD = require(`./fixtures/${VS}.js`);
+const BASE = (flags.find(f => f.startsWith('--base=')) || '--base=oldbid').split('=')[1];
+const NEW = require('../js/bidding.js'), OLD = require('./fixtures/' + BASE + '.js');
 const { parScore } = require('../js/par.js');
 
 const rand = seededRand('bidddsim-' + SEED);
@@ -137,7 +137,7 @@ const stats = () => ({ n: 0, s: 0, q: 0, add(x) { this.n++; this.s += x; this.q 
   if (WORST) {
     const show = h => SUITS.map(s => h.filter(c => c[0] === s).map(c => c[1]).join('') || '-').join('.');
     const auc = t => t.auction.map(a => (a.call === 'P' ? 'P' : a.call) + (a.alert ? '*' : '')).join(' ');
-    swings.sort((a, b) => a.imps - b.imps).slice(0, WORST).forEach(({ b, imps, t1, t2, par }) => {
+    swings.sort((a, b) => flags.includes("--best") ? b.imps - a.imps : a.imps - b.imps).slice(0, WORST).forEach(({ b, imps, t1, t2, par }) => {
       console.log(`\nBoard ${b.bn} dealer ${b.dealer} vul ${b.vul}: ${imps} IMPs; par ${par}`);
       SEATS.forEach(s => console.log(`  ${s} ${show(b.hands[s])} (${hcp(b.hands[s])})`));
       console.log(`  NS ${SEATS.map(s => b.dd[s].N + '' + b.dd[s].S + b.dd[s].H + b.dd[s].D + b.dd[s].C).join(' ')} (NT S H D C tricks for N E S W)`);
