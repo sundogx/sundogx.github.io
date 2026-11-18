@@ -90,7 +90,7 @@ if (isMainThread) {
             const w = tricksWon(t2.play, ct), mine = sameSide(s, ct.declarer) ? w.decl : w.def;
             r[o.card] = Y === 'roll' ? mine : (r[o.card] + mine) / 2;
           }
-          recs.push({ st: F.group, opts: F.opts.map(o => ({ f: o.f, y: r[o.card], cur: suitOf(o.card) === suitOf(card) })) });
+          recs.push({ st: F.group, opts: F.opts.map(o => ({ f: o.f, y: r[o.card], cur: kind === 'follow' ? o.card === card : suitOf(o.card) === suitOf(card) })) });
         }
         applyPlay(t.play, ct, s, card);
       }
