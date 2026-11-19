@@ -69,10 +69,12 @@ const handle = async (req, env) => {
       const tok = env.ADMIN_TOKEN, got = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
       if (!tok || got.length !== tok.length || got !== tok) return new Response('Not found', { status: 404 });
       let body; try { body = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
+      if (!body || typeof body !== 'object' || (body.ids != null && !Array.isArray(body.ids)) || (body.codes != null && !Array.isArray(body.codes))) return json({ error: 'bad request' }, 400);
       const why = 'The site owner closed this table.';
-      const stubs = [...(body.ids || []).slice(0, 200).map(id => env.TABLE.get(env.TABLE.idFromString(String(id)))),
-        ...(body.codes || []).slice(0, 200).map(c => tableStub(env, String(c)))];
-      const res = await Promise.allSettled(stubs.map(s => s.purge(why)));
+      // (idFromString throws on a malformed id: that counts as one failure, not a crash of the whole request)
+      const jobs = [...(body.ids || []).slice(0, 200).map(id => () => env.TABLE.get(env.TABLE.idFromString(String(id)))),
+        ...(body.codes || []).slice(0, 200).map(c => () => tableStub(env, String(c)))];
+      const res = await Promise.allSettled(jobs.map(async j => j().purge(why)));
       if (body.lobby) await lobbyStub(env).clear();
       return json({ closed: res.filter(r => r.status === 'fulfilled').length, failed: res.filter(r => r.status === 'rejected').length });
     }
@@ -124,12 +126,13 @@ const handle = async (req, env) => {
         return json({ code: open.id });
       }
 
-      const t = await make(() => {
+      let t;
+      try { t = await make(() => {
         const t = G.newTable({ name: tableName, priv });
         t.seats.S = { kind: 'human', id: uid, name };
         G.sysMsg(t, `${name} opened the table`);
         return t;
-      });
+      }); } catch (e) { console.error(e); return json({ error: 'could not open a table, try again' }, 503); }
       return json({ code: t.id });
     }
 
@@ -526,6 +529,7 @@ export class TableRoom extends DurableObject {
       const now = Date.now();
       if (prev.helloAt && now - prev.helloAt < 2000) return; // one hello every 2 seconds per connection
       const att = { uid: await idFromSecret(secret), name: cleanName(m.name) || 'Player', helloAt: now, sid: prev.sid, ip: prev.ip };
+      if (!this.t) return; // the table may have closed while the hash was worked out
       // a full table of onlookers turns further onlookers away (players can always get to their seats)
       if (!SEATS.some(s => this.t.seats[s] && this.t.seats[s].kind === 'human' && this.t.seats[s].id === att.uid) && !(this.t.left && Object.hasOwn(this.t.left, att.uid))) {
         const seated = new Set(SEATS.map(s => this.t.seats[s]).filter(o => o && o.kind === 'human').map(o => o.id));
@@ -594,6 +598,7 @@ export class TableRoom extends DurableObject {
 
   // Run one action on a copy of the table; keep it only if the rules accepted it.
   async apply(u, run, ws, exclude) {
+    if (!this.t) return false; // closed meanwhile (shutdown)
     const { history: oldHistory, ...rest } = this.t;   // the history only ever grows, so it is copied, not deep-cloned
     const t = structuredClone(rest);
     t.history = oldHistory.slice();
@@ -699,6 +704,7 @@ export class TableRoom extends DurableObject {
   // the table is waiting for (only if someone else is here to play on), or to delete the table once it is idle.
   async planAlarm() {
     const t = this.t, now = Date.now();
+    if (!t) return; // closed while a save was under way
     let at = deadline(t);
     const ab = awayBlocking(t);
     if (ab && this.othersHere(ab.id)) at = at == null ? ab.at : Math.min(at, ab.at);
@@ -1004,7 +1010,11 @@ export class Lobby extends DurableObject {
     await this.ctx.storage.put('t:' + summary.code, summary);
   }
   async remove(code) { this.listCache = null; await this.ctx.storage.delete('t:' + code); }
-  async clear() { this.listCache = null; const all = await this.ctx.storage.list({ prefix: 't:' }); await this.ctx.storage.delete([...all.keys()]); }
+  async clear() { // delete() takes at most 128 keys at a time
+    this.listCache = null;
+    const keys = [...(await this.ctx.storage.list({ prefix: 't:' })).keys()];
+    for (let i = 0; i < keys.length; i += 128) await this.ctx.storage.delete(keys.slice(i, i + 128));
+  }
   async list() {
     if (this.listCache && Date.now() - this.listCache.at < 3000) return this.listCache.v;
     const v = await this.readList();
