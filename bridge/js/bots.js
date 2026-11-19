@@ -116,7 +116,7 @@ const BOT_DLEAD_NAMES = ['rule', 'trump', 'trumpOppLeft', 'trumpNone', 'partnerR
 const BOT_DLEAD_W = { NT: [0.7, 0, 0, 0, 0, 0, 0, 0.8, 0.9, -0.8, 0.4, 1, -0.5, 0, 0.9, 0, 0, 0.1, 1, 0.6, 0, -2.7, -0.1, 0], suit: [0.9, -0.8, 0.7, -1.4, 2.3, 0.1, -1.8, 0.8, 0.8, 0.4, 0.1, 0.3, 0, 0.1, 0.3, -1.3, 0.2, -0.3, 0.5, 0.6, -0.6, -1.1, 0.1, 0.3] };
 const BOT_FOLLOW_NAMES = ['rule', 'low', 'wins', 'sureWin', 'overtake', 'above', 'honour', 'rank', 'coverHonour', 'setNow', 'nextBeats', 'endgame', 'unblock', 'finesse1', 'secondWin', 'honourDoubleton', 'high', 'ourLead', 'finFew', 'finMany', 'fin2Few'];
 const BOT_FOLLOW_W = { decl1n: [-0.8, -0.8, 1.8, 2.8, 0, 0.9, -1.1, -0.5, 2.2, 2.8, 0, 0.4, 1.4, 0.8, -1, 0.5, -2.4, 0, -0.6, 0.8, 0.3], decl1s: [0, -0.7, 1.1, 1.9, 0, 0.5, -0.6, -0.4, 1.5, 1.9, 0, 0.7, 0.7, 0.6, -0.8, 0.5, -1.1, 0, 0.1, 0.5, -0.1], def1n: [0.4, -0.3, 3, 5.6, 0, 0.2, 0.4, -2.1, 0.6, 0.3, 1, 0.2, 0, -0.2, -2.6, 0.2, -0.6, 0, -1.8, 0.6, -0.5], def1s: [0.1, -0.3, 1.7, 3.2, 0, 0.3, 0.1, -1, 1.7, 0.3, 0.9, 0.4, 0, -0.3, -1.4, 0.5, -0.5, 0, 0, 0.2, -0.7], def2n: [2.4, -1.5, 2.4, 10.4, -6.1, 0.3, 2.1, -3.1, 0, 0.9, -0.5, 1.9, 0, 3.6, 0, 1, -0.1, 0, -1.9, 2.6, 2], def2s: [0.9, -0.3, 2.8, 7.7, -5.2, -0.1, 1.8, -1.9, 0, 1, 0, 0.4, 0, 1.1, 0, 0.2, -0.2, 0, -0.8, 1.8, -0.2] };
-const BOT_DISCARD_W = { declNT: [0, 0.6, -0.9, 0, 0, 0, 0.1, -0.6, 0, 0, 0, 0, 0, 0.2, 0, 0.4, 0], declSuit: [-0.1, 0.3, -0.2, -0.1, 0.2, -0.1, 0.3, -0.3, 0.3, -0.5, 0, 0, 0, 0.2, 0.1, 0.1, 0], defNT: [0, 0.3, -0.3, 0, 0, -0.2, 0.5, -0.6, 0, -0.7, 0.2, -0.1, 0.1, 0.3, 0, 0.6, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
+const BOT_DISCARD_W = { declNT: [-0.2, 0.6, -0.3, 0.1, -0.3, 0.1, 0.3, -1, 0, -1.1, 0, 0, 0, 0.1, 0.1, 0.1, 0], declSuit: [-0.1, 0.1, 0, 0.1, -0.3, 0.1, -0.2, -0.6, 1, -0.3, 0, 0, 0, 0.1, 0.1, 0.3, 0], defNT: [0.1, 0.3, -0.4, 0, 0, 0, 0.5, -1.2, 0, -0.3, 0.2, 0, -0.1, 0.4, 0.1, 0.8, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
 // What each seat's calls showed (the meanings auctionMetas in js/bidding.js gives every call, as shown() reads
 // them): HCP range and suit lengths, worked out once per auction (a small cache keyed by the calls).
 const shownCache = new Map();
@@ -661,6 +661,11 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
         const best = [trick.cards[0].card, ...f3].reduce((a, b) => rankOf(b) > rankOf(a) ? b : a);
         if (unseenAbove(best).length && !voidIn(partner, led)) skip = true;
       }
+    }
+    // dummy led a card that partner may beat, and our trumps may make tricks of their own: don't ruff
+    if (ruffs.length && !skip && pos === 1 && !onDeclSide && trick.cards[0].seat === dummy && !OFF('r2dm')) {
+      const ledC = trick.cards[0].card;
+      if (unseenAbove(ledC).length && !voidIn(partner, led) && of(my, trump).some(x => rankOf(x) >= 9)) skip = true;
     }
     if (ruffs.length && !skip) return R('L206', low(ruffs));
   }
