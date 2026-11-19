@@ -1,7 +1,7 @@
 // Where self-play bidding lands away from par, by kind of auction and of mistake. Every deal is bid by the robots at all
 // four seats; the IMPs between the final contract (scored double-dummy) and par are charged to the side that lost them.
 // Needs the double-dummy cache from tests/bidddsim.js for the same seed (run that first).
-// Usage: node tests/bidpar.js [boards=1000] [seed=1] [--base=basebid3] [--by=kind|open|contract|seq] [--show=k] [--grep=text] [--top=40]
+// Usage: node tests/bidpar.js [boards=1000] [seed=1] [--base=basebid3] [--by=kind|open|contract|seq] [--show=k] [--grep=text] [--top=40] [--only=kind text]
 //   kind: contested or not, declaring or defending side lost, contract class (part/game/slam, made/down, doubled) vs par
 const fs = require('fs'), path = require('path'), os = require('os');
 Object.assign(globalThis, require('../js/engine.js'));
@@ -42,6 +42,8 @@ for (let g = 0; g < N; g++) {
   const parTxt = !par.contract ? 'par pass' : `par ${parSide === declSide ? 'same side' : 'other side'} ${cls(par.contract)}${par.contract.doubled ? ' X' : ''}${parSide === declSide && par.contract.strain !== ct.strain ? ' other strain' : ''}`;
   const seq = auction.map(x => x.call); while (seq[0] === 'P') seq.shift();
   const open = auction.find(a => a.call !== 'P');
+  const kind = `${contested ? 'contested' : 'one side'} | ${role} | ${ctTxt} | ${parTxt}`;
+  if (flag('only') && !kind.includes(flag('only'))) continue;
   const k = BY === 'kind' ? `${contested ? 'contested' : 'one side'} | ${role} | ${ctTxt} | ${parTxt}`
     : BY === 'open' ? `${contested ? 'contested' : 'one side'} | ${open ? open.call : 'P'} | ${role}`
     : BY === 'contract' ? `${contested ? 'contested' : 'one side'} | ${ct ? ct.level + ct.strain + (ct.doubled ? 'X' : '') : 'P'} | ${role}`

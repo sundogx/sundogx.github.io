@@ -414,7 +414,7 @@ function acceptInv(ctx, game, mid) { // partner invited: accept with the top hal
 function gameTryAnswer(ctx) { // 1M - 2M - opener's game try (a new suit or 2NT): game with a maximum or help in that suit
   const t = ctx.seq[0][1], s = ctx.pLast.call[1];
   const losers = h => s === 'N' ? 0 : Math.min(3, h.L[s]) - ['A', 'K', 'Q'].slice(0, Math.min(3, h.L[s])).filter(r => h.has[s].includes(r)).length;
-  return [T_('4' + t, h => supPts(h, t) >= 9 || (supPts(h, t) >= 7 && (s === 'N' ? h.H >= 7 : losers(h) <= 1)), MM(7, 10, { agree: t })), T_('3' + t, () => true, MM(4, 8, { agree: t, t: 'signoff' }))];
+  return [T_('4' + t, h => supPts(h, t) >= 8 || (supPts(h, t) >= 6 && (s === 'N' ? h.H >= 7 : losers(h) <= 1)), MM(6, 10, { agree: t })), T_('3' + t, () => true, MM(4, 7, { agree: t, t: 'signoff' }))];
 }
 function reb1MJ(ctx) { // 1M - 2NT Jacoby
   const t = ctx.seq[0][1], T = [];
