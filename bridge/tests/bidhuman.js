@@ -1,11 +1,12 @@
-// Robots partnering a human. One seat is a "human": it bids like the robots (the fixed baseline system) except that,
-// once per board, it makes a natural but off-system call of one kind (a four-card major opening, a 1NT opening with
-// a singleton, an underbid, an overcall on a four-card suit, a takeout double with a long suit...). Its partner is
-// the robot under test; the opponents bid the baseline system. Every final contract is scored double-dummy.
-// For each kind of deviation it reports how many IMPs the human's side loses against the same deal bid by four
-// robots without the deviation, with the baseline robot as partner and with the robot under test, and the
-// difference (what the partner's handling gains). It also counts forcing calls the robot partner passed, and
-// robot calls that throw or are illegal.
+// Robots partnering a human. One seat is a "human": it bids like the robots except that, once per board, it makes a
+// natural but off-system call of one kind (a four-card major opening, a 1NT opening with a singleton, an underbid,
+// an overcall on a four-card suit, a takeout double with a long suit, or a call the system does not use: a jump
+// shift, a help-suit game try, 1NT-3M...). Its partner is a robot: the baseline (tests/fixtures/basebid5.js) or the
+// one under test (js/bidding.js); the opponents bid the baseline. Every final contract is scored double-dummy.
+// For each kind of deviation it reports how many IMPs the human's side loses against the same deal bid with the
+// same partner and no deviation, for each partner, and the difference between the partners on the deviated deals
+// (what the new robot's handling of the human's call gains). It also counts forcing calls (by the new robots'
+// reading) that the robot partner passed, and robot calls that throw or are illegal.
 // Needs the double-dummy cache from tests/bidddsim.js for the same seed (run that first).
 // Usage: node tests/bidhuman.js [boards=1000] [seed=1] [--base=basebid5] [--types=a,b] [--show=type:k] [--seats=NESW]
 //   --show=type:k prints the k boards of that kind where the robot under test did worst against the baseline partner
