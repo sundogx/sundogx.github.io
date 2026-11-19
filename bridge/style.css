@@ -529,3 +529,25 @@ table.daily-lb tr.you td { font-weight: 600; }
 .bp-cmp td:nth-child(-n+2) { font-weight: 700; white-space: nowrap; }
 .bp-cmp tr.bp-diff td:nth-child(2) { box-shadow: inset 0 0 0 1px var(--brass); }
 @media (max-width: 640px) { .bp-side { flex: 1 1 100%; order: -1; } } /* phones: the auction above your hand */
+
+/* feature: card (the robots' system card) */
+.modal .box.sc-box { max-width: 760px; }
+.sc { columns: 2 320px; column-gap: 20px; }
+.sc section { break-inside: avoid; margin-bottom: 12px; }
+.sc h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--ink-soft); border-bottom: 1px solid var(--line); padding-bottom: 2px; margin: 0 0 4px; }
+.sc ul { list-style: none; margin: 0; padding: 0; }
+.sc li { font-size: 13.5px; line-height: 1.35; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 40%, transparent); }
+.sc li:last-child { border-bottom: 0; }
+.sc li.sc-a, .sc-key .sc-a { color: #c62828; }
+.sc li.sc-n, .sc-key .sc-n { color: #1565c0; }
+.sc li.sc-a .red, .sc li.sc-n .red { color: var(--card-red); }
+.sc-ex { background: none; border: 0; padding: 0 2px; font: inherit; font-size: 12px; color: var(--ink-soft); text-decoration: underline; cursor: pointer; }
+.sc-out { color: var(--ink); margin: 4px 0 2px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.sc-out .note { margin: 4px 0 0; }
+.sc-deal { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.sc-hand div:not(.note) { font-variant-numeric: tabular-nums; }
+.sc-auc { border-collapse: collapse; font-size: 13px; background: #fff; color: #000; border: 1px solid var(--line); }
+.sc-auc th, .sc-auc td { width: 3em; text-align: center; padding: 1px 4px; }
+.sc-auc th { font-weight: 600; border-bottom: 1px solid var(--line); }
+#felt .plate { cursor: default; }
+.sc-auc .sc-p { color: var(--pass); }

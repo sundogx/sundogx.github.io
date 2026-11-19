@@ -1109,6 +1109,7 @@ function showOptions() {
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
+    <p style="margin:4px 0 8px"><button class="btn small" data-syscard="1">Robots' system card</button></p>${'' /* feature: card */}
     <div class="kbdhelp"><h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
     <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble, <b>Enter</b> to confirm</td></tr>
     <tr><td>Playing</td><td><b>←</b> <b>→</b> choose a card, <b>Enter</b> to play it</td></tr>
