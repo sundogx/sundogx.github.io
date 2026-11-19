@@ -8,7 +8,7 @@ const Prefs = (() => {
   let p = {};
   try { p = JSON.parse(localStorage.getItem('bridge-prefs')) || {}; } catch (e) { }
   try { if (p.contrast === undefined && localStorage.getItem('bridge-contrast') === '1') p.contrast = true; } catch (e) { }
-  return Object.assign({ contrast: false, deck4: false, confirm: false, confirmBid: false, speed: 'normal', hint: false, autoNext: false }, p);
+  return Object.assign({ contrast: false, deck4: false, confirm: false, confirmBid: false, speed: 'normal', hint: false, autoNext: false, autoPlay: true /* feature: autoplay */ }, p);
 })();
 function savePrefs() { try { localStorage.setItem('bridge-prefs', JSON.stringify(Prefs)); } catch (e) { } }
 function applyPrefs() {
@@ -650,6 +650,7 @@ function render() {
   claimFeedback(T); chatUnread(T); refreshSeats();
   updateTitle();
   if (window.Notify) Notify.onRender(T); /* feature: notify */
+  if (typeof AutoPlay !== 'undefined') AutoPlay.onRender(T); /* feature: autoplay */
   scheduleRobot();
   autoNext(T); savePractice();
   if (typeof Stats !== 'undefined') Stats.note(T); /* feature: stats */
@@ -1105,6 +1106,7 @@ function showOptions() {
     ${opt('contrast', 'High contrast', 'Black outlines and stronger colours.')}
     ${opt('deck4', 'Four-colour deck', 'Clubs green and diamonds orange, so every suit has its own colour.')}
     ${opt('confirm', 'Confirm before playing a card', 'The first tap raises a card, the second tap plays it.')}
+    ${opt('autoPlay', 'Play single cards automatically', 'When you or dummy have only one card you can play, it is played for you. With confirm on, it is raised instead.')}${'' /* feature: autoplay */}
     ${opt('confirmBid', 'Confirm before bidding', 'Pick a call, then press the Bid button (or Enter) to make it.')}
     ${opt('hint', 'Hints in practice', 'A Hint button shows what the robot would bid or play in your seat.')}
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
