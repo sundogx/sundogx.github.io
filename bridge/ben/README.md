@@ -51,3 +51,25 @@ venv/bin/python -I tools/make_vectors.py ben tests/vectors 30 /tmp/npz   # needs
 venv/bin/python -I tools/verify.py ben models /tmp/npz
 node tools/ort-smoke.mjs
 ```
+
+## Status (measured on the 30 vector deals and on robot matches)
+
+Agreement of the port's final choice with BEN's recorded one (`tools/bencheck.mjs`):
+
+| phase | decisions | same choice | notes |
+|---|---|---|---|
+| bid | 324 | 314 | all candidate lists and encodings match; differences come from sampling and rollouts |
+| lead | 30 | 21 | encodings match; differences come from the sampled layouts (BEN deals far more boards) |
+| play | 1130 | 1010 | 1013 with `o.maxPool` (more layouts when few fit the play), which is off: see below |
+
+Team matches on the same deals (`tools/benvs.mjs`, 300 boards each, IMPs per board for the first-named side):
+
+- BEN bidding against the site's robots, contracts scored double dummy (`DET=1 DDSCORE=1 BENPLAY=0`): −0.18 ± 0.15.
+- BEN lead and card play against the site's robots, both sides bidding with the robots (`BENBID=0`): +0.28 ± 0.26.
+- BEN play with `maxPool: 0` against `maxPool: 1000` (`OPP=ben BENBID=0 NEW='{"maxPool":0}'`): +0.22 ± 0.11, so
+  extending the pool is off at the browser's time budget.
+- BEN play with 4000 ms, k 60, pool 200 against the defaults: +0.18 ± 0.15 (not enough to justify the slower play).
+
+Knobs for the tools: `bencheck` `POOL`, `K`, `MAXPOOL`, `PLIM=none|min`, `DEAL=n`, `V=1` (mismatch details);
+`benvs` `DET=1` (no time limits, reproducible), `DDSCORE=1`, `BENBID=0`, `BENPLAY=0`, `OPP=ben`, `NEW='{...}'`,
+`BOARDS=a,b`, `BIDMS`, `LEADMS`, `PLAYMS`.
