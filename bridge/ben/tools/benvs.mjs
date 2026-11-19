@@ -26,6 +26,15 @@ const DETB = process.env.DET ? { ms: Infinity, budget: Infinity, maxBoards: 4000
 const benPlay = process.env.BENPLAY !== '0', benBid = process.env.BENBID !== '0', OPP = process.env.OPP === 'ben', NEW = JSON.parse(process.env.NEW || '{}');
 // BIDBUDGET: rollout cap for BEN calls (default 2.4 x BIDMS); CAP: calls slower than this many ms become the app's call, as in the page
 const BIDBUDGET = +process.env.BIDBUDGET || 0, CAP = +process.env.CAP || 0;
+// HYB=none,natural: the BEN side bids with the app's robots, and BEN takes over only on calls where the app's
+//   rules had no table ('none') or a table with no fitting rule ('natural'); HYBCOMP=1: only once opponents have bid
+const HYB = process.env.HYB ? process.env.HYB.split(',') : null, HYBCOMP = !!process.env.HYBCOMP, BIDS = require('../../js/bidding.js');
+let hybCall = null; const hybN = { app: 0, ben: 0 };
+function hybBen(s, auction, hands, dealer, vul) {
+  hybCall = R.botCall(hands[s], s, dealer, auction, vul).call;
+  const take = HYB.includes(BIDS.botCallSrc()) && (!HYBCOMP || auction.some(x => x.call !== 'P' && !sameSide(x.by, s)));
+  hybN[take ? 'ben' : 'app']++; return take;
+}
 const opt = v => v === 'new' ? { bidms: NEW.bidms || BIDMS, leadms: NEW.leadms || LEADMS, playms: NEW.playms || PLAYMS, bidbudget: NEW.bidbudget || BIDBUDGET, x: NEW } : { bidms: BIDMS, leadms: LEADMS, playms: PLAYMS, bidbudget: BIDBUDGET, x: {} };
 async function room(hands, dealer, vul, side, rand) { // side(seat) -> true for the BEN (variant) side
   const ben = s => side(s) ? 'new' : OPP ? 'base' : false;
@@ -33,7 +42,8 @@ async function room(hands, dealer, vul, side, rand) { // side(seat) -> true for 
   while (!auctionOver(auction)) {
     const s = auctionTurn(dealer, auction);
     let call;
-    if (ben(s) && benBid) { const O = opt(ben(s)), tb = B.now(); const br = (await B.bid(nn, dd, { hand: hands[s], seat: s, dealer, auction: auction.map(a => ({ call: a.call, by: a.by })), vul }, { ...O.x, ms: O.bidms, budget: O.bidbudget || O.bidms * 2.4, t0: B.now(), ...DETB })); call = br.call;
+    if (HYB && ben(s) === 'new' && !hybBen(s, auction, hands, dealer, vul)) call = hybCall;
+    else if (ben(s) && benBid) { const O = opt(ben(s)), tb = B.now(); const br = (await B.bid(nn, dd, { hand: hands[s], seat: s, dealer, auction: auction.map(a => ({ call: a.call, by: a.by })), vul }, { ...O.x, ms: O.bidms, budget: O.bidbudget || O.bidms * 2.4, t0: B.now(), ...DETB })); call = br.call;
       if (CAP && B.now() - tb > CAP) { console.error('late', ben(s), s, (B.now() - tb) | 0); call = R.botCall(hands[s], s, dealer, auction, vul).call; } if (br.info && br.info.rescue) console.error('rescue', s, br.info.rescue); }
     else call = R.botCall(hands[s], s, dealer, auction, vul).call;
     if (!isLegalCall(dealer, auction, call)) { call = 'P'; }
@@ -75,6 +85,6 @@ for (let g = from; g < to; g++) {
   const r1 = await room(hands, dealer, vul, s => s === 'N' || s === 'S', seededRand(seed + ':r1:' + g));
   const r2 = await room(hands, dealer, vul, s => s === 'E' || s === 'W', seededRand(seed + ':r2:' + g));
   const n1 = r1.ns || 0, n2 = r2.ns || 0;
-  console.log(JSON.stringify({ g, imp: toImps(n1 - n2), r1, r2, s: ((Date.now() - t0) / 1000) | 0 }));
+  console.log(JSON.stringify({ g, imp: toImps(n1 - n2), r1, r2, s: ((Date.now() - t0) / 1000) | 0, ...(HYB ? { hyb: hybN } : {}) }));
 }
 process.exit(0);

@@ -1950,6 +1950,8 @@ function explainCall(prefix, seat, call, metas, vul) {
     return natMean(ctx, call);
   } catch (e) { if (globalThis.BID_DEBUG) throw e; return ANY(); }
 }
+let callSrc = null; // where the last robot call came from: 'table' (a system rule), 'natural' (a table with no fitting rule), 'none' (no table)
+const botCallSrc = () => callSrc;
 function chooseCall(hand, seat, auction, vul) {
   const metas = auctionMetas(auction, vul);
   const ctx = mkCtx(auction, seat, metas, vul), h = evalHand(hand);
@@ -1958,6 +1960,7 @@ function chooseCall(hand, seat, auction, vul) {
   if (T) {
     for (const d of T) { if (d.nat) break; if (d.c && ctx.ok(d.c) && d.w(h)) { call = d.c; break; } }
   }
+  callSrc = call ? 'table' : T ? 'natural' : 'none';
   if (!call) call = natural(ctx, h, new Set(T ? T.filter(d => d.c).map(d => d.c) : []));
   call = slamAsk(ctx, h, T, call) || slamCtl(ctx, h, T, call) || natRescue(ctx, h, T, call) || call;
   let why = null; // a judgement double says why: the defence it expects
@@ -2114,4 +2117,4 @@ function debugTable(hand, seat, auction, vul) { // for tests/bidwhy.js: the tabl
   return T ? T.map(d => d.nat ? 'natural' : `${d.c}${ctx.ok(d.c) ? '' : '(illegal)'}${d.w(h) ? '+' : '-'}`).join(' ') : 'no table: natural';
 }
 
-if (typeof module !== 'undefined') module.exports = { botCall, shown, explainAuction, evalHand, _metas: auctionMetas, _tableName: debugTable, _describe: describeCall };
+if (typeof module !== 'undefined') module.exports = { botCall, botCallSrc, shown, explainAuction, evalHand, _metas: auctionMetas, _tableName: debugTable, _describe: describeCall };

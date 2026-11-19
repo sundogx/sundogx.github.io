@@ -80,6 +80,14 @@ Team matches on the same deals (`tools/benvs.mjs`, 300 boards each, IMPs per boa
 - BEN bidding with 2500 ms (rollouts capped at 3400 ms) against 1100 ms (2600 ms), with calls over 3.9 s replaced by the
   app's call as the page does (`BIDBUDGET=2600 CAP=3900 NEW='{"bidms":2500,"bidbudget":3400}'`, same seeds): −0.06 ± 0.16 and
   −0.05 ± 0.16 over 588 boards, so the gain above needs more time than the page's 4 s wait and 1100 ms stays.
+- BEN bidding against the site's robots at the page's budgets (`DDSCORE=1 BENPLAY=0 CAP=3900`, seed `benvs`, not `DET=1`):
+  +0.69 ± 0.33.
+- Hybrid bidding (`HYB=none,natural`): the site's robots bid wherever their system has a rule for the hand, and BEN
+  only where it has none (about a quarter of the calls, mostly contested). Against the site's robots, double dummy
+  (`DDSCORE=1 BENPLAY=0 CAP=3900`): +0.28 ± 0.12 over 1200 boards (seeds `benvs`, `hyb2`, `hyb4`); played out by the
+  robots (`BENPLAY=0`): +0.15 ± 0.29 over 300; with BEN's lead and play (`CAP=3900`): +0.99 ± 0.55 over 120. Against
+  BEN bidding throughout (`OPP=ben`, double dummy, seeds `hyb7`, `hyb8`): −0.42 ± 0.24 over 498, so BEN's own bidding
+  stays; the hybrid would keep the robots' (explained) system for a human partner at the cost of some strength.
 - BEN opening leads with 4000 ms against 1500 ms (`OPP=ben BENBID=0 NEW='{"leadms":4000}'`): −0.30 ± 0.16, so 1500 ms stays.
 - BEN bidding with and without rescue bids (`o.rescue`, BEN's `evaluate_rescue_bid`; `OPP=ben DET=1 DDSCORE=1 BENPLAY=0
   NEW='{"rescue":false}'`): no rescue bid made and no board changed, so it is off (it costs a sampling pass on lone passes).
