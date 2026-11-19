@@ -140,7 +140,9 @@ const handle = async (req, env) => {
     }
 
     /* feature: daily */
-    if (path === '/api/daily' || path.startsWith('/api/daily/')) return dailyRoute(req, env, path);
+    if (path === '/api/daily' || path.startsWith('/api/daily/')) {
+      try { return await dailyRoute(req, env, path); } catch (e) { console.error(e); return json({ error: 'server error' }, 500); }
+    }
 
     if (path.startsWith('/api/')) return json({ error: 'not found' }, 404);
     // Anything else is a page or file; the static assets in /public answer those.
@@ -960,28 +962,40 @@ export class Lobby extends DurableObject {
     if (n >= DAILY_MAX_PER_BOARD) return { error: 'board full', status: 503 };
     recent.push(now);
     await st.put({ [ik]: recent, [key]: { ...rec, at: now }, ['n:' + rec.board]: n + 1 });
+    this.dailyCache = null;
     return { ok: true };
   }
   async dailyGet(uid) {
+    // everyone gets the same table (the "you" flag is added per caller); rebuilt at most every 5 s or after a post
+    if (!this.dailyCache || Date.now() - this.dailyCache.at > 5000) this.dailyCache = { at: Date.now(), v: await this.dailyTable() };
+    const v = this.dailyCache.v, mark = ({ uid: id, ...r }) => ({ ...r, you: id === uid });
+    const boards = {};
+    for (const [b, rows] of Object.entries(v.boards)) boards[b] = { count: rows.length, rows: rows.filter((r, i) => i < 100 || r.uid === uid).map(mark) };
+    return { boards, overall: v.overall.filter((p, i) => i < 100 || p.uid === uid).map(mark), players: v.overall.length };
+  }
+  async dailyTable() {
     const all = [...(await this.ctx.storage.list({ prefix: 'r:' })).values()];
     const boards = {}, people = {};
     for (let b = 1; b <= DAILY_BOARDS; b++) {
-      const rs = all.filter(r => r.board === b);
-      // matchpoints: 2 for each result beaten, 1 for each tie (N-S scores; everyone sits South)
-      const rows = rs.map(r => {
-        const mp = rs.reduce((s, o) => s + (o === r ? 0 : r.score > o.score ? 2 : r.score === o.score ? 1 : 0), 0);
+      const rs = all.filter(r => r.board === b).sort((x, y) => y.score - x.score);
+      // matchpoints: 2 for each result beaten, 1 for each tie (N-S scores; everyone sits South); counted, not O(n^2)
+      const same = new Map(), below = new Map();
+      for (const r of rs) same.set(r.score, (same.get(r.score) || 0) + 1);
+      let seen = 0;
+      for (const r of rs) if (!below.has(r.score)) { seen += same.get(r.score); below.set(r.score, rs.length - seen); }
+      boards[b] = rs.map(r => {
+        const mp = 2 * below.get(r.score) + same.get(r.score) - 1;
         const pct = rs.length > 1 ? Math.round(1000 * mp / (2 * (rs.length - 1))) / 10 : 100;
-        const p = people[r.uid] || (people[r.uid] = { name: r.name, boards: 0, sum: 0, you: r.uid === uid });
+        const p = people[r.uid] || (people[r.uid] = { uid: r.uid, name: r.name, boards: 0, sum: 0 });
         p.boards++; p.sum += pct;
-        return { name: r.name, contract: r.contract, declTricks: r.declTricks, score: r.score, pct, you: r.uid === uid };
-      }).sort((x, y) => y.score - x.score);
-      boards[b] = { count: rows.length, rows: rows.filter((r, i) => i < 100 || r.you) };
+        return { uid: r.uid, name: r.name, contract: r.contract, declTricks: r.declTricks, score: r.score, pct };
+      });
     }
     // overall: average matchpoint percentage over the boards played; more boards breaks a tie
-    const ranked = Object.values(people).map(p => ({ name: p.name, boards: p.boards, pct: Math.round(10 * p.sum / p.boards) / 10, you: p.you }))
+    const ranked = Object.values(people).map(p => ({ uid: p.uid, name: p.name, boards: p.boards, pct: Math.round(10 * p.sum / p.boards) / 10 }))
       .sort((x, y) => y.pct - x.pct || y.boards - x.boards);
     ranked.forEach((p, i) => { p.rank = i && ranked[i - 1].pct === p.pct && ranked[i - 1].boards === p.boards ? ranked[i - 1].rank : i + 1; });
-    return { boards, overall: ranked.filter((p, i) => i < 100 || p.you), players: ranked.length };
+    return { boards, overall: ranked };
   }
   async alarm() { if (await this.ctx.storage.get('daily')) await this.ctx.storage.deleteAll(); }
   async update(summary) {
@@ -1019,6 +1033,7 @@ const DAILY_BOARDS = 4;
 const DAILY_KEEP_MS = 31 * 24 * 3600e3;
 const DAILY_IP_PER_HOUR = 40;            // results one address may post in an hour
 const DAILY_MAX_PER_BOARD = 5000;
+const DAILY_MAX_BODY = 4000;             // bytes in a posted result (a full auction is well under this)
 const utcDate = ms => new Date(ms).toISOString().slice(0, 10);
 const dailyStub = (env, date) => env.LOBBY.get(env.LOBBY.idFromName('daily:' + date));
 
@@ -1031,8 +1046,9 @@ async function dailyRoute(req, env, path) {
     return json(await dailyStub(env, m[1]).dailyGet(/^u[0-9a-f]{16}$/.test(u) ? u : ''));
   }
   if (req.method !== 'POST' || path !== '/api/daily') return json({ error: 'not found' }, 404);
-  let b; try { b = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
-  if (!b || typeof b !== 'object') return json({ error: 'bad request' }, 400);
+  if (Number(req.headers.get('content-length')) > DAILY_MAX_BODY) return json({ error: 'too large' }, 413);
+  let b; try { const txt = await req.text(); if (txt.length > DAILY_MAX_BODY) return json({ error: 'too large' }, 413); b = JSON.parse(txt); } catch (e) { return json({ error: 'bad request' }, 400); }
+  if (!b || typeof b !== 'object' || Array.isArray(b)) return json({ error: 'bad request' }, 400);
   // today, or yesterday for a board started before midnight UTC
   const date = String(b.date || '');
   if (date !== utcDate(now) && date !== utcDate(now - 24 * 3600e3)) return json({ error: 'bad date' }, 400);
@@ -1050,9 +1066,27 @@ async function dailyRoute(req, env, path) {
     contract = { level: c.level, strain: c.strain, declarer: c.declarer, doubled: c.doubled ?? 0 };
     tricks = b.declTricks;
   }
+  // cheap anti-cheat: the board is dealt here from the same seed ('daily:<date>', board n). If the page sends its
+  // auction (calls from the dealer, as strings or { call }), it must be a legal auction on that board that ends in
+  // the posted contract (or passes out).
+  if (b.auction != null) {
+    const au = b.auction;
+    if (!Array.isArray(au) || au.length > 60 || !au.every(x => typeof x === 'string' || (x && typeof x.call === 'string'))) return json({ error: 'bad auction' }, 400);
+    const t = G.newTable({ name: 'daily', local: true });
+    t.seed = 'daily:' + date; t.board = board - 1; G.startBoard(t);
+    for (const x of au) {
+      const call = typeof x === 'string' ? x : x.call;
+      if (t.phase !== 'auction' || !G.legalCalls(t.dealer, t.auction).includes(call) || G.A.call(t, G.turnSeat(t), call) === false) return json({ error: 'bad auction' }, 400);
+    }
+    if (t.phase === 'auction') return json({ error: 'bad auction' }, 400);
+    const tc = t.contract;
+    const same = tc ? !!contract && tc.level === contract.level && tc.strain === contract.strain && tc.declarer === contract.declarer && (tc.doubled || 0) === contract.doubled : !contract;
+    if (!same) return json({ error: 'contract does not match the auction' }, 400);
+  }
   // the score is worked out here, from the contract and tricks, never taken from the page
   const score = contract ? G.scoreNS(contract, tricks, G.boardVul(board)) : 0;
-  const ip = req.headers.get('cf-connecting-ip') || 'local';
+  let ip = req.headers.get('cf-connecting-ip') || 'local';
+  if (ip.includes(':')) ip = ip.split(':').slice(0, 4).join(':'); // IPv6: one limit per /64 (one user often holds a whole /64)
   const r = await dailyStub(env, date).dailyPost({ uid: await idFromSecret(secret), name, board, contract, declTricks: tricks, score }, await idFromSecret('ip:' + ip));
   return json(r.error ? { error: r.error } : r, r.status || 200);
 }
