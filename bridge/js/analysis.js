@@ -74,8 +74,11 @@ function ddFail() { // give up for now; try again when the connection returns or
   DD.workers = [];
   for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // so they are queued afresh later
   DD.queue = [];
+  ddDropWorkers();
 }
-function ddRetry() { if (DD.failed) { DD.failed = false; DD.workers = []; if (T) renderSide(true); } }
+// stop the analysis workers, so one still solving can't report into an entry made afresh after a retry
+function ddDropWorkers() { for (const w of DD.workers) { w.onmessage = w.onerror = null; try { w.terminate(); } catch (e) { } } DD.workers = []; }
+function ddRetry() { if (DD.failed) { DD.failed = false; ddDropWorkers(); if (T) renderSide(true); } }
 window.addEventListener('online', ddRetry);
 function pumpDD() {
   if (DD.failed || !DD.queue.length) return; // workers are made when there is work
