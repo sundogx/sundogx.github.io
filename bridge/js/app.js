@@ -129,8 +129,8 @@ function cardHTML(c, cls = '', attrs = '') {
   const s = suitOf(c), r = rankLabel(c[1]);
   return `<button class="card ${isRed(s) ? 'red' : ''} s-${s} ${cls}" ${attrs} aria-label="${r} of ${({ S: 'spades', H: 'hearts', D: 'diamonds', C: 'clubs' })[s]}"><span class="cr">${r}</span><span class="cs">${SYM[s]}</span><span class="cb">${SYM[s]}</span></button>`;
 }
-function rowsHTML(cards, legal = [], seat = '') {
-  return `<div class="rows">${UI_SUITS.map(s => {
+function rowsHTML(cards, legal = [], seat = '', order = UI_SUITS) {
+  return `<div class="rows">${order.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
     const ranks = cs.length ? cs.map(c => legal.includes(c)
       ? `<button class="rk play ${c === selCard ? 'sel' : ''} ${isHint(c) ? 'hint' : ''}${c[1] === 'T' ? ' ten' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
@@ -139,7 +139,7 @@ function rowsHTML(cards, legal = [], seat = '') {
   }).join('')}</div>`;
 }
 // a hand shown face up on the table: one column of overlapping cards per suit
-function colsHTML(cards, legal = [], seat = '', small = false, budget = 0, maxW = 0) {
+function colsHTML(cards, legal = [], seat = '', small = false, budget = 0, maxW = 0, order = UI_SUITS) {
   const any = legal.length > 0;
   const n = Math.max(1, ...UI_SUITS.map(s => cards.filter(c => suitOf(c) === s).length));
   const ch = cssPx('--ch', 92);
@@ -155,7 +155,7 @@ function colsHTML(cards, legal = [], seat = '', small = false, budget = 0, maxW 
   const cols = UI_SUITS.filter(s => cards.some(c => suitOf(c) === s)).length, cw = cssPx('--cw', 64);
   const gap = maxW && cols > 1 ? Math.min(4, (maxW - cols * cw) / (cols - 1)) : 4;
   const dgap = gap < 4 ? `;--dgap:${Math.round(Math.max(-0.45 * cw, gap))}px` : '';
-  return `<div class="dhand ${small ? 'sm' : ''}" style="--dstep:${Math.round(step)}px${dgap}">${UI_SUITS.map(s => {
+  return `<div class="dhand ${small ? 'sm' : ''}" style="--dstep:${Math.round(step)}px${dgap}">${order.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
     if (!cs.length) return '';
     return `<div class="dcol">${cs.map(c => {
@@ -212,8 +212,8 @@ function seatBlock(t, seat, where) {
       const cards = currentCards(t, seat), longest = Math.max(0, ...UI_SUITS.map(s => cards.filter(c => suitOf(c) === s).length));
       // a short table (phone held sideways) can't fit a long suit as a column across the top: show suit rows instead
       const tooTall = !side && cssPx('--ch', 92) + (longest - 1) * Math.round(cwid * 0.4) > budget + 100;
-      if ((side && room < 4 * cwid + 12) || tooTall) inner += rowsHTML(cards, myLegal(t, seat), seat);
-      else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side, budget, room);
+      if ((side && room < 4 * cwid + 12) || tooTall) inner += rowsHTML(cards, myLegal(t, seat), seat, handSuits(t)); /* feature: suitorder */
+      else inner += colsHTML(currentCards(t, seat), myLegal(t, seat), seat, side, budget, room, handSuits(t)); /* feature: suitorder */
     }
     else {
       const n = currentCards(t, seat).length;
@@ -469,7 +469,7 @@ function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
   const seat = mine || orient(t).bottom; // spectators see the bottom seat here when allowed
   if (!t.hands || t.phase === 'waiting' || t.phase === 'done' || (!mine && !canSee(t, seat))) { el.innerHTML = ''; return; }
-  const cards = currentCards(t, seat).slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
+  const cards = sortForHand(currentCards(t, seat)); /* feature: suitorder */
   const legal = mine ? myLegal(t, mine) : [];
   const myTurn = legal.length > 0;
   const w = el.clientWidth || 360;
@@ -1111,6 +1111,7 @@ function showOptions() {
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
     ${window.Notify ? Notify.optionsHTML(opt) : '' /* feature: notify */}
+    ${suitOrderOptionHTML() /* feature: suitorder */}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
     <p style="margin:4px 0 8px"><button class="btn small" data-syscard="1">Robots' system card</button></p>${'' /* feature: card */}
     <div class="row" style="margin:4px 0 8px"><button class="btn small" data-import="1">Import a deal (PBN or LIN)</button></div><!-- feature: share -->
@@ -1123,6 +1124,7 @@ function showOptions() {
     Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (window.Notify) Notify.optionChanged(cb.dataset.pref, cb.checked); /* feature: notify */ if (T) render();
   }));
   $('optSpeed').addEventListener('change', e => { Prefs.speed = e.target.value; savePrefs(); });
+  $('optSuitOrder').addEventListener('change', e => { Prefs.suitOrder = e.target.value; savePrefs(); if (T) render(); }); /* feature: suitorder */
   if (typeof BenBridge !== 'undefined') BenBridge.wireOptions(m);
   if (typeof dealsOptionsWire === 'function') dealsOptionsWire(m); /* feature: deals */
 }
@@ -1140,7 +1142,7 @@ document.addEventListener('keydown', e => {
   if (el.dataset.alert) { if ($('explainPop')) hideExplain(); else showExplain(el, el.dataset.alert); }
   else showRecord(+el.dataset.record);
 }, true);
-const sortForHand = cards => cards.slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
+const sortForHand = (cards, o = handSuits(T)) => cards.slice().sort((a, b) => o.indexOf(suitOf(a)) - o.indexOf(suitOf(b)) || rankOf(b) - rankOf(a)); /* feature: suitorder */
 document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const tag = (e.target.tagName || '').toLowerCase();
