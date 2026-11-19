@@ -66,7 +66,7 @@ if (isMainThread) {
   const NEW = JSON.parse(process.env.NEW || '{}');
   // what the page uses (js/analysis.js RobotDD and robotDDSolve). CUR_JSON overrides it, e.g. to test a new baseline.
   const CUR = JSON.parse(process.env.CUR_JSON || 'null') || { lead: 'conv', leadTol: 30, minK: 8,
-    declarer: { pool: 96, weigh: 1, wOpp: 0.8 }, defender: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8 } };
+    declarer: { pool: 96, weigh: 1, wOpp: 0.8, relax: 0.05, stop: 1 }, defender: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8, relax: 0.05, stop: 1 } };
   // options for one decision: the variant's options X override the base's, also its declarer/defender settings
   const merge = (base, X) => X ? { ...base, ...X, declarer: { ...base.declarer, ...X, ...X.declarer }, defender: { ...base.defender, ...X, ...X.defender } } : base;
   async function playOut(hands, auction, ct, vul, useDD, rand, extra = {}) { // useDD(seat, cardIndex) -> bool, or the options for that card
@@ -90,8 +90,13 @@ if (isMainThread) {
     if (g < 0) return process.exit(0);
     const rand = seededRand(seed + ':' + g);
     const hands = deal(rand), dealer = boardDealer(g + 1), vul = boardVul(g + 1), auction = [];
-    while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(hands[s], s, dealer, auction, vul); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
+    // ODD=1: one player (a different seat each board) bids as if it held another, random hand, like a human whose calls
+    // don't match the system's meanings; the robots still read the auction by the system. DBL=1: every contract doubled
+    // (DBL=2 redoubled), to test the play's scoring of undertricks.
+    const liar = process.env.ODD ? SEATS[g % 4] : null, fake = liar ? deal(seededRand(seed + ':fake:' + g))[SEATS[(g + 1) % 4]] : null;
+    while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(s === liar ? fake : hands[s], s, dealer, auction, vul); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
     const ct = finalContract(auction);
+    if (ct && process.env.DBL && !ct.doubled) ct.doubled = +process.env.DBL;
     const res = {};
     if (ct) {
       const base = (await playOut(hands, auction, ct, vul, () => false)).decl;

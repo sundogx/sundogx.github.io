@@ -188,7 +188,7 @@ async function leadSample(view, solve, opts = {}) {
   const results = [];
   const D = leadDD();
   let solving = 0;
-  for (const h of D.ddSample(view, k, opts.rand || Math.random)) {
+  for (const h of D.ddSample(view, k, opts.rand || Math.random, 0, null, opts)) {
     const t = leadNow();
     if (results.length >= minK && t - t0 + (results.length ? solving / results.length : 0) > budget) break;
     const r = await solve(D.ddJob(view, h));

@@ -327,8 +327,10 @@ function downloadText(name, text, type = 'text/plain') {
 // Opening leads go to robotDDLead below (js/leads.js), several workers at once.
 // After the opening lead the robots also read the cards played so far (BEN-style play-consistency weighting,
 // js/ddplay.js ddConsistency): 96 layouts are dealt and the K that best fit the play so far are solved, weighted by fit.
+// relax/stop (ddSample): a player whose auction limits almost no layout meets (a human's odd bid) has them dropped, and
+// dealing stops early when few layouts fit.
 const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, K: 24, MIN_K: 8, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30, SPLIT_TRICKS: 2,
-  DECL: { pool: 96, weigh: 1, wOpp: 0.8 }, DEF: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8 } };
+  DECL: { pool: 96, weigh: 1, wOpp: 0.8, relax: 0.05, stop: 1 }, DEF: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8, relax: 0.05, stop: 1 } };
 function robotDDWorker() {
   if (RobotDD.w) return RobotDD.w;
   const w = RobotDD.w = ddNewWorker();

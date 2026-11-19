@@ -119,7 +119,10 @@ function ddClasses(view, legal) {
 function ddShuffle(a, rand) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 // Returns up to k full layouts {N,E,S,W: remaining cards}, best fits to the auction first.
 // pens (optional array) receives each returned layout's distance from the auction (0 = fits).
-function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null) {
+// opts.stop: stop dealing early when few layouts fit the auction (the remaining tries would mostly add spares).
+// opts.relax (a fraction, e.g. 0.05): a hidden player whose limits fewer than this share of the layouts meet has them
+// ignored when ranking the spares (the auction must have been misread, or a human bid oddly).
+function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null, opts = {}) {
   const played = ddPlayedSet(view), seen = new Set(played);
   for (const s in view.known) view.known[s].forEach(x => seen.add(x));
   const unseen = [];
@@ -135,23 +138,25 @@ function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null) {
   for (const s of hidden) { need[s] = 13 - playedBy[s].length; total += need[s]; }
   if (total !== unseen.length) throw new Error('ddSample: card count mismatch');
   const allowed = x => hidden.filter(s => !voids[s].has(suitOf(x)));
-  const penalty = h => { // how far each hidden hand is from what the auction showed
+  const seatPen = (s, h) => { // how far a hidden hand is from what the auction showed
+    const lim = view.limits[s]; if (!lim) return 0;
     let p = 0;
-    for (const s of hidden) {
-      const lim = view.limits[s]; if (!lim) continue;
-      const full = h[s].concat(playedBy[s]);
-      const pts = hcp(full), L = suitLengths(full);
-      if (pts < lim.hcpMin) p += lim.hcpMin - pts;
-      if (pts > lim.hcpMax) p += pts - lim.hcpMax;
-      for (const su of SUITS) { if (L[su] < lim.lenMin[su]) p += 2 * (lim.lenMin[su] - L[su]); if (L[su] > lim.lenMax[su]) p += 2 * (L[su] - lim.lenMax[su]); }
-      if (lim.bal && SUITS.some(su => L[su] < 2)) p += 2; // a singleton or void in a hand that showed a (semi-)balanced one
-    }
+    const full = h[s].concat(playedBy[s]);
+    const pts = hcp(full), L = suitLengths(full);
+    if (pts < lim.hcpMin) p += lim.hcpMin - pts;
+    if (pts > lim.hcpMax) p += pts - lim.hcpMax;
+    for (const su of SUITS) { if (L[su] < lim.lenMin[su]) p += 2 * (lim.lenMin[su] - L[su]); if (L[su] > lim.lenMax[su]) p += 2 * (L[su] - lim.lenMax[su]); }
+    if (lim.bal && SUITS.some(su => L[su] < 2)) p += 2; // a singleton or void in a hand that showed a (semi-)balanced one
     return p;
   };
   const tries = maxTries || Math.max(200, 60 * k);
-  const good = [], spare = [];
+  const good = [], spare = [], fits = {};
+  hidden.forEach(s => { fits[s] = 0; });
+  let dealt = 0;
   const order = unseen.map(x => ({ x, a: allowed(x) }));
   for (let t = 0; t < tries && good.length < k; t++) {
+    // few layouts fit: the rest of the tries would mostly add spares, so stop once there are plenty of those
+    if (opts.stop && t >= 300 && t % 100 === 0 && spare.length >= 4 * k && good.length * tries / t < k * 0.75) break;
     ddShuffle(order, rand);
     order.sort((p, q) => p.a.length - q.a.length); // stable: cards with fewest possible owners first
     const left = { ...need }, h = {};
@@ -165,9 +170,16 @@ function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null) {
       h[pick].push(x); left[pick]--;
     }
     if (!ok) continue;
-    const p = penalty(h);
+    dealt++;
+    const ps = {}; let p = 0;
+    for (const s of hidden) { ps[s] = seatPen(s, h); p += ps[s]; if (!ps[s]) fits[s]++; }
     for (const s in view.known) h[s] = view.known[s].slice();
-    if (p === 0) good.push(h); else spare.push({ h, p });
+    if (p === 0) good.push(h); else spare.push({ h, p, ps });
+  }
+  // a player whose limits (almost) no layout meets, e.g. after a human's odd bid: judge the spares without them
+  if (opts.relax && good.length < k && dealt >= 50) {
+    const drop = hidden.filter(s => fits[s] < dealt * opts.relax);
+    if (drop.length) for (const sp of spare) for (const s of drop) sp.p -= sp.ps[s];
   }
   if (pens) good.forEach(() => pens.push(0));
   if (good.length < k) { spare.sort((a, b) => a.p - b.p); for (const s of spare) { if (good.length >= k) break; good.push(s.h); if (pens) pens.push(s.p); } }
@@ -411,9 +423,9 @@ function ddOpts(view, opts) {
 // The layouts to solve, best first, and their weights (null: all equal). t0: when the decision started (for consMs).
 function ddDeals(view, opts, t0 = ddNow()) {
   const k = opts.k || 20, budget = opts.ms || Infinity, rand = opts.rand || Math.random;
-  if (!(opts.pool > k && view.tricks.length && typeof botPlay === 'function')) return { deals: ddSample(view, k, rand), weights: null };
+  if (!(opts.pool > k && view.tricks.length && typeof botPlay === 'function')) return { deals: ddSample(view, k, rand, 0, null, opts), weights: null };
   // BEN-style: deal a larger pool, weight each layout by how well it explains the play so far, solve the best k
-  const pens = [], pool = ddSample(view, opts.pool, rand, 0, pens);
+  const pens = [], pool = ddSample(view, opts.pool, rand, 0, pens, opts);
   // the play check costs time on every layout: on a slow device score only as many as fit in a share of the budget
   const consMs = opts.consMs != null ? opts.consMs : budget * 0.3, pb = opts.penBase != null ? opts.penBase : 0.7;
   const ws = [];

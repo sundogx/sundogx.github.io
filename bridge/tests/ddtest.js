@@ -129,6 +129,27 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
       applyPlay(t.play, ct, s, Bots.botPlay(t, s));
     }
   }
+  // Doubled contracts: cards are chosen by score, so undertricks count. A safe one off (C2) against a 30% make that goes
+  // three off otherwise (S2): undoubled the gamble is right (+21 against -50 on average), doubled the safe line (-100 against -173).
+  for (const doubled of [0, 1]) {
+    const view = { seat: 'S', vul: 'None', contract: { level: 4, strain: 'S', doubled, declarer: 'S' }, tricks: [] };
+    const results = []; for (let i = 0; i < 10; i++) results.push({ C2: 9, S2: i < 3 ? 10 : 7 });
+    const r = D.ddPick(view, ['C2', 'S2'], results, null);
+    check(r.card === (doubled ? 'C2' : 'S2'), (doubled ? 'doubled' : 'undoubled') + ' contract: picked ' + r.card);
+    // the defenders, against the same contract, maximise the set: 13 - tricks for them
+    const dv = { ...view, seat: 'W' }, dres = results.map(x => ({ C2: 13 - x.C2, S2: 13 - x.S2 }));
+    check(D.ddPick(dv, ['C2', 'S2'], dres, null).card === (doubled ? 'S2' : 'C2'), 'defence of a ' + (doubled ? 'doubled' : 'undoubled') + ' contract');
+  }
+  // Sampler options for odd auctions: impossible limits still give k layouts, and the layouts agree with what is known.
+  {
+    const hands = deal(seededRand('oddlim')), t = { hands, auction: [{ call: '1N', by: 'N' }, { call: 'P', by: 'E' }, { call: '3N', by: 'S' }, { call: 'P', by: 'W' }, { call: 'P', by: 'N' }, { call: 'P', by: 'E' }],
+      contract: { level: 3, strain: 'N', doubled: 0, declarer: 'S' }, vul: 'None', play: { tricks: [] } };
+    const v = D.ddView(t, 'W');
+    v.limits.E = { hcpMin: 37, hcpMax: 37, lenMin: { S: 13, H: 13, D: 0, C: 0 }, lenMax: { S: 13, H: 13, D: 13, C: 13 }, bal: false };
+    const pens = [], got = D.ddSample(v, 12, seededRand('odd2'), 0, pens, { stop: 1, relax: 0.05 });
+    check(got.length === 12 && pens.length === 12, 'odd limits: ' + got.length + ' layouts');
+    for (const h of got) check(h.W.join() === v.known.W.join() && SEATS.every(x => h[x].length === 13), 'odd limits: bad layout');
+  }
   console.log('robot view and sampler checks', bad3 ? 'FAILED ' + bad3 : 'ok');
   process.exit(bad || bad2 || bad3 || bad4 ? 1 : 0);
 })();
