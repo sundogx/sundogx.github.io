@@ -100,7 +100,7 @@ if (kind !== 'bid') {
       }
       if (!dec.samples) { q.fixed++; if (res.card === dec.result) q.fixedSame++; }
       if (res.card === dec.result) q.same++;
-      else if (process.env.V) console.log('diff', d.board, dec.trick_i, dec.player_i, 'BEN', dec.result, 'JS', res.card, res.info && res.info.why || '', JSON.stringify((res.info.candidates || []).slice(0, 4).map(c => [c.card || c.slot, c.score, c.insta && +c.insta.toFixed(3)])), JSON.stringify(dec.candidates.slice(0, 4).map(c => [c.card, c.insta_score, c.expected_score_imp])));
+      else if (process.env.V) console.log('diff', d.board, dec.trick_i, dec.player_i, 'n', res.info && res.info.samples, 'BEN', dec.result, 'JS', res.card, res.info && res.info.why || '', JSON.stringify((res.info.candidates || []).slice(0, 4).map(c => [c.card || c.slot, c.score, c.insta && +c.insta.toFixed(3)])), JSON.stringify(dec.candidates.slice(0, 4).map(c => [c.card, c.insta_score, c.expected_score_imp])));
     }
   }
   console.log(JSON.stringify(q));

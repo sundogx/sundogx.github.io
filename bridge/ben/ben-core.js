@@ -179,7 +179,7 @@ const BenCore = (() => {
         W[n].min[pos - 1] = m; W[n].d += wt * (1 - m) * idx.length; W[n].mx += wt * idx.length;
       }
     }
-    return W.map(w => ({ score: w.mx ? (w.mx - w.d) / w.mx : 1, excl: Math.min(...w.min) < CFG.exclude }));
+    return W.map(w => ({ score: w.mx ? (w.mx - w.d) / w.mx : 1, mn: Math.min(...w.min), excl: Math.min(...w.min) < CFG.exclude }));
   }
   // generate_samples_iterative: -> { hands: [[lho, pd, rho]], scores, quality }
   async function sampleAuction(nn, auc, hix, my, vul, rand, o = {}) {
@@ -190,7 +190,7 @@ const BenCore = (() => {
     const bi = await binfoLast(nn, auc, hix, my, vul);
     const others = [1, 2, 3].some(p => { for (let j = (hix + p) % 4; j < auc.length; j += 4) if (auc[j] !== 'PAD_START') return true; return false; });
     let done = 0, extend = false, qsum = 0;
-    const keep = [];
+    const keep = [], spare = []; // spare (o.spare): the least unlikely excluded layouts, used only if nothing else is found
     while (done < maxB && keep.length <= need) {
       const deals = dealVec(step, bi.hcp, bi.shp, my, rand);
       if (!others) { deals.forEach(H => keep.push({ H, score: 1 })); qsum += deals.length; }
@@ -200,12 +200,14 @@ const BenCore = (() => {
         const good = acc.filter(x => x.score >= CFG.accept);
         acc = good.length < CFG.minSamples && extend ? acc.slice(0, CFG.minSamples) : good;
         acc.forEach(x => { keep.push(x); qsum += x.score; });
+        if (o.spare && !keep.length) { deals.forEach((H, i) => { if (sc[i].excl) spare.push({ H, ...sc[i] }); }); spare.sort((a, b) => b.mn - a.mn).splice(CFG.minSamples); }
       }
       done += step;
       extend = done + 3 * step >= maxB || now() - t0 > ms * 0.5;
       if (keep.length < need && extend && !o.step) step = 6000;
       if (now() - t0 > ms) break; // JS: time budget
     }
+    if (!keep.length && spare.length) spare.forEach(x => { keep.push(x); qsum += x.score; }); // JS: BEN would sample longer than our time budget allows
     const quality = keep.length ? qsum / keep.length : -1;
     let pick = keep;
     if (pick.length >= need) { // a random `need` of them
@@ -405,7 +407,7 @@ const BenCore = (() => {
     const info = { candidates: cands.map(c => ({ slot: c, insta: sm[c] })), samples: 0 };
     const finish = slot => (slot % 8 <= 5 ? ST[slot / 8 | 0] + RK[slot % 8] : rightCard(hand, slot, ct.strain, rand));
     if (sm[cands[0]] > 0.999 || cands.length < 2) return { card: finish(cands[0]), info };
-    const S = await sampleAuction(nn, auc, lix, h24(hand), vul, rand, { need: o.need || CFG.leadSamples, maxBoards: o.maxBoards || CFG.leadBoards, step: o.step, ms: o.ms });
+    const S = await sampleAuction(nn, auc, lix, h24(hand), vul, rand, { need: o.need || CFG.leadSamples, maxBoards: o.maxBoards || CFG.leadBoards, step: o.step, ms: o.ms, spare: o.spare !== false });
     if (!S.hands.length) return { card: finish(cands[0]), info };
     info.samples = S.hands.length; info.quality = S.quality;
     const real = {}, t0 = now(), budget = o.budget || Infinity, T0 = o.t0 || t0;
