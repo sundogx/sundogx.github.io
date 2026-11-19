@@ -631,6 +631,7 @@ function render() {
   autoNext(T); savePractice();
   if (typeof Stats !== 'undefined') Stats.note(T); /* feature: stats */
   if (typeof Skip !== 'undefined') Skip.render(T); /* feature: skip */
+  if (typeof LeadTrainer !== 'undefined') LeadTrainer.render(T); /* feature: leadtrainer */
 }
 
 // ---------- modals ----------
@@ -942,10 +943,10 @@ $('sideBtn').addEventListener('click', () => {
 });
 $('sideClose').addEventListener('click', () => setSide(false));
 $('moreBtn').addEventListener('click', () => {
-  const bar = document.querySelector('.topbar'), open = !bar.classList.contains('open');
+  const bar = $('tableView').querySelector('.topbar'), open = !bar.classList.contains('open'); // feature: leadtrainer: not another screen's topbar
   bar.classList.toggle('open', open); $('moreBtn').setAttribute('aria-expanded', open);
 });
-$('moreBox').addEventListener('click', e => { if (e.target.closest('button')) { document.querySelector('.topbar').classList.remove('open'); $('moreBtn').setAttribute('aria-expanded', 'false'); } });
+$('moreBox').addEventListener('click', e => { if (e.target.closest('button')) { $('tableView').querySelector('.topbar').classList.remove('open'); $('moreBtn').setAttribute('aria-expanded', 'false'); } });
 
 // ----- undo requests when the host requires the opponents' agreement -----
 function undoBanner(t) {
@@ -1392,6 +1393,7 @@ async function loadLobby() {
 function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; setJoinState(null); }
 function showTableView() {
   if (typeof BP !== 'undefined' && BP.on) leaveBidPractice(); /* feature: bidpractice */
+  if (typeof LT !== 'undefined' && LT.on) leaveLeadTrainer(false); /* feature: leadtrainer */
   $('home').classList.add('hidden'); $('tableView').classList.remove('hidden');
   clearInterval(lobbyTimer);
 }
