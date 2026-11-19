@@ -70,11 +70,9 @@ function makeWorker() {
 }
 function ddFail() { // give up for now; try again when the connection returns or after two minutes
   DD.failed = true; DD.failedAt = Date.now();
-  for (const w of DD.workers) try { w.terminate(); } catch (e) { } // don't leave idle solvers holding memory
-  DD.workers = [];
+  ddDropWorkers(); // don't leave idle solvers holding memory
   for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // so they are queued afresh later
   DD.queue = [];
-  ddDropWorkers();
 }
 // stop the analysis workers, so one still solving can't report into an entry made afresh after a retry
 function ddDropWorkers() { for (const w of DD.workers) { w.onmessage = w.onerror = null; try { w.terminate(); } catch (e) { } } DD.workers = []; }
