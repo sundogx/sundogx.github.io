@@ -1929,6 +1929,7 @@ function judgeX(ctx, h, extra = 0) { // true: double their contract for penalty 
   const fs = globalThis.BID_PENLOG || BID_K('fitx') ? fitsShown(ctx, h) : null, f0 = Object.assign({}, defTricks.f);
   if (BID_K('fitx')) D += BID_K('fitx') * fitAdj(st, fs); // measured worse (round 7): off
   const g = penaltyGain(ctx, D);
+  judgeX.last = { D, lv, st };
   if (globalThis.BID_PENLOG) globalThis.BID_PENLOG.push(Object.assign({ decl: theirDeclarer(ctx), st, lv, D, g, lbBy: lb.by }, f0, fs));
   return g >= (BID_K('pxm') ?? 3.5) + extra; // a high bar: the estimate is rough, and they may run or redouble
 }
@@ -1967,12 +1968,14 @@ function chooseCall(hand, seat, auction, vul) {
   }
   if (!call) call = natural(ctx, h, new Set(T ? T.filter(d => d.c).map(d => d.c) : []));
   call = slamAsk(ctx, h, T, call) || slamCtl(ctx, h, T, call) || natRescue(ctx, h, T, call) || call;
-  if (call === 'P' && judgeX(ctx, h) && !BID_OFF('pjx')) call = 'X';
+  let why = null; // a judgement double says why: the defence it expects
+  const jx = extra => { if (!judgeX(ctx, h, extra)) return false; why = penaltyWhy(judgeX.last); return true; };
+  if (call === 'P' && jx(0) && !BID_OFF('pjx')) call = 'X';
   // partner's takeout double of their suit contract, RHO passed: convert it to penalties with their trumps stacked
   // behind them (a trap pass, or just a trump stack) when the defence should beat it by a trick and a half
   else if (!BID_OFF('xconv') && call !== 'P' && convertX(ctx, h)) call = 'P';
   // competing or sacrificing over their contract when it is going down anyway: double instead
-  else if (!BID_OFF('pxb') && bidValue(call) >= 0 && (!ctx.gf || !BID_OFF('pxf')) && !ctx.forced && ctx.lb && !sameSide(ctx.lb.by, seat) && !ctx.mine.some(x => x.m && x.m.f) && judgeX(ctx, h, (BID_K('pxb') ?? 2) + (ctx.gf ? BID_K('pxf') ?? 1.5 : 0))) call = 'X';
+  else if (!BID_OFF('pxb') && bidValue(call) >= 0 && (!ctx.gf || !BID_OFF('pxf')) && !ctx.forced && ctx.lb && !sameSide(ctx.lb.by, seat) && !ctx.mine.some(x => x.m && x.m.f) && jx((BID_K('pxb') ?? 2) + (ctx.gf ? BID_K('pxf') ?? 1.5 : 0))) call = 'X';
   if (call === 'P' && !BID_OFF('nopassf')) { // never pass partner's forcing call (a human's, read by its natural meaning) below game
     const pl = ctx.pLast;
     if (pl && pl === ctx.lb && ctx.rhoCall === 'P' && pl.m && pl.m.f >= 1 && !ourGame(ctx) && !ctx.items.some(x => x.by === ctx.seat && x.i > pl.i)) {
@@ -1980,7 +1983,15 @@ function chooseCall(hand, seat, auction, vul) {
       call = forcedBid(ctx, h, ctx.ok, fit);
     }
   }
-  return { call, alert: explainCall(auction, seat, call, metas, vul).alert };
+  if (call !== 'X') why = null;
+  return { call, alert: why || explainCall(auction, seat, call, metas, vul).alert };
+}
+// "Penalty: expects to beat 4♥ (about 2 down)": the robot's own reason for a judgement double, kept with the call
+// (its alert), since the auction alone can't say it
+function penaltyWhy(j) {
+  if (!j) return null;
+  const down = Math.max(1, Math.round(j.D + j.lv - 7));
+  return `Penalty: expects to beat ${j.lv}${SSYM[j.st]} (about ${down} down)`;
 }
 // vul ('None', 'NS', 'EW', 'Both') is optional: without it the robots bid as if nobody were vulnerable.
 function botCall(hand, seat, dealer, auction, vul) {
@@ -2014,6 +2025,7 @@ function describeCall(auction, i, vul, metas) {
     const a = auction && auction[i]; if (!a || !a.call) return null;
     metas = metas || auctionMetas(auction.slice(0, i + 1), vul);
     const m = metas[i], call = a.call;
+    if (call === 'X' && typeof a.alert === 'string' && /^Penalty: expects to beat \d/.test(a.alert)) return a.alert; // a robot's judgement double
     if (call === 'P') return describePass(auction, i, vul, metas, m);
     if (!m) return null;
     const isBid = bidValue(call) >= 0, st = isBid ? call[1] : null;

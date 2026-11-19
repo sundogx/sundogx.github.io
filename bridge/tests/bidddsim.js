@@ -7,8 +7,8 @@
 //   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
 //   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4;
 //                basebid3: before the third round of bidding work, c0d8685; basebid4: before the fourth round, 62af5b4;
-//                basebid5: before the fifth round, 24c9e08; basebid6: before the sixth round, a5bbe8a; basebid7: before the seventh round, 14aea9f)
-//   --k=a:1,b:2  tuning knobs of js/bidding.js (BID_K)
+//                basebid5: before the fifth round, 24c9e08; basebid6: before the sixth round, a5bbe8a; basebid7: before the seventh round, 14aea9f; basebid8: before the eighth round, 4ee44ec)
+//   --k=a:1,b:2  tuning knobs of js/bidding.js (BID_K); --threads=n  solver threads
 //   --worst=k  print the k boards the new system lost most on (hands and both auctions); with --best, gained most on
 //   --self     also report each system in self-play against par
 // Double-dummy tables are cached in the OS temp folder (bridge-dd-<seed>.json), so reruns are fast.
@@ -41,7 +41,7 @@ const SELF = flags.includes('--self');
 globalThis.BID_OFF = ((flags.find(f => f.startsWith('--off=')) || '--off=').slice(6)).split(',').filter(Boolean); // switch off named features of js/bidding.js
 globalThis.BID_K = Object.fromEntries(((flags.find(f => f.startsWith('--k=')) || '--k=').slice(4)).split(',').filter(Boolean).map(x => [x.split(':')[0], +x.split(':')[1]])); // tuning knobs: --k=name:value,...
 const BASE = (flags.find(f => f.startsWith('--base=')) || '--base=oldbid').split('=')[1];
-const NEW = require('../js/bidding.js'), OLD = require('./fixtures/' + BASE + '.js');
+const NEW = require('../js/bidding.js'), OLD = require('./fixtures/guard.js')('./' + BASE + '.js'); // knobs and penlog apply to js/bidding.js only
 const { parScore } = require('../js/par.js');
 
 const rand = seededRand('bidddsim-' + SEED);
@@ -56,7 +56,7 @@ async function ddTables() {
   const save = () => { let disk = {}; try { disk = JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { } fs.writeFileSync(file, JSON.stringify(Object.assign(disk, cache))); };
   const todo = boards.filter(b => !cache[key(b.hands)]);
   if (todo.length) {
-    const nw = Math.max(1, Math.min(todo.length, os.cpus().length - 1));
+    const thr = flags.find(f => f.startsWith("--threads=")), nw = Math.max(1, Math.min(todo.length, thr ? +thr.slice(10) : os.cpus().length - 1));
     process.stderr.write(`solving ${todo.length} deals double-dummy on ${nw} threads...\n`);
     let next = 0, done = 0;
     await new Promise((resolve, reject) => {

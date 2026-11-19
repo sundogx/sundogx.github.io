@@ -20,7 +20,7 @@ const N = +pos[0] || 1000, SEED = pos[1] || '1';
 const flag = (k, d) => { const f = flags.find(x => x.startsWith('--' + k + '=')); return f ? f.slice(k.length + 3) : d; };
 globalThis.BID_OFF = (flag('off', '') || '').split(',').filter(Boolean);
 globalThis.BID_K = Object.fromEntries((flag('k', '') || '').split(',').filter(Boolean).map(x => [x.split(':')[0], +x.split(':')[1]]));
-const BASE = require('./fixtures/' + flag('base', 'basebid5') + '.js');
+const BASE = require('./fixtures/guard.js')('./' + flag('base', 'basebid5') + '.js'); // knobs: the version under test only
 const SYS = require(flag('sys', '../js/bidding.js'));
 const HUM = flag('human', 'sys') === 'base' ? BASE : SYS; // how the human bids when not deviating (and reads its own calls)
 const cache = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `bridge-dd-${SEED}.json`), 'utf8'));
