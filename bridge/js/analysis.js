@@ -291,8 +291,8 @@ function robotDDSolve(view, prefer) {
 // Opening leads (js/leads.js): one decision per board, so it uses several workers at once (half the device's
 // cores, 1 to 4), each dealing and solving its share of the layouts within the time budget. Results stream back
 // one by one, so a worker that runs late still contributes what it has; the page pools them and picks the lead
-// (leadPick: average tricks plus the lead-rule prior). The workers are closed after the lead (each holds a solver's
-// memory) and made again for the next board, warmed up during the auction (robotDDWarm).
+// (leadPick: average tricks plus the lead-rule prior). The workers also share the decisions of the first tricks
+// (robotDDSplit), are closed after that (each holds a solver's memory) and made again for the next board, warmed up during the auction (robotDDWarm).
 const LeadDD = { ws: [], n: 0, wait: new Map(), K: 48, BUDGET_MS: 1700, MIN: 8 };
 function leadWorkers() {
   const want = Math.max(1, Math.min(4, Math.floor(ddCores() / 2)));
