@@ -20,6 +20,8 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `js/par.js` | The par contract from a double-dummy table. |
 | `js/net.js` | The WebSocket connection to a table on the server (reconnects, held moves). |
 | `js/analysis.js` | Runs the double-dummy solver in background workers; hand-record analysis and PBN export. |
+| `js/benbridge.js` | The "Use BEN robots" option: starts the BEN worker, asks it for practice robots' calls and cards, falls back to the usual robots (see below). |
+| `ben/` | BEN robots (GPL-3.0, a separate program): the worker `ben-worker.js` and its models. The messages are in `ben/INTERFACE.md`. |
 | `js/app.js` | Everything on screen: drawing the table, bidding box, options, keyboard, lobby. |
 | `js/dds-worker.js`, `js/wasm/` | The WebAssembly solver (see below); it also picks the practice robots' cards. |
 | `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
@@ -147,6 +149,19 @@ The hand analysis runs DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to W
 - **Kept on this device:** the practice table (its last 60 boards) is saved in the browser, so Leave table or a reload doesn't lose it. The home page then offers Continue practice and New practice.
 - **Results** in practice: each board against a table of four robots playing the same deals, both scores and the IMPs, with the running total.
 - Leaving an online table during a board you're seated at asks first, since it empties your seat.
+
+## BEN robots (option)
+
+**Use BEN robots** (Options, off by default, practice tables only) has the practice robots bid, lead and play with BEN (github.com/lorserker/ben, by Lorand Dali and Thorvald Aagaard, GPL-3.0). BEN's neural networks run in the browser in a dedicated worker, `ben/ben-worker.js`.
+
+- **GPL boundary.** Everything BEN-derived is in `ben/`, under GPL-3.0. The app talks to it only through `postMessage`, with the messages in `ben/INTERFACE.md`. The page side, `js/benbridge.js`, is the app's own code and has no BEN code.
+- **Turning it on.** Options shows the download size (from `ben/models/manifest.json`, else "about 60–100 MB") and asks first. A thin bar at the top of the page, and one in Options, shows the progress. The choice is kept in `localStorage` (`bridge-ben`). The option is hidden at online tables, where the server runs the robots.
+- **Caching.** The worker keeps the models with the Cache API under `ben-models-v1`, so they download once. `sw.js` leaves `ben/models/` alone and deletes only its own `bridge-` caches.
+- **Starting.** The worker starts on the first robot decision of a practice board, or when the option is turned on. Until it is ready the usual robots decide.
+- **Fallback.** Each request waits about 4 s (5 s for a lead). A late answer, an error, or an illegal call or card means the usual robot decides that turn. A loading error, a worker crash, or two late answers in a row turn BEN off for the rest of the visit, with one toast.
+- **Explanations.** BEN's calls are marked `ben: true` in the auction and get only the explanation the worker sends (`explain`, or an alert text), never the 2/1 system's text, since BEN plays another system. People's calls are explained as before.
+- **Not covered by BEN:** the hint button's suggested call (it is still the usual robot's), and the comparison table in Results (four usual robots).
+- **The stub.** Until the BEN port lands, `ben/ben-worker.js` answers with the app's own robots (`botCall`, `botLead`, `ddChoose`), so the option works end to end.
 
 ## Robot card play
 

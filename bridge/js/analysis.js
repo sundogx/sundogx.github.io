@@ -354,6 +354,12 @@ function robotDDDrop(failed) { // stop this worker; anything waiting gets the he
 }
 function robotDDDone() { if (!ddRobotBusy()) setTimeout(pumpDD, 0); } // a robot decision ended: let the analysis go on
 function robotDDCard(t, seat) {
+  // "Use BEN robots" (js/benbridge.js, practice only): BEN's card, else (no answer in time, error) the usual robot's
+  const ben = typeof BenBridge !== 'undefined' ? BenBridge.card(t, seat) : null;
+  if (ben) return ben.then(card => card || robotDDCardStd(t, seat));
+  return robotDDCardStd(t, seat);
+}
+function robotDDCardStd(t, seat) {
   let view, prefer;
   try {
     if (typeof ddView !== 'function') return Promise.resolve(null);

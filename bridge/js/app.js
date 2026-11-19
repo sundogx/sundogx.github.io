@@ -96,12 +96,13 @@ function scheduleRobot() {
   // card play: the solver thinks (in a worker, at most ~1.5 s) while the robot's usual pause runs
   const key = T.phase === 'play' ? playKey(T) : null;
   const hint = key ? robotDDCard(T, ts).then(card => card && { key, card }) : null;
+  const ben = !key && typeof BenBridge !== 'undefined' ? BenBridge.call(T, ts) : null; // BEN robots' call (js/benbridge.js), if that option is on
   const id = robotTimer = setTimeout(async () => {
-    const h = hint ? await hint : null;
+    const h = hint ? await hint : null, bc = ben ? await ben : null;
     if (robotTimer !== id) return; // left the table meanwhile
     robotTimer = null;
     if (!T || (key && playKey(T) !== key)) { scheduleRobot(); return; } // the position changed (undo): think again
-    await act(s => A.robotStep(s, h));
+    await act(s => (bc && BenBridge.applyCall(s, ts, bc)) || A.robotStep(s, h));
     scheduleRobot();
   }, pause);
 }
@@ -287,7 +288,8 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
     const isBid = bidValue(a.call) >= 0;
     const red = isBid && isRed(a.call[1]);
     let text = null, alertText = null;
-    if (bySystem) {
+    if (a.ben) { text = a.explain || a.alert || null; alertText = a.alert || null; } // BEN's call: only BEN's own explanation, never the 2/1 one
+    else if (bySystem) {
       // a robot's alert opens its explanation; an alert a human typed (in a board's record) is shown as typed
       if (a.alert && !(d.text && d.text.startsWith(a.alert))) text = alertText = a.alert;
       else { text = d.text || a.alert || null; alertText = a.alert || d.alert; }
@@ -1099,6 +1101,7 @@ function showOptions() {
     ${opt('confirmBid', 'Confirm before bidding', 'Pick a call, then press the Bid button (or Enter) to make it.')}
     ${opt('hint', 'Hints in practice', 'A Hint button shows what the robot would bid or play in your seat.')}
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
+    ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
     <div class="kbdhelp"><h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
     <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble, <b>Enter</b> to confirm</td></tr>
@@ -1109,6 +1112,7 @@ function showOptions() {
     Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (T) render();
   }));
   $('optSpeed').addEventListener('change', e => { Prefs.speed = e.target.value; savePrefs(); });
+  if (typeof BenBridge !== 'undefined') BenBridge.wireOptions(m);
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-options]')) showOptions(); });
 

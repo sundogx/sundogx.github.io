@@ -4,7 +4,7 @@
 // file afresh, deletes the old copies and tells open pages a new version is ready. The game server (/api) is never cached.
 const CACHE = 'bridge-v43';
 const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
-  'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
+  'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
 self.addEventListener('install', e => {
   // 'reload' skips the browser's HTTP cache, so a new version really fetches the new files
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
@@ -12,7 +12,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(async keys => {
     const old = keys.filter(k => k !== CACHE && k.startsWith('bridge-'));
-    await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+    await Promise.all(old.map(k => caches.delete(k))); // only the app's own caches: BEN's models ('ben-models-…') are kept
     await self.clients.claim();
     // pages opened with the previous version can offer a reload
     if (old.length) for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'updated', version: CACHE });
@@ -20,7 +20,7 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/')) return;
+  if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/') || url.pathname.includes('/ben/models/')) return; // BEN's models: the BEN worker caches them itself
   const key = e.request.mode === 'navigate' ? './' : e.request;
   const fresh = fetch(e.request, { cache: 'no-cache' }).then(async res => {
     // keep the full responses only

@@ -492,3 +492,10 @@ ul.costs li { margin: 1px 0; }
 .reslist.people { margin: 0 0 12px; }
 .seatlist { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
 .seatlist b { display: inline-block; min-width: 44px; font-weight: 600; }
+/* BEN robots (js/benbridge.js): a thin bar at the top while the models load, and the same bar in Options */
+.benload { position: fixed; top: 0; left: 0; right: 0; height: 3px; z-index: 40; pointer-events: none; }
+.benload > div, .benbar > div { height: 100%; width: 0; background: var(--ink-soft); transition: width .3s linear; }
+.benbar { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin: 2px 0 4px; }
+.benbox { margin: -4px 0 8px 26px; }
+.benbox:empty { display: none; }
+.benbox .note { margin: 2px 0 6px; }
