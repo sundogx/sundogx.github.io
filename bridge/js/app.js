@@ -99,7 +99,7 @@ function scheduleRobot() {
   const hint = key ? robotDDCard(T, ts).then(card => card && { key, card }) : null;
   const ben = !key && typeof BenBridge !== 'undefined' ? BenBridge.call(T, ts) : null; // BEN robots' call (js/benbridge.js), if that option is on
   const id = robotTimer = setTimeout(async () => {
-    const h = hint ? await hint : null, bc = ben ? await ben : null;
+    const h = hint ? await hint.catch(() => null) : null, bc = ben ? await ben.catch(() => null) : null; // a failed solver or BEN never stalls the robots
     if (robotTimer !== id) return; // left the table meanwhile
     robotTimer = null;
     if (!T || (key && playKey(T) !== key)) { scheduleRobot(); return; } // the position changed (undo): think again
