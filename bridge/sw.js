@@ -4,7 +4,7 @@
 // file afresh, deletes the old copies and tells open pages a new version is ready. The game server (/api) is never cached.
 const CACHE = 'bridge-v44';
 const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
-  'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/showpoints.js', 'js/autoplay.js', 'js/suitorder.js', 'js/played.js', 'js/share.js', 'js/notify.js', 'js/card.js', 'js/bidpractice.js', 'js/daily.js', 'js/stats.js', 'js/deals.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
+  'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/skip.js', 'js/showpoints.js', 'js/autoplay.js', 'js/suitorder.js', 'js/played.js', 'js/share.js', 'js/notify.js', 'js/card.js', 'js/bidpractice.js', 'js/daily.js', 'js/stats.js', 'js/deals.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
 self.addEventListener('install', e => {
   // 'reload' skips the browser's HTTP cache, so a new version really fetches the new files
   // On a first visit (no older copy saved) the page has just downloaded these files, so the browser's own cache may

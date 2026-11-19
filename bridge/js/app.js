@@ -654,6 +654,7 @@ function render() {
   scheduleRobot();
   autoNext(T); savePractice();
   if (typeof Stats !== 'undefined') Stats.note(T); /* feature: stats */
+  if (typeof Skip !== 'undefined') Skip.render(T); /* feature: skip */
 }
 
 // ---------- modals ----------
