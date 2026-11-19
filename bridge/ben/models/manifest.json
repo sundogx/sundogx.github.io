@@ -203,12 +203,12 @@
     }
    ],
    "check": {
-    "rows": 252,
+    "rows": 400,
     "max_abs_diff": 0.0010889172554016113,
     "per_output": {
      "contract": 0.0010889172554016113
     },
-    "argmax_agreement": 0.9920634920634921
+    "argmax_agreement": 0.995
    }
   },
   {
@@ -349,10 +349,10 @@
     }
    ],
    "check": {
-    "rows": 10,
-    "max_abs_diff": 0.0006994009017944336,
+    "rows": 98,
+    "max_abs_diff": 0.0029556751251220703,
     "per_output": {
-     "card": 0.0006994009017944336
+     "card": 0.0029556751251220703
     },
     "argmax_agreement": 1.0
    }
@@ -386,7 +386,7 @@
     }
    ],
    "check": {
-    "rows": 52,
+    "rows": 196,
     "max_abs_diff": 0.004157602787017822,
     "per_output": {
      "card": 0.004157602787017822

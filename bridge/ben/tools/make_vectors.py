@@ -33,7 +33,7 @@ OVERRIDES = {  # native libraries the browser port cannot use
 }
 ROWS_JSON = 1        # rows kept per call in the JSON (row 0 of the batch)
 CALLS_JSON = 2       # calls kept per model per decision in the JSON
-FULL_TRICKS = (1, 6, 11)  # play decisions that keep the sampling-stage calls; others keep only batch-1 calls
+FULL_TRICKS = (1,)  # play decisions (trick_i) that keep all calls; others keep only batch-1 play/lead-net calls
 ROWS_NPZ = 400       # rows kept per model for the conversion check
 
 state = {'decision': None, 'calls': [], 'npz': {}}
@@ -167,7 +167,7 @@ def wrap_bots(deal_rec):
     d['candidates'] = [_cand(c) for c in (r.candidates or [])]
     d['samples'] = len(r.samples or [])
     if trick_i not in FULL_TRICKS:
-      d['nn'] = [c for c in d['nn'] if c['batch'] == 1]
+      d['nn'] = [c for c in d['nn'] if c['batch'] == 1 and c['model'] not in ('bidder', 'binfo')]
     deal_rec['decisions'].append(d)
     state['decision'] = {'kind': 'between', 'nn': []}
     state['pending_play'] = state['decision']['nn']
