@@ -23,6 +23,7 @@ const AutoPlay = {
       this.timer = null;
       if (!T || T.id + ':' + playMark(T) + ':' + turnSeat(T) !== key || Prefs.autoPlay === false) return;
       const l = myLegal(T, ts); if (l.length !== 1 || l[0] !== card) return;
+      if (this.done.size > 2000) this.done.clear(); // keep the once-only memory bounded over a long session
       this.done.add(key); selCard = null; doAct('card', ts, card);
     }, wait);
   },

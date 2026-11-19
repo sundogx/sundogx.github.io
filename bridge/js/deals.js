@@ -46,7 +46,8 @@ const DEAL_FILTERS = {
   },
   game: (i) => i.N.hcp + i.S.hcp >= 26,
   custom: (i) => {
-    const lo = +Prefs.dealMin || 0, hi = Prefs.dealMax === undefined || Prefs.dealMax === '' ? 37 : +Prefs.dealMax, x = i.S;
+    const a = +Prefs.dealMin || 0, b = Prefs.dealMax === undefined || Prefs.dealMax === '' ? 37 : +Prefs.dealMax, x = i.S;
+    const lo = Math.min(a, b), hi = Math.max(a, b); // a reversed range (min above max) would match nothing
     if (x.hcp < lo || x.hcp > hi) return false;
     const sh = Prefs.dealShape || 'any';
     return sh === 'any' || (sh === 'major5' && (x.L.S >= 5 || x.L.H >= 5)) || (sh === 'bal' && x.bal) || (sh === 'long6' && x.long >= 6);
