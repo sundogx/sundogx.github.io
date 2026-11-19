@@ -2,7 +2,7 @@
 // Stale-while-revalidate: files come from the saved copy straight away and are refreshed in the background,
 // so a change reaches people on their next visit. Bumping CACHE makes a new service worker that fetches every
 // file afresh, deletes the old copies and tells open pages a new version is ready. The game server (/api) is never cached.
-const CACHE = 'bridge-v43';
+const CACHE = 'bridge-v44';
 const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
   'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/share.js', 'js/notify.js', 'js/card.js', 'js/bidpractice.js', 'js/daily.js', 'js/stats.js', 'js/deals.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
 self.addEventListener('install', e => {

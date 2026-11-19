@@ -15,7 +15,10 @@ const BenBridge = (() => {
     n: 0, wait: new Map(),                  // requests: id -> resolve
     loaded: 0, total: 0, misses: 0, toasted: false, manifest: undefined, readyP: null, readyRes: null,
   };
-  const on = () => { try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } };
+  // READY: set to true once the BEN port in ben/ben-worker.js plays real BEN (until then the option is hidden;
+  // add ?ben=1 to the page URL to try it anyway).
+  const READY = false || /[?&]ben=1/.test(location.search);
+  const on = () => { if (!READY) return false; try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } };
   const setOn = v => { try { if (v) localStorage.setItem(KEY, '1'); else localStorage.removeItem(KEY); } catch (e) { } };
   // BEN plays a table's robots only in practice, with the option on, and while the worker hasn't failed this visit.
   const active = t => !!(t && t.local && on() && S.state !== 'failed' && typeof Worker !== 'undefined');
@@ -132,6 +135,7 @@ const BenBridge = (() => {
 
   // ---- Options: the checkbox, the download question and a quiet progress bar ----
   function optionsHTML() {
+    if (!READY) return '';
     return `<label class="row" style="gap:8px;margin-bottom:8px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" id="optBen" ${on() ? 'checked' : ''} style="margin-top:4px"> <span>Use BEN robots<br><span class="note">In practice, the robots bid, lead and play with BEN's neural networks, in this browser. Their calls aren't explained by the usual system.<br>BEN robots by Lorand Dali and Thorvald Aagaard, GPL-3.0 (<a href="https://github.com/sundogx/sundogx.github.io/tree/main/bridge/ben" target="_blank" rel="noopener">bridge/ben</a>, <a href="https://github.com/lorserker/ben" target="_blank" rel="noopener">GitHub</a>)</span></span></label>
       <div id="benBox" class="benbox"></div>`;
   }
