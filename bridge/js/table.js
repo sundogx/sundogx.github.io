@@ -49,7 +49,7 @@ function startBoard(t, rec) {
   t.board += 1;
   t.dealer = rec ? rec.dealer : boardDealer(t.board);
   t.vul = rec ? rec.vul : boardVul(t.board);
-  t.hands = rec ? structuredClone(rec.hands) : t.seed ? deal(seededRand(t.seed + ':' + t.board)) : deal();
+  t.hands = rec ? structuredClone(rec.hands) : t.seed ? deal(seededRand(t.seed + ':' + t.board)) : (t.local && typeof practiceDeal === 'function' && practiceDeal(t)) || deal(); /* feature: deals */
   t.replayOf = rec ? (rec.replayOf || rec.board) : null;
   t.auction = []; t.contract = null; t.play = { tricks: [] }; t.claim = null;
   t.boardStart = Date.now(); t.lastActAt = Date.now(); t.timeUp = false;
