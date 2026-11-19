@@ -4,7 +4,10 @@
 // (botFeatures in js/bots.js) and the tricks its card takes are recorded; a ridge regression on the
 // differences between the suits of the same decision gives the weights.
 // Usage: node tests/heurfit.js [boards=1500] [kind=switch] [seed=heurfit] [workers=cores-2]
-//   kind switch: a defender on lead after the opening lead; discard: a discard (either side).
+//   kind switch: a defender on lead after the opening lead; discard: a discard (either side); lead: the declaring
+//   side on lead (which suit); follow: the card when following suit (botPlay's candidates; groups by side, seat, strain).
+// Y=dd (default) scores each candidate by double dummy; Y=roll by playing the rest out with the heuristic robot in all
+// four seats (the opponents it meets at the table); Y=mix averages the two.
 // Prints the weights for notrump and for suit contracts, ready to paste into js/bots.js, and how often the
 // fitted choice and the current choice pick a best suit on the fitting boards.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -60,7 +63,7 @@ if (isMainThread) {
   const D = require('../js/ddplay.js');
   const wasmDir = path.join(__dirname, '..', 'js', 'wasm');
   const create = require(path.join(wasmDir, 'compiled.js'));
-  const { kind, seed } = workerData;
+  const { kind, seed } = workerData, Y = process.env.Y || 'dd';
   let solve = null;
   parentPort.on('message', async g => {
     if (g < 0) return process.exit(0);
@@ -75,10 +78,20 @@ if (isMainThread) {
         const card = NEWB.botPlay(t, s);
         const F = NEWB.botFeatures(t, s, kind);
         if (F) {
-          const view = D.ddView(t, s);
-          const rem = {}; for (const x of SEATS) rem[x] = remainingHand(hands, t.play, x);
-          const r = await solve(D.ddJob(view, rem));
-          recs.push({ st: F.group, opts: F.opts.map(o => ({ f: o.f, y: r[o.card], cur: suitOf(o.card) === suitOf(card) })) });
+          let r = {};
+          if (Y !== 'roll') {
+            const view = D.ddView(t, s);
+            const rem = {}; for (const x of SEATS) rem[x] = remainingHand(hands, t.play, x);
+            r = await solve(D.ddJob(view, rem));
+          }
+          if (Y !== 'dd') for (const o of F.opts) { // play the rest out with the heuristic in all four seats
+            const t2 = { ...t, play: JSON.parse(JSON.stringify(t.play)) };
+            applyPlay(t2.play, ct, s, o.card);
+            for (let j = i + 1; j < 52; j++) { const s2 = playTurn(t2.play, ct); applyPlay(t2.play, ct, s2, NEWB.botPlay(t2, s2)); }
+            const w = tricksWon(t2.play, ct), mine = sameSide(s, ct.declarer) ? w.decl : w.def;
+            r[o.card] = Y === 'roll' ? mine : (r[o.card] + mine) / 2;
+          }
+          recs.push({ st: F.group, opts: F.opts.map(o => ({ f: o.f, y: r[o.card], cur: kind === 'follow' ? o.card === card : suitOf(o.card) === suitOf(card) })) });
         }
         applyPlay(t.play, ct, s, card);
       }

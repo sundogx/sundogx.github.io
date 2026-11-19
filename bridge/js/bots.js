@@ -102,12 +102,18 @@ function botPlayOld(t, seat) {
 const BOT_DEFAULT_OFF = ['trlead', 'holdup']; // measured as neutral or harmful against the previous heuristic (tests/heurstim.js)
 const OFF = k => ((typeof globalThis !== 'undefined' && globalThis.BOT_OFF) || BOT_DEFAULT_OFF).includes(k);
 // ---- Card play v2: finesses, hold-ups, covering honours, ruffing in the short hand, signals ----
-// Weights of the features in swF (a defender's lead after the opening lead) and dsF (a discard), by contract kind:
-// fitted to double-dummy results with tests/heurfit.js (ridge regression, x10).
-const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid'];
+// Weights of the features in swF (a defender's lead after the opening lead), dsF (a discard), dlF (the declaring side's
+// lead) and flF (following suit; only the groups listed, side + seat 1|2 + n|s), by contract kind: fitted with
+// tests/heurfit.js (ridge regression, x10) to the average of the double-dummy result and a heuristic play-out (Y=mix).
+// The defenders' discard weights are still the double-dummy fit.
+const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid', 'aceNoK', 'masters2', 'trumpPassive', 'declRuffs', 'cashUrgent', 'intoTenace', 'noHonour', 'tenace', 'unseen'];
 const BOT_DISCARD_NAMES = ['hcp', 'len', 'masters', 'mateLen', 'mateMasters', 'dummyLen', 'guardDummy', 'unguards', 'voidToRuff', 'singleton', 'sigUp', 'sigDown', 'ledSuit', 'higherUnseen', 'unseen', 'longCards', 'trump'];
-const BOT_SWITCH_W = { NT: [1.9, -0.4, 0.6, -0.7, 0, 0.2, 1, 0, 0, 0, -0.1, 2.7, 0.2, -0.7, 2.2, 0, 0, -2.2, -0.2, 0.3, -1.5, -0.2, 0, 4.2], suit: [0.9, -0.5, 0.4, 0.4, -0.5, 0.4, 0.2, -4.2, -1.4, -0.2, 0.1, 1.7, 0, -0.2, 0.6, -0.2, 0, -1, 0.3, 1.1, -1, -0.4, 0.9, -0.6] };
-const BOT_DISCARD_W = { declNT: [-0.2, 0.8, -0.3, 0, 0, 0, 0.1, -0.9, 0, -0.8, 0, 0, 0, 0.2, 0, 0.1, 0], declSuit: [-0.2, 0.5, 0.1, 0, -0.1, 0, 0.4, 0.1, 1.1, -0.6, 0, 0, 0, 0.4, 0, -0.2, 0], defNT: [0, 0.3, -0.3, 0, 0, -0.2, 0.5, -0.6, 0, -0.7, 0.2, -0.1, 0.1, 0.3, 0, 0.6, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
+const BOT_SWITCH_W = { NT: [1.6, 0.1, 1.1, 0.1, 0, 0.1, 1.2, 0, 0, -0.1, 0.6, 1.8, 0.2, -0.8, 0.9, 0, 0, -1.9, 0.1, 2.3, -0.7, 0.8, 0, 2, -1.3, 2.9, 0, 0, 0, 0.7, 0.4, 0.4, 0.3], suit: [0.5, 0, 0.3, -0.2, -1.7, 0, 0.8, -2.9, -0.8, -0.3, 0.2, 0.7, 0, -0.2, 0.5, 0, 0.5, -0.9, 0.2, 0.3, -0.5, -0.1, 0.6, -0.5, -0.4, 0.2, 2, 0.4, 0, -0.7, -0.1, 0.1, -0.2] };
+const BOT_DLEAD_NAMES = ['rule', 'trump', 'trumpOppLeft', 'trumpNone', 'partnerRuffs', 'shortRuffs', 'oppRuffs', 'sure', 'gain', 'lost', 'myMasters', 'cashSure', 'oppLen', 'shortFirst', 'towardTenace', 'ruffRisk', 'crossruff', 'len', 'noHonour', 'toPartner', 'trumpShort', 'givesTrick', 'partnerMasters', 'trumpLong'];
+const BOT_DLEAD_W = { NT: [0.7, 0, 0, 0, 0, 0, 0, 0.8, 0.9, -0.8, 0.4, 1, -0.5, 0, 0.9, 0, 0, 0.1, 1, 0.6, 0, -2.7, -0.1, 0], suit: [0.9, -0.8, 0.7, -1.4, 2.3, 0.1, -1.8, 0.8, 0.8, 0.4, 0.1, 0.3, 0, 0.1, 0.3, -1.3, 0.2, -0.3, 0.5, 0.6, -0.6, -1.1, 0.1, 0.3] };
+const BOT_FOLLOW_NAMES = ['rule', 'low', 'wins', 'sureWin', 'overtake', 'above', 'honour', 'rank', 'coverHonour', 'setNow', 'nextBeats', 'endgame', 'unblock', 'finesse1', 'secondWin', 'honourDoubleton', 'high', 'ourLead', 'finFew', 'finMany', 'fin2Few'];
+const BOT_FOLLOW_W = { decl1n: [-0.8, -0.8, 1.8, 2.8, 0, 0.9, -1.1, -0.5, 2.2, 2.8, 0, 0.4, 1.4, 0.8, -1, 0.5, -2.4, 0, -0.6, 0.8, 0.3], decl1s: [0, -0.7, 1.1, 1.9, 0, 0.5, -0.6, -0.4, 1.5, 1.9, 0, 0.7, 0.7, 0.6, -0.8, 0.5, -1.1, 0, 0.1, 0.5, -0.1], def1n: [0.4, -0.3, 3, 5.6, 0, 0.2, 0.4, -2.1, 0.6, 0.3, 1, 0.2, 0, -0.2, -2.6, 0.2, -0.6, 0, -1.8, 0.6, -0.5], def1s: [0.1, -0.3, 1.7, 3.2, 0, 0.3, 0.1, -1, 1.7, 0.3, 0.9, 0.4, 0, -0.3, -1.4, 0.5, -0.5, 0, 0, 0.2, -0.7], def2n: [2.4, -1.5, 2.4, 10.4, -6.1, 0.3, 2.1, -3.1, 0, 0.9, -0.5, 1.9, 0, 3.6, 0, 1, -0.1, 0, -1.9, 2.6, 2], def2s: [0.9, -0.3, 2.8, 7.7, -5.2, -0.1, 1.8, -1.9, 0, 1, 0, 0.4, 0, 1.1, 0, 0.2, -0.2, 0, -0.8, 1.8, -0.2] };
+const BOT_DISCARD_W = { declNT: [0, 0.6, -0.9, 0, 0, 0, 0.1, -0.6, 0, 0, 0, 0, 0, 0.2, 0, 0.4, 0], declSuit: [-0.1, 0.3, -0.2, -0.1, 0.2, -0.1, 0.3, -0.3, 0.3, -0.5, 0, 0, 0, 0.2, 0.1, 0.1, 0], defNT: [0, 0.3, -0.3, 0, 0, -0.2, 0.5, -0.6, 0, -0.7, 0.2, -0.1, 0.1, 0.3, 0, 0.6, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
 function botFeatures(t, seat, kind) { const r = botPlay(t, seat, kind); return r && r.opts ? r : null; }
 let botWhy = ''; // which rule chose the last card (tests/heurstim.js leak report)
 const R = (why, card) => { botWhy = why; return card; };
@@ -155,6 +161,11 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     }
   }
   const trick = currentTrick(play);
+  // known voids: a seat that failed to follow suit is void in it
+  const voidIn = (who, su) => play.tricks.some(tr => suitOf(tr.cards[0].card) === su && tr.cards.some(pc => pc.seat === who && suitOf(pc.card) !== su));
+
+  // a defender's sure winner: a master that neither declarer (known void) nor dummy (void) can ruff
+  const defSure = x => isMaster(x) && (!trump || x[0] === trump || (!(voidIn(decl, x[0]) && !voidIn(decl, trump)) && !(dummyUp && of(dummyCards, x[0]).length === 0 && of(dummyCards, trump).length)));
 
   // ---- declarer's count (both hands are visible to the declaring side) ----
   // For each suit: our cards in this hand (A) and partner's (B), the opponents' (O), all high to low;
@@ -227,64 +238,105 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     return R('devLow', low(A));
   };
 
+  // the declaring side on lead: the rules (declPlan first), then the fitted choice of suit (dlF, BOT_DLEAD_W) may override
+  const declRule = () => {
+    const other = pCards;
+    const masters = legal.filter(isMaster);
+    if (!OFF('plan')) { const p = declPlan(); if (p) return p; }
+    if (trump) {
+      const opp = oppTrumpsLeft();
+      const myT = of(my, trump).length, otT = of(other, trump).length;
+      // ruff losers in the short trump hand before drawing trumps
+      if (!OFF('ruff') && opp && otT > 0 && otT < myT) {
+        for (const s of SUITS) if (s !== trump && of(other, s).length === 0 && of(my, s).length && !of(my, s).every(isMaster)) return R('ruffShort', low(of(my, s)));
+      }
+      if (opp && myT) { const tm = of(legal, trump); const m = tm.filter(isMaster); return R('drawTrump', m.length ? high(m) : low(tm)); }
+      if (opp && !myT && otT) {
+        // get to the other hand to draw trumps: lead a suit where partner has a master
+        for (const s of SUITS) if (of(my, s).length && of(other, s).some(isMaster)) return R('toDrawTrump', low(of(my, s)));
+      }
+    }
+    // NT / trumps drawn: cash established winners in a suit where we keep the lead or unblock the short hand
+    if (!OFF('unblock')) for (const s of SUITS) {
+      const mine = of(my, s), oth = of(other, s);
+      if (!mine.length) continue;
+      const mm = mine.filter(isMaster);
+      if (mm.length && (mine.length <= oth.length ? true : mm.length === mine.length || !oth.some(isMaster))) {
+        // play from the short hand first (unblock)
+        if (mine.length <= oth.length || !oth.length) return R('L72', high(mm));
+      }
+    }
+    // finesse: lead low toward a tenace in the other hand (e.g. AQ, KJ)
+    if (!OFF('fin')) for (const s of SUITS) {
+      const mine = of(my, s), oth = of(other, s).sort((a, b) => rankOf(b) - rankOf(a));
+      if (!mine.length || oth.length < 2) continue;
+      const top = oth[0];
+      if (isMaster(top)) {
+        const gap = unseenAbove(oth[1]);
+        if (gap.length === 1 && rankOf(oth[1]) >= 8) return R('L82', low(mine)); // missing exactly one card between: finesse
+      }
+    }
+    if (masters.length) return R('L85', high(masters));
+    // establish our longest combined suit
+    const best = SUITS.filter(s => of(my, s).length && s !== trump).sort((a, b) => (of(my, b).length + of(other, b).length) - (of(my, a).length + of(other, a).length))[0];
+    if (best) { const m = of(my, best); const seq = m.sort((a, b) => rankOf(b) - rankOf(a)); return R('establish', seq.length >= 2 && rankOf(seq[0]) - rankOf(seq[1]) === 1 && rankOf(seq[0]) >= 9 ? seq[0] : low(m)); }
+    return R('L89', low(legal));
+  };
+  // the card the declaring side leads in a suit: a master from the short hand, low toward partner's higher cards,
+  // the top of a sequence, else low
+  const declCardIn = s => {
+    const mine = of(legal, s).sort((a, b) => rankOf(b) - rankOf(a)), oth = of(pCards, s).sort((a, b) => rankOf(b) - rankOf(a));
+    const mm = mine.filter(isMaster);
+    if (mm.length && (mine.length <= oth.length || !oth.some(isMaster))) return mm[0];
+    if (oth.length && rankOf(oth[0]) > rankOf(mine[0])) return mine[mine.length - 1];
+    if (mm.length || solid(mine[0])) return mine[0];
+    return mine[mine.length - 1];
+  };
+  let dlInfo = null;
+  const dlF = (s, rc) => {
+    if (!dlInfo) dlInfo = suitCount();
+    const { info, sure, need } = dlInfo, I = info[s], side = !!trump && s !== trump;
+    const oppT = trump ? info[trump].O.length : 0, myT = trump ? info[trump].A.length : 0, pT = trump ? info[trump].B.length : 0;
+    const lho = nextSeat(seat), rho = partnerOf(lho);
+    const card = s === suitOf(rc) ? rc : declCardIn(s);
+    const oth = I.B, mineM = I.A.filter(isMaster).length, othM = I.B.filter(isMaster).length;
+    const ten = oth.length >= 2 && isMaster(oth[0]) && unseenAbove(oth[1]).length === 1;
+    return [
+      s === suitOf(rc) ? 1 : 0, s === trump ? 1 : 0, s === trump && oppT ? 1 : 0, s === trump && !oppT ? 1 : 0,
+      side && !oth.length && pT ? 1 : 0, side && !oth.length && pT && pT < myT ? 1 : 0,
+      side && oppT && ((voidIn(lho, s) && !voidIn(lho, trump)) || (voidIn(rho, s) && !voidIn(rho, trump))) ? 1 : 0,
+      Math.min(I.sure, 5), I.dev - I.sure, I.lost, mineM, sure >= need ? Math.min(I.sure, 5) : 0, I.O.length,
+      I.A.length <= oth.length && mineM ? 1 : 0, ten ? 1 : 0, side && oppT && I.O.length <= 3 ? 1 : 0,
+      side && !oth.length && pT && myT && SUITS.some(x => x !== trump && x !== s && !info[x].A.length && info[x].B.length) ? 1 : 0,
+      I.A.length + oth.length, Math.max(I.A.length ? rankOf(I.A[0]) : -1, oth.length ? rankOf(oth[0]) : -1) < 9 ? 1 : 0,
+      othM && !mineM ? 1 : 0, s === trump && sure < need ? 1 : 0,
+      !isMaster(card) && !solid(card) && !(oth.length && rankOf(oth[0]) > rankOf(card)) ? 1 : 0,
+      othM, s === trump && oppT && myT + pT >= 2 * oppT ? 1 : 0,
+    ];
+  };
+
   // ---------- leading ----------
   if (!trick || trick.cards.length === 0) {
     if (play.tricks.length === 0 && !onDeclSide) return R('L48', botLead(hands[seat], t.auction || [], c, seat)); // opening lead: js/leads.js
     if (onDeclSide) {
-      const other = pCards;
-      const masters = legal.filter(isMaster);
-      if (!OFF('plan')) { const p = declPlan(); if (p) return p; }
-      if (trump) {
-        const opp = oppTrumpsLeft();
-        const myT = of(my, trump).length, otT = of(other, trump).length;
-        // ruff losers in the short trump hand before drawing trumps
-        if (!OFF('ruff') && opp && otT > 0 && otT < myT) {
-          for (const s of SUITS) if (s !== trump && of(other, s).length === 0 && of(my, s).length && !of(my, s).every(isMaster)) return R('ruffShort', low(of(my, s)));
-        }
-        if (opp && myT) { const tm = of(legal, trump); const m = tm.filter(isMaster); return R('drawTrump', m.length ? high(m) : low(tm)); }
-        if (opp && !myT && otT) {
-          // get to the other hand to draw trumps: lead a suit where partner has a master
-          for (const s of SUITS) if (of(my, s).length && of(other, s).some(isMaster)) return R('toDrawTrump', low(of(my, s)));
-        }
-      }
-      // NT / trumps drawn: cash established winners in a suit where we keep the lead or unblock the short hand
-      if (!OFF('unblock')) for (const s of SUITS) {
-        const mine = of(my, s), oth = of(other, s);
-        if (!mine.length) continue;
-        const mm = mine.filter(isMaster);
-        if (mm.length && (mine.length <= oth.length ? true : mm.length === mine.length || !oth.some(isMaster))) {
-          // play from the short hand first (unblock)
-          if (mine.length <= oth.length || !oth.length) return R('L72', high(mm));
-        }
-      }
-      // finesse: lead low toward a tenace in the other hand (e.g. AQ, KJ)
-      if (!OFF('fin')) for (const s of SUITS) {
-        const mine = of(my, s), oth = of(other, s).sort((a, b) => rankOf(b) - rankOf(a));
-        if (!mine.length || oth.length < 2) continue;
-        const top = oth[0];
-        if (isMaster(top)) {
-          const gap = unseenAbove(oth[1]);
-          if (gap.length === 1 && rankOf(oth[1]) >= 8) return R('L82', low(mine)); // missing exactly one card between: finesse
-        }
-      }
-      if (masters.length) return R('L85', high(masters));
-      // establish our longest combined suit
-      const best = SUITS.filter(s => of(my, s).length && s !== trump).sort((a, b) => (of(my, b).length + of(other, b).length) - (of(my, a).length + of(other, a).length))[0];
-      if (best) { const m = of(my, best); const seq = m.sort((a, b) => rankOf(b) - rankOf(a)); return R('establish', seq.length >= 2 && rankOf(seq[0]) - rankOf(seq[1]) === 1 && rankOf(seq[0]) >= 9 ? seq[0] : low(m)); }
-      return R('L89', low(legal));
+      const rc = declRule(), rwhy = botWhy;
+      const cand = SUITS.filter(s => of(legal, s).length);
+      if (want === 'lead') return cand.length > 1 ? { group: trump ? 'suit' : 'NT', opts: cand.map(s => ({ f: dlF(s, rc), card: s === suitOf(rc) ? rc : declCardIn(s) })) } : null;
+      if (OFF('dlfit') || cand.length < 2 || !BOT_DLEAD_W[trump ? 'suit' : 'NT']) return R(rwhy, rc);
+      const W = BOT_DLEAD_W[trump ? 'suit' : 'NT'];
+      let best = null, bs = -1e9;
+      for (const s of cand) { const v = dlF(s, rc).reduce((a, x, i) => a + x * W[i], 0); if (v > bs) { bs = v; best = s; } }
+      return best === suitOf(rc) ? R(rwhy, rc) : R('dlFit', declCardIn(best));
     }
     // defender leading later in the hand
     const firstLead = play.tricks[0].cards[0];
     const dummyLeft = nextSeat(seat) === dummy; // dummy plays right after me
     const cand = SUITS.filter(s => of(legal, s).length);
-    // known voids: a seat that failed to follow suit is void in it
-    const voidIn = (who, su) => play.tricks.some(tr => suitOf(tr.cards[0].card) === su && tr.cards.some(pc => pc.seat === who && suitOf(pc.card) !== su));
     // cash setting tricks: our side's sure winners are enough to beat the contract
     if (!OFF('setcash')) {
       const tw = tricksWon(play, c);
       const toSet = 13 - (c.level + 6) + 1 - tw.def;
-      const declTrumps = trump && !voidIn(decl, trump);
-      const sure = legal.filter(x => isMaster(x) && (!trump || x[0] === trump || (!(voidIn(decl, x[0]) && declTrumps) && !(of(dummyCards, x[0]).length === 0 && of(dummyCards, trump).length))));
+      const sure = legal.filter(defSure);
       if (toSet > 0 && sure.length >= toSet) return want ? null : R('L103', high(sure));
     }
     const scoreSuit = s => {
@@ -314,6 +366,13 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     };
     // features of leading each suit (weights fitted to double-dummy results by tests/heurfit.js)
     const bidBy = (who, s) => (t.auction || []).some(a => a.by === who && /^[1-7][CDHS]$/.test(a.call) && a.call[1] === s);
+    // dummy has a long suit it can run (discards for declarer's losers)
+    const dmMaster = x => { for (let r = rankOf(x) + 1; r < 13; r++) { const y = x[0] + RANKS[r]; if (!played.has(y) && !dummyCards.includes(y)) return false; } return true; };
+    const dummyRun = s0 => SUITS.some(x => x !== s0 && x !== trump && of(dummyCards, x).length >= 4 && of(dummyCards, x).filter(dmMaster).length >= 2);
+    // dummy holds a tenace (two honours with exactly one unseen card between them)
+    const dmTenace = dm => { const h = dm.filter(x => rankOf(x) >= 9).sort((a, b) => rankOf(b) - rankOf(a)); for (let i = 0; i + 1 < h.length; i++) { const gap = unseenAbove(h[i + 1]).filter(u => rankOf(u) < rankOf(h[i])).length; if (gap === 1 && isMaster(h[i])) return true; } return false; };
+    const myTenace = srt => { for (let i = 0; i + 1 < srt.length; i++) if (rankOf(srt[i + 1]) >= 9 && rankOf(srt[i]) - rankOf(srt[i + 1]) === 2 && !known.has(srt[0][0] + RANKS[rankOf(srt[i]) - 1])) return true; return false; };
+    const unseenN = s0 => { let n = 0; for (const r of RANKS) if (!known.has(s0 + r)) n++; return n; };
     const swF = s => {
       const dm = of(dummyCards, s), mine = of(my, s), dT = trump ? of(dummyCards, trump).length : 0, myT = trump ? of(my, trump).length : 0;
       const srt = mine.slice().sort((a, b) => rankOf(b) - rankOf(a)), side = trump && s !== trump;
@@ -331,6 +390,12 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
         bidBy(decl, s) ? 1 : 0, bidBy(dummy, s) ? 1 : 0, bidBy(partner, s) ? 1 : 0,
         dm.filter(isMaster).length, dm.length >= 4 && dm.some(x => rankOf(x) >= 10) ? 1 : 0,
         side && voidIn(partner, s) && !voidIn(partner, trump) ? 1 : 0, voidIn(decl, s) ? 1 : 0,
+        has('A') && !has('K') && !dm.some(x => x[1] === 'K') && !played.has(s + 'K') ? 1 : 0, Math.min(2, mine.filter(isMaster).length) === 2 ? 1 : 0,
+        s === trump && !mine.some(x => rankOf(x) >= 9 && !isMaster(x)) ? 1 : 0,
+        side && voidIn(decl, s) && !voidIn(decl, trump) ? 1 : 0,
+        mine.some(isMaster) && dummyRun(s) ? 1 : 0,
+        !dummyLeft && dmTenace(dm) ? 1 : 0, mine.every(x => rankOf(x) < 9) ? 1 : 0, myTenace(srt) ? 1 : 0,
+        unseenN(s) / 4,
       ];
     };
     if (want === 'switch') return cand.length > 1 ? { group: trump ? 'suit' : 'NT', opts: cand.map(s => ({ f: swF(s), card: leadCardIn(s) })) } : null;
@@ -383,30 +448,92 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       const { sure, need } = suitCount();
       return sure < need;
     };
-    if (partnerWinning && safe()) return R('L162', signal());
-    if (!winners.length) return R('L163', signal());
-    if ((pos === 3 || pos === 1) && holdUp()) return R('holdUp', low(follow));
-    if (pos === 3) return R('L164', low(winners));
-    if (pos === 1) {
-      // second hand low, but cover an honour with an honour
-      const ledCard = trick.cards[0].card;
-      if (rankOf(ledCard) >= 9 && !onDeclSide) {
-        const cover = winners.filter(x => rankOf(x) >= 9);
-        const nextIsDummy = nextSeat(seat) === dummy && dummyUp;
-        const dummyHasSeq = nextIsDummy && of(dummyCards, led).some(x => rankOf(x) === rankOf(ledCard) - 1);
-        if (cover.length && !dummyHasSeq) return R('L172', low(cover));
+    // features of following with card x (weights fitted by tests/heurfit.js, kind follow)
+    const later = [1, 2, 3].filter(i => i > pos).map(i => SEATS[(SEATS.indexOf(trick.cards[0].seat) + i) % 4]);
+    const visibleOf = who => who === seat ? my : (who === dummy && dummyUp) ? dummyCards : (onDeclSide && who === partner) ? pCards : null;
+    const canBeat = (who, x) => { const v = visibleOf(who); if (!v) return null; const f = of(v, led); if (f.length) return f.some(y => rankOf(y) > rankOf(x)); return !!trump && led !== trump && of(v, trump).length > 0; };
+    const sureWin = x => beats(x) && later.every(w => sameSide(w, seat) || (canBeat(w, x) === null ? unseenAbove(x).length === 0 && !(trump && led !== trump && voidIn(w, led) && !voidIn(w, trump)) : !canBeat(w, x)));
+    let toSetF = null;
+    const flF = (x, rc, sureW) => {
+      const b = beats(x), k = unseenAbove(x).length, ledHon = rankOf(trick.cards[0].card) >= 9;
+      if (toSetF === null) toSetF = onDeclSide ? 0 : 13 - (c.level + 6) + 1 - tricksWon(play, c).def - my.filter(y => suitOf(y) !== led && defSure(y)).length;
+      const nextOpp = later.find(w => !sameSide(w, seat)), nb = nextOpp ? canBeat(nextOpp, x) : null;
+      const mineL = of(my, led).length, othL = onDeclSide ? of(pCards, led).length : 0;
+      const left = 13 - play.tricks.length + 1;
+      let oppN = 0; for (const r of RANKS) if (!known.has(led + r)) oppN++;
+      return [
+        x === rc ? 1 : 0, x === low(follow) ? 1 : 0, b ? 1 : 0, sureW.includes(x) ? 1 : 0, partnerWinning && b ? 1 : 0,
+        Math.min(k, 4), rankOf(x) >= 9 ? 1 : 0, Math.max(0, rankOf(x) - 8),
+        pos === 1 && ledHon && b ? 1 : 0, sureW.includes(x) && toSetF <= 1 ? 1 : 0,
+        nb === true ? 1 : 0, left <= 4 && b ? 1 : 0, onDeclSide && rankOf(x) >= 9 && mineL <= 2 && othL > mineL + 1 ? 1 : 0,
+        b && k === 1 ? 1 : 0, pos === 1 && b && !sureW.includes(x) ? 1 : 0, mineL === 2 && rankOf(x) >= 9 ? 1 : 0,
+        x === high(follow) ? 1 : 0, sameSide(trick.cards[0].seat, seat) ? 1 : 0,
+        b && k === 1 && oppN <= 2 ? 1 : 0, b && k === 1 && oppN >= 4 ? 1 : 0, b && k === 2 && oppN <= 3 ? 1 : 0,
+      ];
+    };
+    const followRule = () => {
+      if (partnerWinning && safe()) return R('L162', signal());
+      if (!winners.length) return R('L163', signal());
+      if ((pos === 3 || pos === 1) && holdUp()) return R('holdUp', low(follow));
+      if (pos === 3) return R('L164', low(winners));
+      if (pos === 1) {
+        // second hand low, but cover an honour with an honour
+        const ledCard = trick.cards[0].card;
+        if (rankOf(ledCard) >= 9 && !onDeclSide) {
+          const cover = winners.filter(x => rankOf(x) >= 9);
+          const nextIsDummy = nextSeat(seat) === dummy && dummyUp;
+          const dummyHasSeq = nextIsDummy && of(dummyCards, led).some(x => rankOf(x) === rankOf(ledCard) - 1);
+          if (cover.length && !dummyHasSeq) return R('L172', low(cover));
+        }
+        const m = winners.filter(isMaster);
+        if (!OFF('second') && onDeclSide && m.length) return R('L182', low(m));
+        // defender: take a master when it and our other sure winners beat the contract
+        if (!onDeclSide && m.length && !OFF('set2')) {
+          const toSet = 13 - (c.level + 6) + 1 - tricksWon(play, c).def;
+          if (1 + my.filter(x => suitOf(x) !== led && defSure(x)).length >= toSet) return R('set2', low(m));
+        }
+        return R('L183', low(follow));
       }
-      const m = winners.filter(isMaster);
-      if (!OFF('second') && onDeclSide && m.length) return R('L182', low(m));
-      return R('L183', low(follow));
+      // third hand
+      // finesse: partner (our hand) led low; play the cheapest card that beats the current winner
+      if (onDeclSide) {
+        if (OFF('third')) return R('L196', low(winners));
+        // card counting: the fourth hand known void wins nothing (unless it ruffs); the second hand showed out, so the
+        // fourth hand holds every unseen card and a finesse can't work; otherwise finesse only against one missing card
+        const fourth = nextSeat(seat), second = trick.cards[1].seat;
+        if (voidIn(fourth, led)) {
+          if (trump && led !== trump && oppTrumpsLeft() && !voidIn(fourth, trump)) return R('3rdRuffed', low(follow));
+          return R('3rdVoid', low(winners));
+        }
+        const k = x => unseenAbove(x).length, kmin = Math.min(...winners.map(k));
+        const lim = voidIn(second, led) || (kmin === 0 && !OFF('3safe') && (() => { const q = suitCount(); return q.sure >= q.need; })()) ? kmin : Math.max(1, kmin);
+        return R(lim > kmin ? '3rdFin' : '3rdTop', low(winners.filter(x => k(x) <= lim)));
+      }
+      // defender third hand: high, but cheapest of equals
+      const top = high(winners);
+      const seq = follow.filter(x => rankOf(x) <= rankOf(top) && rankOf(x) >= rankOf(winCard) && unseenAbove(x).filter(u => rankOf(u) < rankOf(top)).length === 0 && beats(x));
+      return R('L201', seq.length ? low(seq) : top);
+    };
+    const rc = followRule(), rwhy = botWhy;
+    if (follow.length < 2 || OFF('flfit')) return R(rwhy, rc);
+    // the fitted choice among a few candidate cards (flF, BOT_FOLLOW_W): the rule's card, low, the cheapest winner,
+    // the cheapest sure winner, high; equal cards (no unseen card between them) count once, as the lowest
+    const equal = (x, y) => { const lo = Math.min(rankOf(x), rankOf(y)), hi = Math.max(rankOf(x), rankOf(y)); for (let r = lo + 1; r < hi; r++) if (!known.has(led + RANKS[r]) || (!onDeclSide && dummyCards.includes(led + RANKS[r])) || (onDeclSide && pCards.includes(led + RANKS[r]))) return false; return true; };
+    const sureW = winners.filter(x => sureWin(x));
+    const opts = [];
+    for (const x of [rc, low(follow), winners.length ? low(winners) : null, sureW.length ? low(sureW) : null, high(follow)]) {
+      if (!x) continue;
+      const lowest = follow.filter(y => equal(x, y)).reduce((m, y) => rankOf(y) < rankOf(m) ? y : m, x);
+      const pick = x === rc ? rc : lowest;
+      if (!opts.some(o => o === pick || (o !== rc && equal(o, pick)) || (o === rc && pick !== rc && equal(o, pick)))) opts.push(pick);
     }
-    // third hand
-    // finesse: partner (our hand) led low; play the cheapest card that beats the current winner
-    if (onDeclSide) return R('L196', low(winners));
-    // defender third hand: high, but cheapest of equals
-    const top = high(winners);
-    const seq = follow.filter(x => rankOf(x) <= rankOf(top) && rankOf(x) >= rankOf(winCard) && unseenAbove(x).filter(u => rankOf(u) < rankOf(top)).length === 0 && beats(x));
-    return R('L201', seq.length ? low(seq) : top);
+    const group = (onDeclSide ? 'decl' : 'def') + pos + (trump ? 's' : 'n');
+    if (want === 'follow') return opts.length > 1 ? { group, opts: opts.map(x => ({ f: flF(x, rc, sureW), card: x })) } : null;
+    const W = BOT_FOLLOW_W[group];
+    if (!W || opts.length < 2) return R(rwhy, rc);
+    let best = rc, bs = -1e9;
+    for (const x of opts) { const v = flF(x, rc, sureW).reduce((acc, f, i) => acc + f * W[i], 0); if (v > bs + 1e-9) { bs = v; best = x; } }
+    return best === rc ? R(rwhy, rc) : R('flFit', best);
   }
   // void in the led suit
   if (trump && of(legal, trump).length && !(partnerWinning && safe())) {
@@ -839,4 +966,4 @@ function simulateBoard(hands, dealer, vul) {
   const d = tricksWon(t.play, contract).decl;
   return { auction, contract, declTricks: d, scoreNS: scoreNS(contract, d, vul), tricks: t.play.tricks };
 }
-if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount };
+if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : k === "lead" ? BOT_DLEAD_NAMES : k === "follow" ? BOT_FOLLOW_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount };
