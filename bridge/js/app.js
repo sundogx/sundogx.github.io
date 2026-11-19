@@ -446,6 +446,8 @@ function renderHand() {
   const w = el.clientWidth || 360;
   const cw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
+  // the bidding box below is as wide as a full 13-card hand
+  document.documentElement.style.setProperty('--handW', Math.round(cw + 12 * Math.min(cw * 0.5, (w - cw - 4) / 12)) + 'px');
   el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : '') + (legal.includes(c) && isHint(c) ? ' hint' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
 }
 const STRAIN_WORD = { C: 'clubs', D: 'diamonds', H: 'hearts', S: 'spades', N: 'notrump' };

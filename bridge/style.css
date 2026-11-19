@@ -269,7 +269,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .agrid [data-alert]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 /* bidding box: styled after physical bidding cards */
-.bbox { margin: 0 auto; max-width: 520px; background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 10px; }
+.bbox { margin: 0 auto; max-width: var(--handW, 520px); box-sizing: border-box; background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 10px; }
 .bbox .lv, .bbox .st, .bbox .sp { display: grid; gap: 6px; margin-bottom: 6px; }
 .bbox .lv { grid-template-columns: repeat(7, 1fr); }
 .bbox .st { grid-template-columns: repeat(5, 1fr); }
