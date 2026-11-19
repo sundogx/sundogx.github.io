@@ -42,7 +42,7 @@ const Net = {
       } else if (m.type === 'error') toast(m.msg);
       else if (m.type === 'notfound') {
         const wasOpen = this.gotState, gone = this.code; this.close(); forgetTable(gone);
-        toast(wasOpen ? 'This table has closed.' : 'No table has that code. Check the letters and try again.');
+        toast(wasOpen ? (m.closed && m.msg ? m.msg : 'This table has closed.') : 'No table has that code. Check the letters and try again.');
         if (wasOpen) goHome();
       }
     };

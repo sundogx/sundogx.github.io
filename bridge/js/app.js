@@ -649,11 +649,12 @@ function showRecord(i) {
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
     ${otherLine(h)}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
-    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}</div><div id="replayBox"></div>`);
+    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div><div id="replayBox"></div>`);
   openRecord = i;
   $('pbnOne').addEventListener('click', () => copyText(pbnBoard(h, T)));
   $('modalRoot').querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => exportRecord(h, b.dataset.export)));
   if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h));
+  if ($('playAgain')) $('playAgain').addEventListener('click', () => { closeModal(); if (T.local) act(s => A.next(s, s.history.find(x => x.board === h.board))); else doAct('next', { replay: h.board }); });
 }
 // the cards that kept the double-dummy result: "any ♣" for a whole suit of the legal cards, else the cards themselves
 function betterText(r) {
@@ -1134,13 +1135,19 @@ function showSettings() {
     <label class="row" style="gap:8px;margin-bottom:4px">Time per board <select id="setTime">${[0, 5, 7, 10, 15].map(m => `<option value="${m}" ${(t.boardLimit || 0) === m ? 'selected' : ''}>${m ? m + ' minutes' : 'No limit'}</option>`).join('')}</select></label>
     <p class="note" style="margin:0 0 12px">When the time runs out, the robots finish the board.</p>
     <h3 style="font-size:16px">Seats</h3>
-    ${people.length ? people.map(s => `<div class="row" style="justify-content:space-between;margin-bottom:6px"><span>${SEAT_NAME[s]}: ${esc(seatLabel(t, s))}</span><button class="btn small" data-kick="${s}">Remove</button></div>`).join('') : '<p class="note">Nobody else is seated.</p>'}
-    ${t.phase === 'auction' ? '<div class="row" style="margin-top:10px"><button class="btn" id="setRedeal">Redeal this board</button></div>' : ''}`);
+    ${people.length ? people.map(s => `<div class="row" style="justify-content:space-between;margin-bottom:6px"><span>${SEAT_NAME[s]}: ${esc(seatLabel(t, s))}</span><span class="row" style="gap:6px">${!t.local && t.seats[s].kind === 'human' ? `<button class="btn small" data-mkhost="${s}">Make host</button>` : ''}<button class="btn small" data-kick="${s}">Remove</button></span></div>`).join('') : '<p class="note">Nobody else is seated.</p>'}
+    ${t.phase === 'auction' ? '<div class="row" style="margin-top:10px"><button class="btn" id="setRedeal">Redeal this board</button></div>' : ''}
+    ${t.local ? '' : '<div class="row" style="margin-top:10px"><button class="btn" id="setClose">Close the table</button></div>'}`);
   const bind = (id, key) => $(id).addEventListener('change', e => doAct('settings', { [key]: e.target.checked }));
   bind('setLock', 'locked'); bind('setUndo', 'allowUndo'); bind('setKib', 'kibSee'); if ($('setUndoAsk')) bind('setUndoAsk', 'undoAsk'); if ($('setFriends')) bind('setFriends', 'friends');
   $('setTime').addEventListener('change', e => doAct('settings', { boardLimit: +e.target.value }));
   m.querySelectorAll('[data-kick]').forEach(b => b.addEventListener('click', () => { doAct('kick', b.dataset.kick); b.closest('.row').remove(); }));
   if ($('setRedeal')) $('setRedeal').addEventListener('click', () => { closeModal(); doAct('redeal'); });
+  m.querySelectorAll('[data-mkhost]').forEach(b => b.addEventListener('click', () => { closeModal(); doAct('makeHost', b.dataset.mkhost); }));
+  if ($('setClose')) $('setClose').addEventListener('click', () => {
+    const c = modal('<h3>Close the table?</h3><p>Everyone here is sent back to the lobby and the table is deleted.</p><div class="row"><button class="btn primary" id="closeYes">Close the table</button><button class="btn" data-close="1">Keep it</button></div>', true);
+    c.querySelector('#closeYes').addEventListener('click', () => { closeModal(); doAct('close'); });
+  });
 }
 
 // ---------- clocks ----------
@@ -1303,13 +1310,13 @@ async function loadLobby() {
   if (!tables.length) { el.innerHTML = '<div class="empty">No open tables right now. Open one and invite your friends.</div>'; return; }
   // tables with a free seat (empty or robot) first, then the busiest
   const free = t => SEATS.filter(s => !t.seats[s] || t.seats[s].kind === 'robot').length;
-  tables.sort((x, y) => (free(y) > 0) - (free(x) > 0) || y.updatedAt - x.updatedAt);
+  tables.sort((x, y) => (free(y) > 0) - (free(x) > 0) || ((y.people || 0) > 0) - ((x.people || 0) > 0) || y.updatedAt - x.updatedAt);
   el.innerHTML = tables.map(t => {
     const humans = SEATS.filter(s => t.seats[s] && t.seats[s].kind === 'human').length;
     const open = free(t);
     const st0 = (t.match ? 'Team match, ' : '') + (t.phase === 'waiting' ? 'waiting for players' : `board ${t.board}`);
     const status = st0[0].toUpperCase() + st0.slice(1);
-    return `<div class="trow"><div><div class="tname">${esc(t.name)}</div><div class="tmeta">${status}, ${humans} ${humans === 1 ? 'person' : 'people'} seated${open ? `, ${open} seat${open === 1 ? '' : 's'} free` : ''}</div>
+    return `<div class="trow"><div><div class="tname">${esc(t.name)}</div><div class="tmeta">${status}, ${humans} ${humans === 1 ? 'person' : 'people'} seated${open ? `, ${open} seat${open === 1 ? '' : 's'} free` : ''}${t.people ? `, ${t.people} here` : ''}${t.boardLimit ? `, ${t.boardLimit} min a board` : ''}${t.locked ? ', seats locked' : ''}</div>
       <div class="seatmini">${SEATS.map(s => { const o = t.seats[s]; return `<span class="${o ? '' : 'open'}">${s} ${o ? (o.kind === 'robot' ? 'Robot' : esc(o.name)) : 'open'}</span>`; }).join('')}</div></div>
       <button class="btn ${open ? 'primary' : ''}" data-open="${esc(t.code)}">${open ? 'Go to table' : 'Watch'}</button></div>`;
   }).join('');
