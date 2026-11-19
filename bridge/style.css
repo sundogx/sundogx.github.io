@@ -657,3 +657,5 @@ table.daily-lb tr.you td { font-weight: 600; }
 .lt-deal { margin: 6px 0 10px; }
 .lt-deal .diagram { justify-content: start; grid-template-columns: auto auto auto; column-gap: 6px; }
 @media (max-width: 640px) { #leadTrainer .topbar { flex-wrap: wrap; } }
+/* feature: playfrom */
+ul.costs .pftry { background: none; border: 0; padding: 2px 0 2px 4px; min-height: 0; font: inherit; color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }

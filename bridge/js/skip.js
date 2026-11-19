@@ -4,7 +4,7 @@
 // which saves only boards that reach phase 'done') never see it. Loaded before app.js; uses its helpers at run time.
 
 const Skip = {
-  ok: t => !!(t && t.local && !t.daily && (t.phase === 'auction' || t.phase === 'play')),
+  ok: t => !!(t && t.local && !t.daily && !t.whatIf /* feature: playfrom */ && (t.phase === 'auction' || t.phase === 'play')),
   render(t) { const b = document.getElementById('skipBtn'); if (b) b.classList.toggle('hidden', !Skip.ok(t)); },
   go() {
     if (!Skip.ok(T)) return;

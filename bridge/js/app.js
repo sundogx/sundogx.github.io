@@ -68,6 +68,7 @@ async function act(fn) {
     s.history = history.slice(); s.chat = chat.slice();
     const r = fn(s);
     if (r !== false && typeof dealsAfterAct === 'function') dealsAfterAct(s); /* feature: deals */
+    if (r !== false && typeof PlayFrom !== 'undefined') PlayFrom.afterAct(s); /* feature: playfrom */
     if (r === false) { if (base !== T) { T = base; render(); } return false; }
     s.version = (s.version || 0) + 1; s.updatedAt = Date.now();
     T = s; render(); return true;
@@ -428,6 +429,7 @@ function resultBanner(t) {
   let go = !next ? '' : empty.length /* feature: daily: let */ ? `<p class="note" style="margin:4px 0 0">${empty.map(s => SEAT_NAME[s]).join(' and ')} ${empty.length > 1 ? 'are' : 'is'} empty.</p><div class="row">${empty.map(s => `<button class="btn primary" data-robot="${s}">${empty.length > 1 ? 'Robot ' + s : 'Add robot'}</button>`).join('')}${seatsBtn}</div>`
     : `<div class="row"><button class="btn primary" data-next="1">Next board</button>${seatsBtn}</div>`;
   if (t.daily) go = Daily.resultButtons(t, go); /* feature: daily */
+  if (t.whatIf && typeof PlayFrom !== 'undefined') go = PlayFrom.resultButtons(t, go); /* feature: playfrom */
   // one compact panel: contract and result, tricks and score, then the buttons (it must fit the middle of a phone's table)
   return `<div class="banner result"><h3>${h.contract ? `${contractHTML(h.contract)} <span class="res">${resultText(h.contract, h.declTricks)}</span>` : 'Passed out'}</h3>
     <div>${h.contract ? `${h.declTricks} trick${h.declTricks === 1 ? '' : 's'} for declarer<br>` : ''}${label} <b class="sc">${sideScore > 0 ? '+' : ''}${sideScore}</b>${h.vs ? `<br>${vsText(h)}` : ''}</div>
@@ -627,9 +629,10 @@ function render() {
   updateTitle();
   if (window.Notify) Notify.onRender(T); /* feature: notify */
   if (typeof AutoPlay !== 'undefined') AutoPlay.onRender(T); /* feature: autoplay */
+  if (typeof PlayFrom !== 'undefined') { PlayFrom.render(T); if (PlayFrom.onRender(T)) return; } /* feature: playfrom */
   scheduleRobot();
   autoNext(T); savePractice();
-  if (typeof Stats !== 'undefined') Stats.note(T); /* feature: stats */
+  if (typeof Stats !== 'undefined' && !T.whatIf) Stats.note(T); /* feature: stats; playfrom: what-if boards aren't kept */
   if (typeof Skip !== 'undefined') Skip.render(T); /* feature: skip */
   if (typeof LeadTrainer !== 'undefined') LeadTrainer.render(T); /* feature: leadtrainer */
 }
@@ -709,13 +712,13 @@ function playTableHTML(h) {
   let review = '';
   if (rv && !rv.done) review = `<p class="note">Checking each card double dummy… ${rv.n} of ${rv.res.length}</p>`;
   else if (rv) {
-    const bad = flat.map((pc, i) => ({ pc, r: rv.res[i] })).filter(x => x.r && x.r.loss > 0);
+    const bad = flat.map((pc, i) => ({ pc, r: rv.res[i], i })).filter(x => x.r && x.r.loss > 0);
     if (!bad.length) review = '<p class="note">Double dummy, no card played cost a trick.</p>';
     else {
       const decl = h.contract.declarer, dummy = partnerOf(decl), side = { d: 0, o: 0 };
       bad.forEach(x => { side[sameSide(x.pc.seat, decl) ? 'd' : 'o'] += x.r.loss; });
       const tr = n => n + ' trick' + (n === 1 ? '' : 's');
-      review = `<p class="note" style="margin-bottom:2px">Double dummy, ${[side.d ? 'declarer gave away ' + tr(side.d) : '', side.o ? 'the defence gave away ' + tr(side.o) : ''].filter(Boolean).join(' and ')}:</p><ul class="costs">${bad.map(x => `<li>Trick ${x.pc.trick + 1}, ${SEAT_NAME[x.pc.seat]}${x.pc.seat === dummy ? ' (dummy)' : ''} played ${cardText(x.pc.card)} <span class="cost">−${x.r.loss}</span>${x.r.best.length ? `. Better: ${betterText(x.r)}` : ''}</li>`).join('')}</ul>`;
+      review = `<p class="note" style="margin-bottom:2px">Double dummy, ${[side.d ? 'declarer gave away ' + tr(side.d) : '', side.o ? 'the defence gave away ' + tr(side.o) : ''].filter(Boolean).join(' and ')}:</p><ul class="costs">${bad.map(x => `<li>Trick ${x.pc.trick + 1}, ${SEAT_NAME[x.pc.seat]}${x.pc.seat === dummy ? ' (dummy)' : ''} played ${cardText(x.pc.card)} <span class="cost">−${x.r.loss}</span>${x.r.best.length ? `. Better: ${betterText(x.r)}` : ''}${typeof PlayFrom !== 'undefined' ? PlayFrom.tryButton(h, x.i) : '' /* feature: playfrom */}</li>`).join('')}</ul>`;
     }
   }
   return table + review + '<p class="note">The underlined card won each trick.</p>';
@@ -991,7 +994,7 @@ function startReplay(h, scroll) {
     const centre = shown.length ? `<div class="tr cmp">${shown.map(x => `<div class="at-${x.seat}" title="${SEAT_NAME[x.seat]}">${cardHTML(x.card, x.seat === winner ? 'win' : '', 'tabindex="-1"')}</div>`).join('')}</div>` : '<div class="tr"><span class="lbl">Opening lead next</span></div>';
     box.innerHTML = `<div class="replay"><div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}${centre}${hand('E')}<div></div>${hand('S')}<div></div></div>
       <p class="note rpnote" style="text-align:center" aria-live="polite">${note()}</p>
-      <div class="row ctl"><button class="btn small" data-rp="start" aria-label="Back to the start">Start</button><button class="btn small" data-rp="trickback" aria-label="Previous trick">‹ Trick</button><button class="btn small" data-rp="back" aria-label="Previous card">Back</button><button class="btn small primary" data-rp="fwd" aria-label="Next card">Next</button><button class="btn small" data-rp="trickfwd" aria-label="Next trick">Trick ›</button><button class="btn small" data-rp="end">End</button></div></div>`;
+      <div class="row ctl"><button class="btn small" data-rp="start" aria-label="Back to the start">Start</button><button class="btn small" data-rp="trickback" aria-label="Previous trick">‹ Trick</button><button class="btn small" data-rp="back" aria-label="Previous card">Back</button><button class="btn small primary" data-rp="fwd" aria-label="Next card">Next</button><button class="btn small" data-rp="trickfwd" aria-label="Next trick">Trick ›</button><button class="btn small" data-rp="end">End</button></div>${typeof PlayFrom !== 'undefined' ? `<div class="row ctl" style="margin-top:6px">${PlayFrom.replayButton(h, step)}</div>` : '' /* feature: playfrom */}</div>`;
     box.querySelectorAll('[data-rp]').forEach(b => b.addEventListener('click', () => {
       const a = b.dataset.rp;
       if (a === 'start') step = 0; else if (a === 'end') step = flat.length;
@@ -1001,7 +1004,7 @@ function startReplay(h, scroll) {
       draw(); const nb = box.querySelector(`[data-rp="${a}"]`); if (nb) nb.focus();
     }));
   };
-  step = 0; draw();
+  step = typeof PlayFrom !== 'undefined' ? PlayFrom.startStep(h) : 0; /* feature: playfrom */ draw();
   if (scroll) box.scrollIntoView({ block: 'nearest' });
 }
 // where the game stands: a queued move is only sent if nobody has bid or played since
@@ -1043,7 +1046,7 @@ $('hintBtn').addEventListener('click', showHint);
 // ---------- practice: kept on this device, so leaving or reloading the page doesn't lose it ----------
 let practiceSaved = -1, practiceSaveTimer = null;
 function savePractice() {
-  if (!T || !T.local || T.version === practiceSaved) return;
+  if (!T || !T.local || T.whatIf || T.version === practiceSaved) return; /* feature: playfrom: whatIf */
   clearTimeout(practiceSaveTimer);
   practiceSaveTimer = setTimeout(() => {
     if (!T || !T.local) return;
@@ -1051,7 +1054,7 @@ function savePractice() {
     Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() });
   }, 400);
 }
-function flushPractice() { if (T && T.local) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
+function flushPractice() { if (T && T.local && !T.whatIf /* feature: playfrom */) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
 function savedPractice() {
   const t = Local.get('bt:practice');
   return t && t.local && t.seats && t.hands && Array.isArray(t.history) && Array.isArray(t.chat) && t.play ? t : null;
@@ -1091,6 +1094,7 @@ function showOptions() {
     ${typeof ChatSym !== 'undefined' ? ChatSym.optionsHTML() : '' /* feature: chatsym */}
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
+    ${typeof PlayFrom !== 'undefined' ? PlayFrom.optionsHTML() : '' /* feature: playfrom */}
     ${window.Notify ? Notify.optionsHTML(opt) : '' /* feature: notify */}
     ${suitOrderOptionHTML() /* feature: suitorder */}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
@@ -1108,6 +1112,7 @@ function showOptions() {
   $('optSuitOrder').addEventListener('change', e => { Prefs.suitOrder = e.target.value; savePrefs(); if (T) render(); }); /* feature: suitorder */
   if (typeof BenBridge !== 'undefined') BenBridge.wireOptions(m);
   if (typeof dealsOptionsWire === 'function') dealsOptionsWire(m); /* feature: deals */
+  if (typeof PlayFrom !== 'undefined') PlayFrom.optionsWire(m); /* feature: playfrom */
 }
 document.addEventListener('click', e => { if (e.target.closest('[data-options]')) showOptions(); });
 
