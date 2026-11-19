@@ -21,7 +21,8 @@ Stats.open = function () {
     rq.onerror = () => res();
     rq.onsuccess = () => {
       Stats.db = rq.result;
-      const all = Stats.db.transaction('boards').objectStore('boards').getAll();
+      let all;
+      try { all = Stats.db.transaction('boards').objectStore('boards').getAll(); } catch (e) { console.error(e); res(); return; }
       all.onsuccess = () => { Stats.list = all.result.sort((a, b) => a.date - b.date); Stats.list.forEach(r => Stats.keys.add(r.id)); res(); };
       all.onerror = () => res();
     };
@@ -56,6 +57,7 @@ Stats.note = function (t) {
   if (h.other) r.robotImps = toImps(r.score - statsMine(r, h.other.scoreNS));
   Stats.fillPar(r);
   Stats.open().then(() => {
+    if (Stats.list.some(x => x.id === id)) return; // already loaded from the database
     Stats.list.push(r); Stats.put(r);
     while (Stats.list.length > Stats.MAX) { const old = Stats.list.shift(); Stats.keys.delete(old.id); Stats.store(s => s.delete(old.id)); }
   });

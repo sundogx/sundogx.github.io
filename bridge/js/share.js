@@ -102,7 +102,7 @@ function parsePBN(text, pick = 0) { // pick: which of the boards that have a dea
     if (m) { cur = m[1].toLowerCase(); tags[cur] = m[2]; sect[cur] = ''; continue; }
     if (cur) sect[cur] += ' ' + line;
   }
-  const dm = /^([NESW]):(.*)$/i.exec(tags.deal.trim());
+  const dm = /^([NESW]):(.*)$/i.exec((tags.deal || '').trim());
   if (!dm) throw new Error('The [Deal] tag is not in the N:… form');
   const hands = {};
   let s = dm[1].toUpperCase();
