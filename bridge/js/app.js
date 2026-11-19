@@ -649,6 +649,7 @@ function render() {
   updateTitle();
   scheduleRobot();
   autoNext(T); savePractice();
+  if (typeof Stats !== 'undefined') Stats.note(T); /* feature: stats */
 }
 
 // ---------- modals ----------
@@ -1096,6 +1097,7 @@ function autoNext(t) {
 function showOptions() {
   const opt = (k, label, note) => `<label class="row" style="gap:8px;margin-bottom:8px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" data-pref="${k}" ${Prefs[k] ? 'checked' : ''} style="margin-top:4px"> <span>${label}${note ? `<br><span class="note">${note}</span>` : ''}</span></label>`;
   const m = modal(`<h3>Options</h3>
+    <div class="row" style="margin-bottom:10px"><button class="btn small" data-history="1">History and statistics</button></div>${'' /* feature: stats */}
     ${opt('contrast', 'High contrast', 'Black outlines and stronger colours.')}
     ${opt('deck4', 'Four-colour deck', 'Clubs green and diamonds orange, so every suit has its own colour.')}
     ${opt('confirm', 'Confirm before playing a card', 'The first tap raises a card, the second tap plays it.')}

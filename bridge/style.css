@@ -499,3 +499,9 @@ ul.costs li { margin: 1px 0; }
 .benbox { margin: -4px 0 8px 26px; }
 .benbox:empty { display: none; }
 .benbox .note { margin: 2px 0 6px; }
+/* feature: stats — History and statistics window */
+.reslist.stats td:last-child { text-align: right; }
+.trend { margin: 6px 0 12px; }
+.trend svg { display: block; margin-top: 2px; }
+.trend polyline { stroke: #1e5a44; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.trend .zero { stroke: #bbb; stroke-width: 1; vector-effect: non-scaling-stroke; }
