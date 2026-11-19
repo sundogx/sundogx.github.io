@@ -110,8 +110,8 @@ const EXP = k => typeof globalThis !== 'undefined' && !!globalThis.BOT_EXP && gl
 const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid', 'aceNoK', 'masters2', 'trumpPassive', 'declRuffs', 'cashUrgent', 'intoTenace', 'noHonour', 'tenace', 'unseen'];
 const BOT_DISCARD_NAMES = ['hcp', 'len', 'masters', 'mateLen', 'mateMasters', 'dummyLen', 'guardDummy', 'unguards', 'voidToRuff', 'singleton', 'sigUp', 'sigDown', 'ledSuit', 'higherUnseen', 'unseen', 'longCards', 'trump'];
 const BOT_SWITCH_W = { NT: [1.2, 0.1, 1.5, 1, 0, 0.4, 2.5, 0, 0, 0.2, 0.5, 2, 0.4, -0.7, 0.9, 0, 0, -1.9, 0.4, 2, -0.7, 0.4, 0, 2.5, -1.3, 2.9, 0, 0, 0.3, 0.1, 0.5, -0.5, 0.8], suit: [0.4, 0.1, 0.1, 0, -2.6, 0.1, 0.6, -2.4, 0.2, -0.2, 0, 0.3, 0.1, -0.2, 0.7, 0, 0.6, -0.3, 0, 0.6, -0.4, 0.1, 1.4, 2.3, -0.5, -0.2, 2.2, -3.2, 0.4, -1, -0.1, -0.1, -0.2] };
-const BOT_DLEAD_NAMES = ['rule', 'trump', 'trumpOppLeft', 'trumpNone', 'partnerRuffs', 'shortRuffs', 'oppRuffs', 'sure', 'gain', 'lost', 'myMasters', 'cashSure', 'oppLen', 'shortFirst', 'towardTenace', 'ruffRisk', 'crossruff', 'len', 'noHonour', 'toPartner', 'trumpShort', 'givesTrick', 'partnerMasters', 'trumpLong'];
-const BOT_DLEAD_W = { NT: [0.7, 0, 0, 0, 0, 0, 0, 0.8, 0.9, -0.8, 0.4, 1, -0.5, 0, 0.9, 0, 0, 0.1, 1, 0.6, 0, -2.7, -0.1, 0], suit: [0.9, -0.8, 0.7, -1.4, 2.3, 0.1, -1.8, 0.8, 0.8, 0.4, 0.1, 0.3, 0, 0.1, 0.3, -1.3, 0.2, -0.3, 0.5, 0.6, -0.6, -1.1, 0.1, 0.3] };
+const BOT_DLEAD_NAMES = ['rule', 'trump', 'trumpOppLeft', 'trumpNone', 'partnerRuffs', 'shortRuffs', 'oppRuffs', 'sure', 'gain', 'lost', 'myMasters', 'cashSure', 'oppLen', 'shortFirst', 'towardTenace', 'ruffRisk', 'crossruff', 'len', 'noHonour', 'toPartner', 'trumpShort', 'givesTrick', 'partnerMasters', 'trumpLong', 'trumpKillsRuff', 'ruffLoser', 'sideDevFirst', 'trumpOkLosers', 'loserIn', 'trumpWithDev'];
+const BOT_DLEAD_W = { NT: [0.7, 0, 0, 0, 0, 0, 0, 0.8, 0.9, -0.8, 0.4, 1, -0.5, 0, 0.9, 0, 0, 0.1, 1, 0.6, 0, -2.7, -0.1, 0, 0, 0, 0, 0, 0, 0], suit: [0.9, -0.8, 0.7, -1.4, 2.3, 0.1, -1.8, 0.8, 0.8, 0.4, 0.1, 0.3, 0, 0.1, 0.3, -1.3, 0.2, -0.3, 0.5, 0.6, -0.6, -1.1, 0.1, 0.3, 0, 0, 0, 0, 0, 0] };
 const BOT_FOLLOW_NAMES = ['rule', 'low', 'wins', 'sureWin', 'overtake', 'above', 'honour', 'rank', 'coverHonour', 'setNow', 'nextBeats', 'endgame', 'unblock', 'finesse1', 'secondWin', 'honourDoubleton', 'high', 'ourLead', 'finFew', 'finMany', 'fin2Few'];
 const BOT_FOLLOW_W = { decl1n: [-0.8, -0.8, 1.8, 2.8, 0, 0.9, -1.1, -0.5, 2.2, 2.8, 0, 0.4, 1.4, 0.8, -1, 0.5, -2.4, 0, -0.6, 0.8, 0.3], decl1s: [0, -0.7, 1.1, 1.9, 0, 0.5, -0.6, -0.4, 1.5, 1.9, 0, 0.7, 0.7, 0.6, -0.8, 0.5, -1.1, 0, 0.1, 0.5, -0.1], def1n: [0.4, -0.3, 3, 5.6, 0, 0.2, 0.4, -2.1, 0.6, 0.3, 1, 0.2, 0, -0.2, -2.6, 0.2, -0.6, 0, -1.8, 0.6, -0.5], def1s: [0.1, -0.3, 1.7, 3.2, 0, 0.3, 0.1, -1, 1.7, 0.3, 0.9, 0.4, 0, -0.3, -1.4, 0.5, -0.5, 0, 0, 0.2, -0.7], def2n: [2.4, -1.5, 2.4, 10.4, -6.1, 0.3, 2.1, -3.1, 0, 0.9, -0.5, 1.9, 0, 3.6, 0, 1, -0.1, 0, -1.9, 2.6, 2], def2s: [0.9, -0.3, 2.8, 7.7, -5.2, -0.1, 1.8, -1.9, 0, 1, 0, 0.4, 0, 1.1, 0, 0.2, -0.2, 0, -0.8, 1.8, -0.2] };
 const BOT_DISCARD_W = { declNT: [-0.2, 0.6, -0.3, 0.1, -0.3, 0.1, 0.3, -1, 0, -1.1, 0, 0, 0, 0.1, 0.1, 0.1, 0], declSuit: [-0.1, 0.1, 0, 0.1, -0.3, 0.1, -0.2, -0.6, 1, -0.3, 0, 0, 0, 0.1, 0.1, 0.3, 0], defNT: [0.1, 0.3, -0.4, 0, 0, 0, 0.5, -1.2, 0, -0.3, 0.2, 0, -0.1, 0.4, 0.1, 0.8, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
@@ -359,9 +359,29 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     if (mm.length || solid(mine[0])) return mine[0];
     return mine[mine.length - 1];
   };
-  let dlInfo = null;
+  let dlInfo = null, lc = null;
+  // loser count for a suit contract (round 6): the long trump hand's losers per side suit (the first three rounds
+  // not covered by our winners from the top), the ruffs the short trump hand can take of them, and whether drawing
+  // the opponents' trumps would leave the short hand too few trumps for those ruffs
+  const loserCount = () => {
+    const { info, sure, need } = dlInfo, T = info[trump];
+    const aLong = T.A.length >= T.B.length, sT = aLong ? T.B.length : T.A.length, oppT = T.O.length;
+    const los = {}, ruffs = {}; let losTot = 0, ruffTot = 0;
+    for (const s of SUITS) {
+      if (s === trump) { los[s] = 0; ruffs[s] = 0; continue; }
+      const I = info[s], lL = aLong ? I.A.length : I.B.length, lS = aLong ? I.B.length : I.A.length;
+      const l = Math.max(0, Math.min(lL, 3) - Math.min(I.sure, 3));
+      los[s] = l; losTot += l;
+      ruffs[s] = sT && lS < lL ? Math.min(l, lL - lS) : 0; ruffTot += ruffs[s];
+    }
+    ruffTot = Math.min(ruffTot, sT);
+    const kill = oppT > 0 && ruffTot > 0 && sT - Math.ceil(oppT / 2) < ruffTot;
+    const dev = SUITS.some(x => x !== trump && info[x].dev > info[x].sure);
+    return { los, ruffs, losTot, ruffTot, kill, allowed: 13 - (c.level + 6), dev: dev && sure < need };
+  };
   const dlF = (s, rc) => {
     if (!dlInfo) dlInfo = suitCount();
+    if (trump && !lc) lc = loserCount();
     const { info, sure, need } = dlInfo, I = info[s], side = !!trump && s !== trump;
     const oppT = trump ? info[trump].O.length : 0, myT = trump ? info[trump].A.length : 0, pT = trump ? info[trump].B.length : 0;
     const lho = nextSeat(seat), rho = partnerOf(lho);
@@ -379,6 +399,12 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       othM && !mineM ? 1 : 0, s === trump && sure < need ? 1 : 0,
       !isMaster(card) && !solid(card) && !(oth.length && rankOf(oth[0]) > rankOf(card)) ? 1 : 0,
       othM, s === trump && oppT && myT + pT >= 2 * oppT ? 1 : 0,
+      ...(trump ? [
+        s === trump && lc.kill ? 1 : 0, side && lc.ruffs[s] ? Math.min(lc.ruffs[s], 2) : 0,
+        side && oppT && lc.dev && I.dev > I.sure ? 1 : 0,
+        s === trump && oppT && lc.losTot - lc.ruffTot <= lc.allowed ? 1 : 0,
+        side ? lc.los[s] : 0, s === trump && oppT && lc.dev ? 1 : 0,
+      ] : [0, 0, 0, 0, 0, 0]),
     ];
   };
 
