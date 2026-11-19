@@ -87,11 +87,11 @@ const handle = async (req, env) => {
       let body;
       try { body = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
       if (!body || typeof body !== 'object') return json({ error: 'bad request' }, 400);
-      const ip = req.headers.get('cf-connecting-ip') || 'local';
-      if (!(await lobbyStub(env).allowCreate(ip))) return json({ error: 'too many tables, try again later' }, 429);
       const secret = String(body.secret || '');
       const name = cleanName(body.name);
-      if (secret.length < 16 || !name) return json({ error: 'name required' }, 400);
+      if (secret.length < 16 || !name) return json({ error: 'name required' }, 400); // checked first: a bad request doesn't use up the hourly allowance
+      const ip = req.headers.get('cf-connecting-ip') || 'local';
+      if (!(await lobbyStub(env).allowCreate(ip))) return json({ error: 'too many tables, try again later' }, 429);
       const uid = await idFromSecret(secret);
       const tableName = String(body.tableName || '').trim().slice(0, 30);
       const priv = !!body.priv;
