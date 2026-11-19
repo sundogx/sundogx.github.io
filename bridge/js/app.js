@@ -1410,10 +1410,12 @@ async function loadLobby() {
 // a window (hand record, options...) or call explanation left open must not stay over the next screen
 function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; setJoinState(null); }
 function showTableView() {
+  if (typeof BP !== 'undefined' && BP.on) leaveBidPractice(); /* feature: bidpractice */
   $('home').classList.add('hidden'); $('tableView').classList.remove('hidden');
   clearInterval(lobbyTimer);
 }
 function openTable(t) { // practice
+  if (T && T.local && T !== t) flushPractice(); /* feature: share */ // e.g. "Play this deal" from a practice or daily table
   leaveModals(); Net.close();
   T = t; tKey = null; lastRenderedVersion = -1; otherRoom = null; watchers = 0; wasMyTurn = false; clockSkew = 0;
   showTableView(); render();

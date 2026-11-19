@@ -74,15 +74,17 @@ function rotateTable(t) {
   t.hands = { N: t.hands.S, E: t.hands.W, S: t.hands.N, W: t.hands.E };
   t.dealer = ROT[t.dealer];
   t.auction = t.auction.map(a => ({ ...a, by: ROT[a.by] }));
-  t.contract = { ...t.contract, declarer: ROT[t.contract.declarer] };
+  if (t.contract) t.contract = { ...t.contract, declarer: ROT[t.contract.declarer] };
   for (const tr of t.play.tricks) { tr.leader = ROT[tr.leader]; for (const pc of tr.cards) pc.seat = ROT[pc.seat]; }
   t.rotated = !t.rotated;
 }
 // Called on the new state after each practice action: turns the table round once the auction ends with North declaring.
 function dealsAfterAct(t) {
+  if (t.rotated && t.rotated !== t.board) t.rotated = false; // a new board starts the right way round
+  if (t.rotated && t.phase === 'auction') { rotateTable(t); return; } // undo back into the auction: turn back first
   if (!Prefs.rotateDecl || !t.local || t.phase !== 'play' || !t.contract || t.contract.declarer !== 'N' || mySeat(t) !== 'S') return;
   if (t.play.tricks.length) return; // only as the play starts
-  rotateTable(t);
+  rotateTable(t); t.rotated = t.board;
   if (typeof toast === 'function') toast('Turned round: you declare from South');
 }
 
