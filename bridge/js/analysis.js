@@ -36,9 +36,16 @@ function ddWasm() {
   })().catch(e => { ddWasmP = null; return null; });
   return ddWasmP;
 }
+/* feature: perf */ // Send the page's compiled solver first and hold the worker's other messages until it is ready
+// (or has failed), so a warm-up or job that arrives early doesn't make the worker fetch and compile its own copy.
+function ddGiveWasm(w) {
+  const post = w.postMessage.bind(w);
+  const ready = ddWasm().then(mod => { if (mod) try { post({ wasm: mod }); } catch (e) { } }, () => { });
+  w.postMessage = (m, t) => { ready.then(() => { try { post(m, t); } catch (e) { if (w.onerror) w.onerror(e); } }); };
+}
 function ddNewWorker() {
   const w = new Worker('js/dds-worker.js');
-  ddWasm().then(mod => { if (mod) try { w.postMessage({ wasm: mod }); } catch (e) { } });
+  ddGiveWasm(w);
   return w;
 }
 const ddCores = () => (typeof navigator !== 'undefined' && navigator.hardwareConcurrency) || 2;
@@ -150,7 +157,7 @@ self.onmessage = async e => {
 };`;
   const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
   const w = PlayDD.w = new Worker(url);
-  ddWasm().then(mod => { if (mod) try { w.postMessage({ wasm: mod }); } catch (e) { } });
+  ddGiveWasm(w);
   w.onmessage = e => {
     const m = e.data, en = PlayDD.cache.get(m.k), j = PlayDD.cur; PlayDD.cur = null;
     if (m.error) { reviewFail(); return; }

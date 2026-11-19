@@ -1227,6 +1227,7 @@ function refreshSeats() {
 // ---------- clocks ----------
 const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
 function tick() {
+  if (document.hidden) return; /* feature: perf */ // nothing to see; the clocks catch up within a second of coming back
   const now = serverNow();
   // a player's thinking time shows only once they have been thinking a while, so the plates don't tick all the time
   document.querySelectorAll('.clk[data-since]').forEach(el => { const ms = now - +el.dataset.since; el.textContent = ms >= 20000 ? mmss(ms) : ''; });

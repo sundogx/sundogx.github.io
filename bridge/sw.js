@@ -7,7 +7,12 @@ const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.
   'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/bidpractice.js', 'js/daily.js', 'js/stats.js', 'js/deals.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
 self.addEventListener('install', e => {
   // 'reload' skips the browser's HTTP cache, so a new version really fetches the new files
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  // On a first visit (no older copy saved) the page has just downloaded these files, so the browser's own cache may
+  // supply them instead of downloading them all twice. /* feature: perf */
+  e.waitUntil(caches.keys().then(keys => {
+    const mode = keys.some(k => k.startsWith('bridge-')) ? 'reload' : 'default';
+    return caches.open(CACHE).then(c => c.addAll(CORE.map(u => new Request(u, { cache: mode }))));
+  }).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(async keys => {
@@ -18,15 +23,25 @@ self.addEventListener('activate', e => {
     if (old.length) for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'updated', version: CACHE });
   }));
 });
+const REFRESH_MS = 60000, refreshed = new Map(); // url -> { at, p: the refresh in flight }
+function refresh(req, key, id) {
+  const en = { at: Date.now(), p: null };
+  refreshed.set(id, en);
+  return en.p = fetch(req, { cache: 'no-cache' }).then(async res => {
+    // keep the full responses only
+    if (res.status === 200) await caches.open(CACHE).then(c => c.put(key, res.clone())).catch(() => { });
+    return res;
+  }).finally(() => { en.p = null; en.at = Date.now(); });
+}
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.includes('/api/') || url.pathname.includes('/ben/models/')) return; // BEN's models: the BEN worker caches them itself
   const key = e.request.mode === 'navigate' ? './' : e.request;
-  const fresh = fetch(e.request, { cache: 'no-cache' }).then(async res => {
-    // keep the full responses only
-    if (res.status === 200) await caches.open(CACHE).then(c => c.put(key, res.clone())).catch(() => { });
-    return res;
-  });
+  // feature: perf. Each file is refreshed at most once a minute: the solver workers load the same scripts and the
+  // solver many times over when a board starts, and each copy needn't be fetched again.
+  const id = e.request.mode === 'navigate' ? './' : url.href, last = refreshed.get(id);
+  const fresh = last && (last.p || Date.now() - last.at < REFRESH_MS) ? null : refresh(e.request, key, id);
+  if (!fresh) return e.respondWith(caches.match(key).then(hit => hit || fetch(e.request)).catch(() => Response.error()));
   // keep the worker alive until the background refresh is saved (registered now, while the event is still active)
   e.waitUntil(fresh.then(() => { }, () => { }));
   e.respondWith(caches.match(key).then(hit => hit || fresh.catch(() => Response.error())));
