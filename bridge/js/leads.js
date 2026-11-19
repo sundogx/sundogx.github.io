@@ -213,6 +213,8 @@ function leadPick(view, cands, results, opts = {}) {
 // How the solver's results are averaged ('tricks': defenders' tricks; 'imp': IMPs against the average lead; 'score'),
 // and the weight of the prior. Chosen by cross-validation in tests/leadsim.js (tricks with weight 2 was best, about
 // level with IMPs; with no prior the solver's choice was noticeably noisier on ~24 layouts).
+// Against doubled contracts too: averaging the doubled score (or IMPs), with any prior weight from 1 to 6, measured no
+// better on 1,330 boards (DBL=1 node tests/leadsim.js tunex): ~48 layouts estimate tricks more steadily than the score.
 const LEAD_METRIC = 'tricks', LEAD_PRIOR_W = 2;
 
 if (typeof module !== 'undefined') module.exports = { leadCardOf, leadCards, leadLimits, leadFeatures, leadContext, leadPrior, botLead, leadValues, leadView, leadChoose, leadSample, leadPick, LEAD_FEATURES, LEAD_W };

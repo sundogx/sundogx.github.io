@@ -89,6 +89,21 @@ if (isMainThread && process.argv[2] === 'gen') {
     console.log(half ? 'held out (odd boards):' : 'tuning (even boards):');
     evaluate(recs.filter(r => r.g % 2 === half), rules, 'base', false, false);
   }
+} else if (process.argv[2] === 'tunex') {
+  // node tests/leadsim.js tunex <files...>: leads against doubled contracts. Every contract is scored doubled (DBL=2:
+  // redoubled; the solver's tricks don't depend on it), and the solver lead's metric and prior weight are compared
+  // against averaging tricks with weight 2 (k = 48, the page's). Half the boards (odd g) are held out.
+  const X = +process.env.DBL || 1;
+  const recs = load(process.argv.slice(3)).filter(r => r.sNew.length >= 48).map(r => ({ ...r, ct: { ...r.ct, doubled: r.ct.doubled || X } }));
+  const cands = r => L.leadCards(r.hand, r.ct.strain);
+  const rule = (w, metric) => r => L.leadPick(recView(r), cands(r), r.sNew.slice(0, 48), { w, metric }).card;
+  const rules = { base: rule(2, 'tricks'), botLead: r => L.botLead(r.hand, r.auction, r.ct, r.leader) };
+  for (const w of [1, 2, 3, 4, 6]) rules[`score${w}`] = rule(w, 'score');
+  for (const w of [4, 8, 12]) rules[`imp${w}`] = rule(w, 'imp');
+  for (const half of [0, 1]) {
+    console.log(half ? 'held out (odd boards):' : 'tuning (even boards):');
+    evaluate(recs.filter(r => r.g % 2 === half), rules, 'base', false, false);
+  }
 } else if (process.argv[2] === 'fit') {
   const W = fitW(load(process.argv.slice(3).filter(f => !f.startsWith('lambda='))), +(process.argv.find(a => a.startsWith('lambda=')) || 'lambda=30').slice(7));
   for (const k of ['N', 'S']) console.log(k, L.LEAD_FEATURES.map((n, i) => `${n} ${W[k][i].toFixed(2)}`).join(', '));
