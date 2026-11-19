@@ -698,9 +698,10 @@ function showRecord(i, review) { // review: the card-by-card replay takes the di
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
     ${otherLine(h)}${h.vs ? `<p>${vsText(h)}.</p>` : ''}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
-    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length && !review ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div>${review ? '' : '<div id="replayBox"></div>'}`);
+    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button><button class="btn small" id="shareOne">Share link</button>${h.tricks && h.tricks.length && !review ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div>${review ? '' : '<div id="replayBox"></div>'}`);
   openRecord = i;
   $('pbnOne').addEventListener('click', () => copyText(pbnBoard(h, T)));
+  $('shareOne').addEventListener('click', () => copyText(shareURL(h))); /* feature: share */
   $('modalRoot').querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => exportRecord(h, b.dataset.export)));
   if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h, true));
   if (review) startReplay(h);
@@ -1112,6 +1113,7 @@ function showOptions() {
     ${window.Notify ? Notify.optionsHTML(opt) : '' /* feature: notify */}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
     <p style="margin:4px 0 8px"><button class="btn small" data-syscard="1">Robots' system card</button></p>${'' /* feature: card */}
+    <div class="row" style="margin:4px 0 8px"><button class="btn small" data-import="1">Import a deal (PBN or LIN)</button></div><!-- feature: share -->
     <div class="kbdhelp"><h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
     <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble, <b>Enter</b> to confirm</td></tr>
     <tr><td>Playing</td><td><b>←</b> <b>→</b> choose a card, <b>Enter</b> to play it</td></tr>
