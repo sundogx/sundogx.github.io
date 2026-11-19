@@ -30,6 +30,7 @@ export {
   SEATS, SEAT_NAME, A, newTable, startBoard, sysMsg, mySeat, canSee, turnSeat, controllerOf, occupant,
   dummySeat, remainingHand, completedTricks, rid, legalCalls, legalPlays, botCall, botPlay, sureTricks, claimHolds, claimAccept, claimSolver, claimPos, robotClaimCount, ddView, ddWorthIt, playKey, friendsMode, undoReveals,
 };
+export { scoreNS, boardVul }; // feature: daily
 `;
 writeFileSync(join(root, 'src', 'game.js'), prelude + read('engine.js') + '\n' + read('bidding.js') + '\n' + read('leads.js') + '\n' + read('bots.js') + '\n' + read('ddplay.js') + '\n' + read('table.js') + exports);
 console.log('built src/game.js');

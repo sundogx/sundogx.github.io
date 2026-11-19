@@ -447,8 +447,9 @@ function resultBanner(t) {
   // online: a board can't start with an empty seat, so offer a robot for it instead of Next
   const empty = t.local ? [] : SEATS.filter(s => !t.seats[s]);
   const seatsBtn = movesOK(t) ? '<button class="btn small" data-seats="1" title="Move players before the next board">Seats</button>' : '';
-  const go = !next ? '' : empty.length ? `<p class="note" style="margin:4px 0 0">${empty.map(s => SEAT_NAME[s]).join(' and ')} ${empty.length > 1 ? 'are' : 'is'} empty.</p><div class="row">${empty.map(s => `<button class="btn primary" data-robot="${s}">${empty.length > 1 ? 'Robot ' + s : 'Add robot'}</button>`).join('')}${seatsBtn}</div>`
+  let go = !next ? '' : empty.length /* feature: daily: let */ ? `<p class="note" style="margin:4px 0 0">${empty.map(s => SEAT_NAME[s]).join(' and ')} ${empty.length > 1 ? 'are' : 'is'} empty.</p><div class="row">${empty.map(s => `<button class="btn primary" data-robot="${s}">${empty.length > 1 ? 'Robot ' + s : 'Add robot'}</button>`).join('')}${seatsBtn}</div>`
     : `<div class="row"><button class="btn primary" data-next="1">Next board</button>${seatsBtn}</div>`;
+  if (t.daily) go = Daily.resultButtons(t, go); /* feature: daily */
   // one compact panel: contract and result, tricks and score, then the buttons (it must fit the middle of a phone's table)
   return `<div class="banner result"><h3>${h.contract ? `${contractHTML(h.contract)} <span class="res">${resultText(h.contract, h.declTricks)}</span>` : 'Passed out'}</h3>
     <div>${h.contract ? `${h.declTricks} trick${h.declTricks === 1 ? '' : 's'} for declarer<br>` : ''}${label} <b class="sc">${sideScore > 0 ? '+' : ''}${sideScore}</b>${h.vs ? `<br>${vsText(h)}` : ''}</div>
@@ -608,7 +609,7 @@ const cShort = c => contractHTML(c, true);
 const againMark = h => h.replayOf ? `<span class="again" title="Board ${h.replayOf} dealt again">=${h.replayOf}</span>` : '';
 function renderTop() {
   const t = T, mine = mySeat(t);
-  $('tName').textContent = t.name;
+  $('tName').textContent = t.daily ? Daily.title(t) : t.name; /* feature: daily */
   $('tCode').textContent = t.local ? '' : (t.private ? 'Private, code ' : 'Code ') + t.id;
   $('lastTrickBtn').disabled = !(t.play && completedTricks(t.play).length);
   $('lastTrickBtn').classList.toggle('hidden', $('lastTrickBtn').disabled);
@@ -636,6 +637,7 @@ function render() {
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
   if (keep && (!document.activeElement || document.activeElement === document.body)) { const el = document.querySelector(keep); if (el) el.focus({ preventScroll: true }); }
   lastRenderedVersion = T.version;
+  if (T.daily) Daily.onRender(T); /* feature: daily */
   refreshOtherRoom();
   if (T.hands && T.phase === 'done' && SEATS.every(s => T.hands[s].every(c => c[0] !== '?'))) requestDD(T.hands, true, T.contract ? T.contract.strain : null);
   const mt = isMyTurn(T);
@@ -1066,10 +1068,10 @@ function savePractice() {
   practiceSaveTimer = setTimeout(() => {
     if (!T || !T.local) return;
     practiceSaved = T.version;
-    Local.set('bt:practice', { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() });
+    Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() });
   }, 400);
 }
-function flushPractice() { if (T && T.local) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set('bt:practice', { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
+function flushPractice() { if (T && T.local) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
 function savedPractice() {
   const t = Local.get('bt:practice');
   return t && t.local && t.seats && t.hands && Array.isArray(t.history) && Array.isArray(t.chat) && t.play ? t : null;
@@ -1440,7 +1442,7 @@ function goHome() {
   wasMyTurn = false; clockSkew = 0;
   $('tableView').classList.add('hidden'); $('home').classList.remove('hidden');
   history.replaceState(null, '', location.pathname);
-  renderPracticeBtn();
+  renderPracticeBtn(); Daily.renderHome(); /* feature: daily */
   loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
 }
 function leaveTable() {
@@ -1468,7 +1470,7 @@ window.addEventListener('hashchange', async () => {
 });
 (async function init() {
   await loadMe();
-  renderPracticeBtn();
+  renderPracticeBtn(); Daily.renderHome(); /* feature: daily */
   await adoptIdentityFromLink();
   const code = location.hash.slice(1).toUpperCase();
   if (/^[A-Z]{5}$/.test(code) && me.name) openOnline(code);

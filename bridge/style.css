@@ -505,3 +505,10 @@ ul.costs li { margin: 1px 0; }
 .trend svg { display: block; margin-top: 2px; }
 .trend polyline { stroke: #1e5a44; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .trend .zero { stroke: #bbb; stroke-width: 1; vector-effect: non-scaling-stroke; }
+
+/* feature: daily */
+.daily-tabs { gap: 6px; margin: 8px 0; }
+.daily-tabs [aria-pressed="true"] { outline: 1px solid #c9a227; }
+table.daily-lb { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.daily-lb th, table.daily-lb td { text-align: left; padding: 3px 6px; border-bottom: 1px solid rgba(0,0,0,.12); }
+table.daily-lb tr.you td { font-weight: 600; }
