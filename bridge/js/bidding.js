@@ -188,6 +188,50 @@ function fourNTMeaning(ctx) {
   return MM(0, 37, { a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)`, t: 'rkcb', trump: tr, art: true, f: 1 });
 }
 
+// ---- Calls the robots never make, read by their usual natural meaning (a human partner's) ----
+// A responder's jump shift is strong and game forcing (weak in competition), a double jump preemptive; 1M-3NT is
+// 13-15 balanced; a three-level suit over our 1NT is natural (a major forces to game, a minor invites 3NT);
+// opener's jump shift forces to game; after 1M-2M opener's new suit (or 2NT) is a game try.
+function humanMean(ctx, call) {
+  if (BID_OFF('hum') || !ctx.first || bidValue(call) < 0) return null;
+  const lv = +call[0], st = call[1], jump = lv - ctx.cheap(st), op = ctx.first, t = op.call[1];
+  const myBids = ctx.mine.filter(x => bidValue(x.call) >= 0);
+  const ourSuit = ctx.ours.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art));
+  const theyOnce = ctx.theirs.length === 1 && ctx.theirs[0].by === ctx.rho && ctx.rhoCall !== 'P';
+  // their suit, which our side has not bid or shown: a cue bid, strong and forcing (says nothing about the suit)
+  if (st !== 'N' && ctx.theirs.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art)) && !ourSuit && !ctx.Me.mn[st] && !ctx.P.mn[st] && lv < gameLevel(st) && !BID_OFF('humcue'))
+    return MM(ctx.mine.length ? Math.max(ctx.Me.lo, 13) : 13, 37, { art: true, f: 1, a: 'Cue bid: a strong hand, forcing', t: 'hcue' });
+  if (!ctx.weOpened) { // partner's overcall, my first call: a jump raise is preemptive
+    const pl = ctx.pLast;
+    if (pl && ctx.pards.length === 1 && bidValue(pl.call) >= 0 && pl.m && pl.m.tag === 'ovc' && !ctx.mine.length && st === pl.call[1] && jump === 1 && lv < gameLevel(st)) return MM(0, 9, { mn: { [st]: 4 }, agree: st, t: 'pre' });
+    return null;
+  }
+  if (op.by === ctx.p && /^1[CDHS]$/.test(op.call) && !ctx.mine.length && ctx.pards.length === 1 && !ctx.iPH && lv <= 3) { // responder's first call
+    if (st === t && jump === 1 && theyOnce) return MM(3, 9, { mn: { [st]: MIN(st) ? 5 : 4 }, agree: st, t: 'pre' });
+    if (st !== 'N' && st !== t && !ctx.oppSuits.includes(st)) {
+      if (jump === 1 && ctx.quiet) return MM(17, 37, { mn: { [st]: 5 }, f: 2, a: 'Jump shift: 17+ points, game forcing', t: 'jsr' });
+      if (jump === 1 && theyOnce) return MM(3, 9, { mn: { [st]: 6 }, t: 'pre' });
+      if (jump === 2 && ctx.quiet) return MM(3, 9, { mn: { [st]: 6 }, t: 'pre' });
+    }
+    if (call === '3N' && MAJ(t) && ctx.quiet) return MM(13, 15, { bal: true, nt: true });
+    if (call === '2N' && MIN(t) && ctx.rhoCall === 'X' && ctx.theirs.length === 1) return MM(10, 37, { mn: { [t]: 4 }, agree: t, art: true, f: 1, a: `Jordan 2NT: 4+ ${SNAME[t]}, limit raise or better`, t: 'jordan' });
+  }
+  if (!ctx.quiet) return null;
+  const nb = ntBase(ctx);
+  if (nb && nb.k === 0 && !nb.interfered && nb.x.by === ctx.p && !ctx.mine.length && lv === 3 && st !== 'N' && (nb.x.call === '1N' || MAJ(st))) { // natural over our 1NT/2NT
+    const lo = nb.x.m.lo;
+    return MAJ(st) ? MM(Math.max(0, 25 - lo), 37, { mn: { [st]: 5 }, f: 2 }) : MM(Math.max(0, 23 - lo), Math.max(0, 24 - lo), { mn: { [st]: 6 }, inv: true });
+  }
+  if (op.by === ctx.seat && /^1[CDHS]$/.test(op.call) && myBids.length === 1 && ctx.pards.length === 1 && bidValue(ctx.pards[0].call) >= 0 && !ctx.gf) { // opener's second call
+    const pm = ctx.pards[0].m || ANY();
+    if (MAJ(t) && ctx.pards[0].call === '2' + t && pm.tag === 'raise' && bidValue(call) < bidValue('3' + t) && st !== t)
+      return st === 'N' ? MM(16, 18, { f: 1, inv: true, a: 'Invites game', t: 'hsgt' })
+        : MM(16, 18, { mn: { [st]: 3 }, f: 1, inv: true, a: `Invites game: asks for help in ${SNAME[st]} (help-suit game try)`, t: 'hsgt' });
+    if (st !== 'N' && !ourSuit && jump === 1 && lv <= 3 && !pm.art) return MM(18, 37, { mn: { [st]: 4 }, f: 2, a: 'Jump shift: 18+ points, game forcing', t: 'jso' });
+  }
+  return null;
+}
+
 // ---- Natural meaning of a call no table covers ----
 function natMean(ctx, call) {
   if (call === 'P') return ANY();
@@ -197,6 +241,7 @@ function natMean(ctx, call) {
   const lv = +call[0], st = call[1], Me = ctx.Me, P = ctx.P;
   const pBid = ctx.pards.some(x => bidValue(x.call) >= 0 && !(x.m && x.m.art));
   const myBids = ctx.mine.filter(x => bidValue(x.call) >= 0);
+  const hm = humanMean(ctx, call); if (hm) return hm;
   if (st === 'N') {
     const lo = myBids.length || pBid ? Me.lo : lv === 1 ? 8 : lv === 2 ? 12 : 13;
     return MM(lo, 37, { nt: true, stop: ctx.oppSuits });
@@ -228,8 +273,12 @@ function openingTable(ctx) {
   if (pos <= 3) {
     const otherOK = (h, s) => !MAJ(s) || h.L[otherM(s)] <= 3;
     const vk = vulK(ctx, 'vpre'), pq = (h, s) => hon(h, s, 'AKQ') >= 1; // favourable vulnerability: a point lighter (sounder when vulnerable measured worse)
-    for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 6 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3 && pq(h, s) && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: 6 }, a: `Weak two: 6 ${SNAME[s]}, 5-10 points`, t: 'weak2' })));
+    const w27 = !BID_OFF('w27'); // a seven-card suit too weak for the three level (fewer than 3 honour points in it) opens a weak two
+    for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 6 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3 && pq(h, s) && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: w27 ? 7 : 6 }, a: `Weak two: 6${w27 ? ' (rarely 7)' : ''} ${SNAME[s]}, 5-10 points`, t: 'weak2' })));
+    if (w27) for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 7 && h.H >= 5 && h.H <= 9 && h.sp[s] < 3 && hon(h, s, 'AKQJ') >= 1 && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: 7 }, t: 'weak2' })));
     for (const s of ['S', 'H']) T.push(T_('4' + s, h => h.L[s] >= 8 && h.H <= 11, MM(4, 11, { mn: { [s]: 8 }, t: 'pre' })));
+    // not vulnerable, 3♣ also on a good six-card suit (there is no weak 2♣), without a four-card major
+    if (!BID_OFF('p6c')) T.push(T_('3C', h => h.L.C === 6 && h.sh[1] <= 4 && h.H >= 5 && h.H <= 9 && h.sp.C >= 4 && vk <= 0 && h.L.H < 4 && h.L.S < 4, MM(5, 10, { mn: { C: 6 }, t: 'pre' })));
     for (const s of ['S', 'H', 'D', 'C']) T.push(T_('3' + s, h => h.L[s] >= 7 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3, MM(5, 10, { mn: { [s]: 7 }, t: 'pre' })));
   }
   T.push(T_('P', () => true, MM(0, pos === 4 ? 14 : 11)));
@@ -361,6 +410,11 @@ function reb1M2M(ctx) { // 1M - 2M
 }
 function acceptInv(ctx, game, mid) { // partner invited: accept with the top half of what I showed
   return [T_(game, h => h.H + h.lp >= mid || supPts(h, game[1]) >= mid + 1, ANY()), T_('P', () => true, ANY())];
+}
+function gameTryAnswer(ctx) { // 1M - 2M - opener's game try (a new suit or 2NT): game with a maximum or help in that suit
+  const t = ctx.seq[0][1], s = ctx.pLast.call[1];
+  const losers = h => s === 'N' ? 0 : Math.min(3, h.L[s]) - ['A', 'K', 'Q'].slice(0, Math.min(3, h.L[s])).filter(r => h.has[s].includes(r)).length;
+  return [T_('4' + t, h => supPts(h, t) >= 8 || (supPts(h, t) >= 6 && (s === 'N' ? h.H >= 7 : losers(h) <= 1)), MM(6, 10, { agree: t })), T_('3' + t, () => true, MM(4, 7, { agree: t, t: 'signoff' }))];
 }
 function reb1MJ(ctx) { // 1M - 2NT Jacoby
   const t = ctx.seq[0][1], T = [];
@@ -627,6 +681,7 @@ function ntSystem(ctx) {
       T.push(T_('2C', h => h.L.H >= 4 && h.L.S >= 4 && h.L.C <= 1 && h.H < inv, MM(0, 37, { art: true, a: 'Stayman: asks for a 4-card major', t: 'stayman' })));
       T.push(T_('2S', h => (h.L.C >= 6 || h.L.D >= 6) && h.H <= 6, MM(0, 6, { art: true, a: 'Transfer to 3♣: weak with a long minor (passes 3♣ or bids 3♦)', t: 'trC', f: 1 })));
     }
+    if (!BID_OFF('gerber')) T.push(T_('4C', () => false, MM(0, 37, { art: true, f: 1, a: 'Gerber: asks for aces', t: 'gerber' }))); // the robots don't ask, but a human may
     T.push(T_('P', h => h.H < inv, MM(0, inv - 1)));
     if (one) T.push(T_('2N', h => h.H < gf, MM(inv, gf - 1, { inv: true, nt: true })));
     T.push(T_('6N', h => h.H >= six + 1, MM(six + 1, 37)));
@@ -647,6 +702,16 @@ function ntSystem(ctx) {
     if (r === '4H') return [T_('4S', () => true, MM(lo, hi, { art: true, a: 'Completes the transfer' }))];
     if (r === '2N') return [T_('3N', h => h.H >= lo + 1, MM(lo + 1, hi)), T_('P', () => true, MM(lo, lo))];
     if (r === '4N') return [T_('6N', h => h.H >= lo + 1, MM(lo + 1, hi)), T_('P', () => true, MM(lo, lo))];
+    const rm = ctx.pLast.m || ANY();
+    if (r === '4C' && rm.tag === 'gerber') { // aces: 4♦ 0 or 4, 4♥ 1, 4♠ 2, 4NT 3
+      const ac = h => [...'SHDC'].filter(s => h.has[s].includes('A')).length;
+      return [['4D', [0, 4]], ['4H', [1]], ['4S', [2]], ['4N', [3]]].map(([c, n]) => T_(c, h => n.includes(ac(h)), MM(lo, hi, { art: true, a: `${n.join(' or ')} ace${n[0] === 1 ? '' : 's'}`, t: 'gans' })));
+    }
+    if (/^3[CDHS]$/.test(r) && !rm.art && !BID_OFF('hum')) { // a natural three-level suit (a human's): game forcing in a major, invitational in a minor
+      const s = r[1];
+      if (MAJ(s) && rm.f) return [T_('4' + s, h => h.L[s] >= 3, MM(lo, hi, { mn: { [s]: 3 }, agree: s })), T_('3N', () => true, MM(lo, hi, { mx: { [s]: 2 } }))];
+      if (MIN(s) && rm.inv) return [T_('3N', h => h.H >= lo + 1 || (h.L[s] >= 2 && hon(h, s) >= 1 && h.H >= lo), MM(lo, hi)), T_('P', () => true, MM(lo, hi))];
+    }
     return [T_('P', () => true, ANY())];
   }
   const o2 = c(2);
@@ -691,8 +756,10 @@ function ntSystem(ctx) {
       return T;
     }
     if (r === '2S' && one) return [T_('P', h => h.L.C >= 6, MM(0, 6, { mn: { C: 6 } })), T_('3D', () => true, MM(0, 6, { mn: { D: 6 }, t: 'signoff' }))];
+    if (r === '4C' && after[1].m && after[1].m.tag === 'gerber') return [T_('4N', () => false, MM(0, 37, { a: 'To play (after Gerber)', t: 'signoff' }))]; // then natural
     return [T_('P', () => true, ANY())];
   }
+  if (isOpener && k === 4 && r === '4C' && after[1].m && after[1].m.tag === 'gerber') return c(3) === '4N' || +c(3)[0] >= 6 ? [T_('P', () => true, ANY())] : null;
   if (isOpener && k === 4) {
     const r3 = c(3), tr = r === lv + 'D' ? 'H' : r === lv + 'H' ? 'S' : null, max = h => h.H >= lo + 1;
     if (tr) {
@@ -914,7 +981,7 @@ function compDirect(ctx) { // they opened; our side has only passed so far
   if (ctx.cheap('N') === 3 && lv >= 3) T.push(T_('3N', h => h.H >= 16 && stopper(h, st), MM(16, 37, { nt: true })));
   for (const s of unbid) {
     const l = lvl(s);
-    if (l <= 2 && lv <= 2 && ctx.ok((l + 1) + s) && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= (l + 1 === 3 ? 7 : 6) && h.H >= (vw < 0 ? 4 : 5) && h.H <= 10 && longest(h, their) === s && hon(h, s, 'AKQJ') >= 2, MM(5, 10, { mn: { [s]: 6 }, a: 'Weak jump overcall', t: 'wjo' })));
+    if (l <= 2 && lv <= 2 && ctx.ok((l + 1) + s) && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= (l + 1 === 3 && !(!BID_OFF('wj6') && MIN(s) && vw <= 0 && h.sp[s] >= 4) ? 7 : 6) && h.H >= (vw < 0 ? 4 : 5) && h.H <= 10 && longest(h, their) === s && hon(h, s, 'AKQJ') >= 2, MM(5, 10, { mn: { [s]: 6 }, a: 'Weak jump overcall', t: 'wjo' })));
     if (l === 1) T.push(T_('1' + s, h => h.L[s] >= 5 && h.H >= (vk >= 2 ? 9 : vk < 0 ? 7 : 8) && h.H <= 17 && longest(h, their) === s && (vk >= 1 ? h.H >= 11 || goodSuit(h, s) : h.H >= 10 || hon(h, s, 'AKQJT') >= 2), MM(8, 17, { mn: { [s]: 5 }, t: 'ovc' })));
     if (l === 2) T.push(T_('2' + s, h => h.L[s] >= 5 && h.H >= (vk >= 1 ? 11 : 10) && h.H <= 17 && longest(h, their) === s && (vk >= 1 ? goodSuit(h, s) || (h.L[s] >= 6 && hon(h, s, 'AKQJT') >= 2) : h.L[s] >= 6 || goodSuit(h, s)), MM(10, 17, { mn: { [s]: 5 }, t: 'ovc' })));
     if (l === 3) T.push(T_('3' + s, h => h.L[s] >= 6 && h.H >= 12 && goodSuit(h, s) && longest(h, their) === s, MM(12, 18, { mn: { [s]: 6 }, t: 'ovc' })));
@@ -973,7 +1040,7 @@ function advanceOvc(ctx) { // partner overcalled (or made a two-suited bid); my 
     T.push(T_('P', () => true, ANY()));
     return T;
   }
-  if (pm.tag === 'nt') return null;
+  if (pm.tag === 'nt' || pm.art) return null; // e.g. partner's cue bid: natural (it is forcing)
   if (pc === 'X' || bidValue(pc) < 0) return null;
   const s = pc[1];
   if (s === 'N') return null;
@@ -1097,6 +1164,7 @@ function afterReopen(ctx) { // partner's reopening double: pass with their suit,
 }
 function afterJordan(ctx) {
   const t = ctx.seq[0][1];
+  if (MIN(t)) return [T_('3N', h => h.H >= 14 && h.semi, MM(14, 21, { nt: true })), T_('5' + t, h => h.H + h.lp >= 17 && !h.semi, MM(15, 21)), T_('3' + t, () => true, MM(11, 14))];
   return [T_('4' + t, h => h.H >= 14 || h.H + h.lp >= 15, MM(14, 21)), T_('3' + t, () => true, MM(11, 13))];
 }
 function afterCueRaise(ctx) { // partner showed a limit raise or better by cue bid
@@ -1435,6 +1503,7 @@ function agreedMajor(ctx) {
 }
 function ctlBidMeaning(ctx, call) {
   if (BID_OFF('ctl2') || !ctx.quiet || !ctx.weOpened || !ctx.pards.length || !ctx.mine.length || bidValue(call) < 0) return null;
+  if (humanMean(ctx, call)) return null; // e.g. a help-suit game try after 1M-2M
   const tr = agreedMajor(ctx), st = call[1], lb = ctx.lb;
   if (!tr || st === tr || st === 'N' || !lb || !sameSide(lb.by, ctx.seat) || bidValue(call) >= bidValue('4' + tr) || +call[0] < 3) return null;
   if (ctx.ours.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art))) return null;
@@ -1569,6 +1638,7 @@ function tablesFor(ctx) {
     }
     if (k === 3 && ctx.opener === ctx.p) {
       const c1 = seq[1], m0 = ctx.items[ctx.ours[1].i].m || ANY();
+      if (/^1[HS]$/.test(c0) && pl.m && pl.m.tag === 'hsgt') return gameTryAnswer(ctx);
       if (/^1[HS]$/.test(c0) && c1 === '1N') return resp1M1N(ctx);
       if (/^1[HS]$/.test(c0) && m0.tag === 'jacoby') return respJ2N2(ctx);
       if (/^1[HS]$/.test(c0) && m0.tag === 'splinter') return [T_('P', () => true, ANY())];
@@ -1636,8 +1706,8 @@ function natural(ctx, h, reserved) {
   const ntOK = opp.every(s => stopper(h, s) || P.mn[s] >= 4 || P.nt) && (h.semi || P.nt || P.bal);
   let strain;
   if (fit && MAJ(fit)) strain = fit;
-  else if (fit && !(ntOK && total >= 25 && total < 33)) strain = fit;
-  else if (fit) strain = fit;
+  else if (fit && !(ntOK && !ctx.quiet && !BID_OFF('mnt') && total >= 25 && total < 33 && !(h.L[fit] >= 6 && h.sh[3] <= 1))) strain = fit;
+  else if (fit) strain = 'N'; // in competition, a minor fit, game values and their suits stopped: 3NT rather than the minor
   else if (h.L[longest(h, opp)] >= 6 && !(ntOK && h.semi && P.nt)) strain = longest(h, opp);
   else if (ntOK && (pBid || h.semi)) strain = 'N';
   else {
@@ -1777,6 +1847,13 @@ function chooseCall(hand, seat, auction, vul) {
   }
   if (!call) call = natural(ctx, h, new Set(T ? T.filter(d => d.c).map(d => d.c) : []));
   call = slamAsk(ctx, h, T, call) || slamCtl(ctx, h, T, call) || natRescue(ctx, h, T, call) || call;
+  if (call === 'P' && !BID_OFF('nopassf')) { // never pass partner's forcing call (a human's, read by its natural meaning) below game
+    const pl = ctx.pLast;
+    if (pl && pl === ctx.lb && ctx.rhoCall === 'P' && pl.m && pl.m.f >= 1 && !ourGame(ctx) && !ctx.items.some(x => x.by === ctx.seat && x.i > pl.i)) {
+      let fit = null; for (const s of ['S', 'H', 'D', 'C']) if (!fit && ctx.P.mn[s] >= 3 && h.L[s] + ctx.P.mn[s] >= 8) fit = s;
+      call = forcedBid(ctx, h, ctx.ok, fit);
+    }
+  }
   return { call, alert: explainCall(auction, seat, call, metas, vul).alert };
 }
 // vul ('None', 'NS', 'EW', 'Both') is optional: without it the robots bid as if nobody were vulnerable.
@@ -1907,4 +1984,4 @@ function debugTable(hand, seat, auction, vul) { // for tests/bidwhy.js: the tabl
   return T ? T.map(d => d.nat ? 'natural' : `${d.c}${ctx.ok(d.c) ? '' : '(illegal)'}${d.w(h) ? '+' : '-'}`).join(' ') : 'no table: natural';
 }
 
-if (typeof module !== 'undefined') module.exports = { botCall, shown, explainAuction, evalHand, _metas: auctionMetas, _tableName: debugTable };
+if (typeof module !== 'undefined') module.exports = { botCall, shown, explainAuction, evalHand, _metas: auctionMetas, _tableName: debugTable, _describe: describeCall };
