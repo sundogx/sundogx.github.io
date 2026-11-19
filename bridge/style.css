@@ -259,6 +259,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .agrid .c.alert { box-shadow: inset 0 0 0 2px #d32f2f; cursor: help; }
 .agrid .c.expl { box-shadow: inset 0 0 0 2px var(--brass); cursor: help; }
 .agrid .c[data-alert]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.explain .rs { color: #ff7a70; } /* red suits stay red on the dark bubble */
 .explain { position: absolute; z-index: 40; max-width: min(280px, calc(100vw - 16px)); background: #1b1b1b; color: #fff; font-size: 13px; line-height: 1.35; padding: 7px 10px; border-radius: 6px; box-shadow: 0 3px 10px #0006; pointer-events: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* the auction on the table stays inside the middle; after about three rounds it scrolls (latest calls shown) under a fixed W N E S row */
@@ -346,7 +347,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .topbar .more { display: contents; }
 #moreBtn, #sideBtn, .sidehead { display: none; }
 @media (max-width: 560px) {
-  .topbar { gap: 6px; }
+  .topbar { gap: 5px; }
+  .topbar .btn.small { padding: 4px 7px; } /* Last trick, Undo, Claim, Hint, Chat and More fit one row */
   .topbar .tt { font-size: 17px; flex-basis: 100%; margin-right: 0; }
   #moreBtn { display: inline-block; }
   .topbar .more { display: none; }
@@ -365,6 +367,11 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .ttable { width: 100%; font-size: 14px; border-collapse: collapse; font-family: var(--serif); }
 .ttable td { padding: 2px 4px; border-bottom: 1px solid var(--line); text-align: center; }
 .ttable td.w { font-weight: 700; text-decoration: underline; }
+/* hint: the robot's suggestion gets a thin gold outline */
+.card.hint { box-shadow: inset 0 0 0 2px var(--brass), -1px 0 0 #0003; }
+.bcard.hint:not(:disabled) { box-shadow: inset 0 0 0 2px var(--brass); }
+.bcard.sel.hint { box-shadow: 0 0 0 3px #000 inset; }
+.rows .rk.play.hint { box-shadow: inset 0 0 0 1.5px #000; }
 /* play review: a card that cost tricks double dummy */
 .cost { color: var(--ink-soft); font-family: var(--sans); font-size: 11px; font-weight: 600; margin-left: 1px; }
 .ttable sup.cost { vertical-align: super; line-height: 0; }
