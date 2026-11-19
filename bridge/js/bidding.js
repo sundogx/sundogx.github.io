@@ -273,7 +273,9 @@ function openingTable(ctx) {
   if (pos <= 3) {
     const otherOK = (h, s) => !MAJ(s) || h.L[otherM(s)] <= 3;
     const vk = vulK(ctx, 'vpre'), pq = (h, s) => hon(h, s, 'AKQ') >= 1; // favourable vulnerability: a point lighter (sounder when vulnerable measured worse)
-    for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 6 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3 && pq(h, s) && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: 6 }, a: `Weak two: 6 ${SNAME[s]}, 5-10 points`, t: 'weak2' })));
+    const w27 = !BID_OFF('w27'); // a seven-card suit too weak for the three level (fewer than 3 honour points in it) opens a weak two
+    for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 6 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3 && pq(h, s) && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: w27 ? 7 : 6 }, a: `Weak two: 6${w27 ? ' (rarely 7)' : ''} ${SNAME[s]}, 5-10 points`, t: 'weak2' })));
+    if (w27) for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 7 && h.H >= 5 && h.H <= 9 && h.sp[s] < 3 && hon(h, s, 'AKQJ') >= 1 && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: 7 }, t: 'weak2' })));
     for (const s of ['S', 'H']) T.push(T_('4' + s, h => h.L[s] >= 8 && h.H <= 11, MM(4, 11, { mn: { [s]: 8 }, t: 'pre' })));
     for (const s of ['S', 'H', 'D', 'C']) T.push(T_('3' + s, h => h.L[s] >= 7 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3, MM(5, 10, { mn: { [s]: 7 }, t: 'pre' })));
   }
