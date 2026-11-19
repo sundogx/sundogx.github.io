@@ -17,7 +17,6 @@ function applyPrefs() {
   if (Prefs.deck4) r.setAttribute('data-deck', '4'); else r.removeAttribute('data-deck');
 }
 applyPrefs();
-const sleep = ms => new Promise(r => setTimeout(r, ms));
 const rid = n => Array.from({ length: n }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.floor(Math.random() * 24)]).join('');
 
 // ---------- identity (this browser) ----------
@@ -48,9 +47,7 @@ function doAct(name, ...args) {
 
 let me = { id: '', name: '', secret: '' };
 let T = null;            // current table state
-let tKey = null;         // storage key of current table (null for practice)
-let pollTimer = null, lobbyTimer = null, robotTimer = null;
-let lastRenderedVersion = -1;
+let lobbyTimer = null, robotTimer = null;
 let clockSkew = 0; // server time minus this device's time, for online tables
 const serverNow = () => Date.now() + (T && !T.local ? clockSkew : 0);
 let selLevel = null;
@@ -82,9 +79,6 @@ async function act(fn) {
 function amDriver(t) {
   if (t.local) return true;
   return false; // online: the server plays the robots
-  const humans = SEATS.map(s => t.seats[s]).filter(o => o && o.kind === 'human').map(o => o.id).sort();
-  if (humans[0] === me.id) return true;
-  return mySeat(t) && Date.now() - t.updatedAt > 6000; // take over if the driver went quiet
 }
 function scheduleRobot() {
   // practice: start the solver workers during the auction so the opening lead and first cards aren't cold
@@ -167,7 +161,6 @@ function colsHTML(cards, legal = [], seat = '', small = false, budget = 0, maxW 
   }).join('')}</div>`;
 }
 function plateHTML(t, seat) {
-  const o = occupant(t, seat);
   const vul = t.board && isVul(t.vul, seat);
   const turn = turnSeat(t) === seat && !t.claim;
   const mine = mySeat(t), you = mine === seat;
@@ -413,22 +406,6 @@ const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1
 const dummyIdle = t => !!(t && t.local && t.phase === 'play' && t.contract && mySeat(t) === partnerOf(t.contract.declarer));
 const trickHoldMs = () => T && T.local ? Math.round(TRICK_HOLD_MS * speedMult() * (dummyIdle(T) ? 0.6 : 1)) : TRICK_HOLD_MS;
 const trickHold = { key: null, until: 0, timer: null };
-// Tricks as on a real table: a trick your side won is an upright card, one the other side won lies sideways.
-// Seated players count for their own side, spectators for the declaring side. No target is shown.
-function tricksHTML(t) {
-  const c = t.contract; if (!c || !t.play) return '';
-  const side = mySeat(t) || c.declarer;
-  const done = completedTricks(t.play);
-  let seq = done.map(tr => sameSide(trickWinner(tr, c.strain), side));
-  const last = t.phase === 'done' && t.history[t.history.length - 1];
-  if (last && last.contract && last.declTricks != null && last.declTricks + (13 - last.declTricks) !== seq.length) { // claim or concession: only the totals are known
-    const mineWon = sameSide(side, c.declarer) ? last.declTricks : 13 - last.declTricks;
-    seq = Array.from({ length: 13 }, (_, i) => i < mineWon);
-  }
-  if (!seq.length) return '';
-  const won = seq.filter(Boolean).length;
-  return `<div class="tricks" role="img" aria-label="Tricks: ${won} won, ${seq.length - won} lost">${seq.map(w => `<i class="tk ${w ? 'won' : 'lost'}"></i>`).join('')}</div>`;
-}
 function claimBanner(t) {
   const c = t.claim, mine = mySeat(t);
   const left = 13 - completedTricks(t.play).length;
@@ -637,9 +614,7 @@ function render() {
   $('tableView').classList.toggle('bidding', bidSeated(T));
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
   if (keep && (!document.activeElement || document.activeElement === document.body)) { const el = document.querySelector(keep); if (el) el.focus({ preventScroll: true }); }
-  lastRenderedVersion = T.version;
   if (T.daily) Daily.onRender(T); /* feature: daily */
-  refreshOtherRoom();
   if (T.hands && T.phase === 'done' && SEATS.every(s => T.hands[s].every(c => c[0] !== '?'))) requestDD(T.hands, true, T.contract ? T.contract.strain : null);
   const mt = isMyTurn(T);
   if (mt && !wasMyTurn) {
@@ -843,7 +818,6 @@ function isMyTurn(t) {
 }
 
 // ---------- spectators ----------
-let watchTimer = null;
 // ----- presence: who is connected, who is away, robot stand-ins -----
 function seatAway(t, seat) {
   const o = t.seats[seat];
@@ -1252,8 +1226,7 @@ function tick() {
 setInterval(tick, 1000);
 
 // ---------- team match: the other room ----------
-let otherRoom = null, otherRoomAt = 0;
-function refreshOtherRoom() { }
+let otherRoom = null;
 
 // ---------- event wiring ----------
 document.addEventListener('click', e => {
@@ -1424,7 +1397,7 @@ function showTableView() {
 function openTable(t) { // practice
   if (T && T.local && T !== t) flushPractice(); /* feature: share */ // e.g. "Play this deal" from a practice or daily table
   leaveModals(); Net.close(); clearTimeout(robotTimer); robotTimer = null; // a robot move pending on the old table must not land on this one
-  T = t; tKey = null; lastRenderedVersion = -1; otherRoom = null; watchers = 0; wasMyTurn = false; clockSkew = 0;
+  T = t; otherRoom = null; watchers = 0; wasMyTurn = false; clockSkew = 0;
   showTableView(); render();
   history.replaceState(null, '', location.pathname);
 }
@@ -1441,7 +1414,7 @@ function openOnline(code) {
   // from the lobby: say that something is happening (the table opens once it answers), with a way to give up
   if (!$('home').classList.contains('hidden')) setJoinState(code);
   Net.open(code, () => {
-    setJoinState(null); lastRenderedVersion = -1; showTableView();
+    setJoinState(null); showTableView();
     history.replaceState(null, '', '#' + code);
   });
 }
@@ -1454,7 +1427,7 @@ function setJoinState(code) {
 function goHome() {
   releaseWakeLock(); leaveModals();
   Net.close(); clearTimeout(robotTimer); robotTimer = null;
-  T = null; tKey = null; DD.queue.length = 0; // stop analysing the table you left
+  T = null; DD.queue.length = 0; // stop analysing the table you left
   for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // ...and let it start again if you come back
   wasMyTurn = false; clockSkew = 0;
   $('tableView').classList.add('hidden'); $('home').classList.remove('hidden');

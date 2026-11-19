@@ -17,8 +17,9 @@ running entirely in the browser through onnxruntime-web (wasm, one thread).
   to ONNX by `tools/convert.py`, with the weights stored as float16. They are a modified form of BEN's
   models and remain GPL-3.0. The source form is BEN's repository at the commit above plus
   `tools/convert.py`.
-- The JavaScript port of BEN's bot logic (to be added here) is derived from BEN's Python source and is
-  GPL-3.0 as well.
+- The JavaScript port of BEN's bot logic (`ben-core.js`, driven by `ben-worker.js`) is derived from BEN's Python
+  source and is GPL-3.0 as well. It follows `PORTING.md`; BEN's native parts (PIMC, BBA, SuitC, its DDS build) are
+  left out, and double-dummy work uses the site's own DDS wasm (`js/wasm/`, `js/ddplay.js`).
 
 ## Contents
 
@@ -28,6 +29,11 @@ running entirely in the browser through onnxruntime-web (wasm, one thread).
 | `models/*.onnx`, `models/manifest.json` | the 14 networks, with sizes, sha256 and tensor names/shapes |
 | `ort/` | onnxruntime-web 1.31.1 wasm build (MIT, unmodified) |
 | `PORTING.md` | the spec for porting BEN's bidding, lead and play logic to JS |
+| `ben-core.js` | the port: encodings, candidate calls, sampling hands that fit the auction, rollouts scored by DDS and IMPs, opening leads, card play |
+| `ben-worker.js` | the Web Worker (`INTERFACE.md`): loads onnxruntime-web and the models, answers bid / lead / play |
+| `tools/benenv.mjs` | Node setup shared by the tools below (onnxruntime-web, the models, the site's DDS) |
+| `tools/bencheck.mjs` | checks the port against `tests/vectors/`: `node ben/tools/bencheck.mjs bid\|lead\|play` (env `DEAL=1,2`) |
+| `tools/benvs.mjs` | BEN against the site's robots on the same deals, as a team match (IMPs per board) |
 | `tools/convert.py` | Keras -> ONNX conversion |
 | `tools/verify.py` | checks ONNX against the original Keras models, writes the manifest |
 | `tools/make_vectors.py` | drives BEN's own code to write `tests/vectors/*.json` |

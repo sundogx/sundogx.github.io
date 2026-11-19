@@ -49,4 +49,15 @@ assert.ok(!JSON.stringify(lb).includes(await uidOf(A.secret)), 'ids are never se
 let limited = false;
 for (let i = 0; i < 45 && !limited; i++) limited = (await post({ secret: rnd(), name: 'x', date: today, board: 3, contract: null }, ip)).status === 429;
 assert.ok(limited, 'an address is rate limited');
+
+// the table-creation limit counts a whole IPv6 /64 as one address, however its addresses are written
+const net = '2001:db8:' + [1, 2].map(() => Math.floor(Math.random() * 65535).toString(16)).join(':');
+const mkTable = addr => fetch(BASE + '/api/tables', { method: 'POST', headers: { 'content-type': 'application/json', 'cf-connecting-ip': addr }, body: JSON.stringify({ secret: rnd(), name: 'v6' }) });
+let made = 0, v6limited = false;
+for (let i = 1; i <= 25 && !v6limited; i++) {
+  const r = await mkTable(i % 2 ? `${net}:${i.toString(16)}::1` : `${net.replace(/:0*([0-9a-f])/g, ':0$1')}:0:0:0:${i.toString(16)}`);
+  if (r.status === 429) v6limited = true; else { assert.equal(r.status, 200); made++; }
+}
+assert.ok(v6limited && made === 20, `one /64 is limited together (${made} tables made)`);
+assert.equal((await mkTable('2001:db8:ffff:' + Math.floor(Math.random() * 65535).toString(16) + '::1')).status, 200, 'another /64 is not');
 console.log('daily: all passed');

@@ -15,22 +15,21 @@ const BenBridge = (() => {
     n: 0, wait: new Map(),                  // requests: id -> resolve
     loaded: 0, total: 0, misses: 0, toasted: false, manifest: undefined, readyP: null, readyRes: null,
   };
-  // READY: set to true once the BEN port in ben/ben-worker.js plays real BEN (until then the option is hidden;
-  // add ?ben=1 to the page URL to try it anyway).
-  const READY = false || /[?&]ben=1/.test(location.search);
+  // READY: the BEN port in ben/ben-worker.js plays real BEN, so the option is shown (false hides it again).
+  const READY = true;
   const on = () => { if (!READY) return false; try { return localStorage.getItem(KEY) === '1'; } catch (e) { return false; } };
   const setOn = v => { try { if (v) localStorage.setItem(KEY, '1'); else localStorage.removeItem(KEY); } catch (e) { } };
   // BEN plays a table's robots only in practice, with the option on, and while the worker hasn't failed this visit.
   const active = t => !!(t && t.local && on() && S.state !== 'failed' && typeof Worker !== 'undefined');
 
-  // ben/models/manifest.json, written by whoever converts the models: its size (totalBytes, or the sum of
-  // files[].bytes) is shown before the download, and worker: 'module' makes a module worker. null if absent.
+  // ben/models/manifest.json, written by whoever converts the models: its size (totalBytes / total_bytes, or the sum of
+  // files[] / models[] bytes) is shown before the download, and worker: 'module' makes a module worker. null if absent.
   function manifest() {
     if (S.manifest !== undefined) return Promise.resolve(S.manifest);
     return fetch(BASE + 'models/manifest.json', { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).catch(() => null)
       .then(m => (S.manifest = m && typeof m === 'object' ? m : null));
   }
-  const bytesOf = m => !m ? 0 : +m.totalBytes || +m.total || (Array.isArray(m.files) ? m.files.reduce((a, f) => a + (+f.bytes || +f.size || 0), 0) : 0);
+  const bytesOf = m => { if (!m) return 0; const fs = Array.isArray(m.files) ? m.files : Array.isArray(m.models) ? m.models : []; return +m.totalBytes || +m.total_bytes || +m.total || fs.reduce((a, f) => a + (+f.bytes || +f.size || 0), 0); };
   const mb = b => `${Math.max(1, Math.round(b / 1e6))} MB`;
 
   function fail(msg) {

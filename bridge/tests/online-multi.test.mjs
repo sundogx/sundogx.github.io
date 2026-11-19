@@ -251,6 +251,8 @@ async function quickAuction(hum, contract = '1C') {
   a.act('robot', 'E'); await sleep(150);
   b.act('robot', 'W'); await sleep(400);
   check(a.t().phase === 'auction' && a.t().seats.W.kind === 'robot', 'a seated guest can add a robot, and the board starts');
+  b.errs.length = 0; b.act('redeal'); await sleep(300);
+  check(b.errs.some(e => /Only the host/.test(e)), 'only the host can redeal the board');
   // the host removes a robot between boards and a friend sits there
   const hum = { S: a, N: b };
   await until(() => { const t = a.t(); if (t.phase === 'play') return true; humanMove(hum); return false; }, 30000, 300);

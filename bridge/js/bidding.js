@@ -424,13 +424,6 @@ function reb1MJ(ctx) { // 1M - 2NT Jacoby
   T.push(T_('4' + t, () => true, MM(11, 13, { agree: t, a: 'Minimum, no shortness', t: 'signoff' })));
   return T;
 }
-function slamTry(ctx, tr, minTotal) { // RKCB when the combined values are there and no suit is wide open
-  return h => {
-    const tot = supPts(h, tr) + ctx.P.lo;
-    if (tot < minTotal) return false;
-    return openSuits(ctx, h, tr) === 0;
-  };
-}
 function openSuits(ctx, h, tr) { // side suits with two fast losers in my hand that partner hasn't shown
   if (ctx.P.bal && ctx.P.lo >= 15) return 0;
   return SUITS.filter(s => s !== tr && h.L[s] >= 2 && !h.has[s].includes('A') && !h.has[s].includes('K') && ctx.P.mn[s] < 4 && ctx.P.mx[s] > 1).length;
@@ -718,7 +711,7 @@ function ntSystem(ctx) {
   if (!isOpener && k === 3) {
     const tr = r === lv + 'D' ? 'H' : r === lv + 'H' ? 'S' : null;
     if (tr) {
-      const sup = +o2[0] === 3 && one, o = otherM(tr);
+      const sup = +o2[0] === 3 && one;
       if (sup) return [T_('4N', h => h.H + 3 + (BID_K('ntf') ?? 0) >= quant && h.L[tr] >= 5 && openSuits(ctx, h, tr) === 0, MM(quant - 3, 37, { t: 'rkcb', trump: tr, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)` })), T_('4' + tr, h => h.H >= 4 || h.L[tr] >= 6, MM(4, 37)), T_('P', () => true, MM(0, 3))];
       T.push(T_('P', h => h.H < inv, MM(0, inv - 1, { t: 'signoff' })));
       if (tr === 'S') T.push(T_(lv === 2 ? '3H' : '4H', h => h.L.H >= 5 && h.H >= gf, MM(gf, 37, { mn: { H: 5 }, f: 2 })));
@@ -1090,7 +1083,7 @@ function respComp(ctx) { // partner opened one of a suit, RHO came in; my first 
     return T;
   }
   if (bidValue(rc) < 0) return null;
-  const os = rc[1], olv = +rc[0];
+  const os = rc[1];
   const om = lb.m || ANY();
   if (os === 'N' || om.art) return null; // their notrump or a conventional call: natural
   const nt = ctx.cheap('N');
@@ -1111,7 +1104,7 @@ function respComp(ctx) { // partner opened one of a suit, RHO came in; my first 
   };
   // new suits (forcing)
   for (const s of ['S', 'H']) if (s !== t && s !== os && ctx.cheap(s) === 1) T.push(T_('1' + s, h => h.L[s] >= (xm.mn[s] ? 5 : 4) && h.H >= 6, MM(6, 37, { mn: { [s]: 4 }, f: 1 })));
-  if (!xm.mn.H && !xm.mn.S || true) T.push(T_('X', h => xOK(h) && !(MAJ(t) && h.L[t] >= 3), xm));
+  T.push(T_('X', h => xOK(h) && !(MAJ(t) && h.L[t] >= 3), xm));
   if (nt <= 3) T.push(T_('3N', h => h.H >= 13 && stopper(h, os) && h.semi && !(MAJ(t) && h.L[t] >= 3), MM(13, 37, { nt: true, stop: [os] })));
   for (const s of ['S', 'H', 'D', 'C']) if (s !== t && s !== os && ctx.cheap(s) === 2) T.push(T_('2' + s, h => h.L[s] >= 5 && h.H >= 10 && longest(h, [os]) === s, MM(10, 37, { mn: { [s]: 5 }, f: 1 })));
   if (nt === 2) T.push(T_('2N', h => h.H >= 11 && h.H <= 12 && stopper(h, os), MM(11, 12, { nt: true, inv: true, stop: [os] })));
@@ -1169,14 +1162,13 @@ function afterJordan(ctx) {
 }
 function afterCueRaise(ctx) { // partner showed a limit raise or better by cue bid
   const s = ctx.pLast.m.agree;
-  const mine = ctx.mine[ctx.mine.length - 1];
   const opened = ctx.first && ctx.first.by === ctx.seat;
   const minH = opened ? 14 : 15;
   const os = ctx.theirs.length ? ctx.theirs[0].call[1] : null;
   return [...(MIN(s) && os && os !== 'N' && ctx.cheap('N') <= 3 ? [T_('3N', h => h.H >= 12 && stopper(h, os), MM(12, 21, { nt: true }))] : []), T_(gameLevel(s) + s, h => (MAJ(s) ? h.H + h.lp >= minH : h.H >= 16), MM(minH, 21)), T_(ctx.cheap(s) + s, () => true, MM(opened ? 11 : 8, minH - 1, { t: 'signoff' }))];
 }
 function afterCueAdvance(ctx) { // partner cue-bid after my takeout double: describe
-  const lb = ctx.lb, their = ctx.oppSuits;
+  const their = ctx.oppSuits;
   const unbid = SUITS.filter(s => !their.includes(s));
   const T = [];
   for (const s of ['H', 'S']) if (unbid.includes(s)) T.push(T_(ctx.cheap(s) + s, h => h.L[s] >= 4, MM(12, 37, { mn: { [s]: 4 } })));
@@ -1883,7 +1875,7 @@ function defTricks(ctx, h, pPts) { // defensive tricks my side can expect agains
 // does their contract fit what their calls showed? (sound contracts are harder to beat than the estimate says)
 function fitsShown(ctx, h) {
   const lb = ctx.lb, lv = +lb.call[0], st = lb.call[1], L = ctx.L, R = ctx.R, P = ctx.P;
-  const [pm, lm, rm] = pointShares(ctx, h);
+  const [, lm, rm] = pointShares(ctx, h);
   const need = st === 'N' ? 17 + 2.7 * lv : 13 + 3 * lv;
   const oHi = Math.min(37, L.hi) + Math.min(37, R.hi);
   const ptOver = Math.max(0, h.H + L.lo + R.lo + P.lo - 40);

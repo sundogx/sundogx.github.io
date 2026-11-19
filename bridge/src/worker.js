@@ -91,7 +91,7 @@ const handle = async (req, env) => {
       const name = cleanName(body.name);
       if (secret.length < 16 || !name) return json({ error: 'name required' }, 400); // checked first: a bad request doesn't use up the hourly allowance
       const ip = req.headers.get('cf-connecting-ip') || 'local';
-      if (!(await lobbyStub(env).allowCreate(ip))) return json({ error: 'too many tables, try again later' }, 429);
+      if (!(await lobbyStub(env).allowCreate(ipGroup(ip)))) return json({ error: 'too many tables, try again later' }, 429);
       const uid = await idFromSecret(secret);
       const tableName = String(body.tableName || '').trim().slice(0, 30);
       const priv = !!body.priv;
@@ -120,9 +120,12 @@ const handle = async (req, env) => {
         open.seats.S = { kind: 'human', id: uid, name };
         G.sysMsg(open, `${name} opened the match. The Closed room code is ${closed.id}.`);
         G.sysMsg(closed, `Match opened by ${name}. The Open room code is ${open.id}.`);
-        const okC = await tableStub(env, closed.id).init(closed);
-        const okO = await tableStub(env, open.id).init(open);
-        if (!okC || !okO) return json({ error: 'code clash, try again' }, 503);
+        const clash = () => json({ error: 'code clash, try again' }, 503);
+        if (!(await tableStub(env, closed.id).init(closed))) return clash();
+        if (!(await tableStub(env, open.id).init(open))) { // don't leave the Closed room open on its own
+          await tableStub(env, closed.id).closeBy(uid).catch(e => console.error(e));
+          return clash();
+        }
         return json({ code: open.id });
       }
 
@@ -236,7 +239,7 @@ const ACTIONS = {
     return r;
   },
   // A redeal is only for a board nobody has bid on, and never in a team match (its deals are fixed).
-  redeal: t => (t.seed || t.auction.length) ? false : A.redeal(t),
+  redeal: (t, u) => t.host !== u.uid ? G.fail('Only the host can redeal') : (t.seed || t.auction.length) ? false : A.redeal(t),
   call: (t, u, call, alert) => {
     if (t.timeUp) return G.fail(TIME_UP);
     const s = G.mySeat(t); if (!s || typeof call !== 'string') return false;
@@ -938,6 +941,17 @@ export class TableRoom extends DurableObject {
   }
 }
 
+// Rate limits count an IPv6 address by its /64 network (one user often holds a whole /64); IPv4 and 'local' as they are.
+function ipGroup(ip) {
+  ip = String(ip || '');
+  if (!ip.includes(':') || ip === '::1') return ip;
+  const v4 = ip.match(/:(\d+\.\d+\.\d+\.\d+)$/); if (v4) return v4[1]; // IPv4-mapped
+  const [head, tail] = ip.split('::');
+  const a = head ? head.split(':') : [], b = tail ? tail.split(':') : [];
+  const parts = tail === undefined ? a : [...a, ...Array(Math.max(0, 8 - a.length - b.length)).fill('0'), ...b];
+  return parts.slice(0, 4).map(x => (parseInt(x, 16) || 0).toString(16)).join(':');
+}
+
 // ---------------- list of public tables ----------------
 export class Lobby extends DurableObject {
   // At most 20 new tables an hour from one address. Kept in storage (under a hash of the address): the lobby
@@ -1095,11 +1109,7 @@ async function dailyRoute(req, env, path) {
   }
   // the score is worked out here, from the contract and tricks, never taken from the page
   const score = contract ? G.scoreNS(contract, tricks, G.boardVul(board)) : 0;
-  let ip = req.headers.get('cf-connecting-ip') || 'local';
-  if (ip.includes(':')) { // expand a '::' first, or a compressed address (e.g. 2001:db8::1) would not group by its /64
-    const [h, tl] = ip.toLowerCase().split('::'), hs = h ? h.split(':') : [], ts = tl ? tl.split(':') : [];
-    ip = (tl === undefined ? hs : [...hs, ...Array(Math.max(0, 8 - hs.length - ts.length)).fill('0'), ...ts]).slice(0, 4).join(':');
-  } // IPv6: one limit per /64 (one user often holds a whole /64)
+  const ip = ipGroup(req.headers.get('cf-connecting-ip') || 'local');
   const r = await dailyStub(env, date).dailyPost({ uid: await idFromSecret(secret), name, board, contract, declTricks: tricks, score }, await idFromSecret('ip:' + ip));
   return json(r.error ? { error: r.error } : r, r.status || 200);
 }
