@@ -70,6 +70,8 @@ function makeWorker() {
 }
 function ddFail() { // give up for now; try again when the connection returns or after two minutes
   DD.failed = true; DD.failedAt = Date.now();
+  for (const w of DD.workers) try { w.terminate(); } catch (e) { } // don't leave idle solvers holding memory
+  DD.workers = [];
   for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // so they are queued afresh later
   DD.queue = [];
 }
@@ -212,9 +214,10 @@ function ddRunOf(legal, hands, trick) {
   for (let r = rs[0]; r <= rs[rs.length - 1]; r++) if (others.has(s + RANKS[r]) && !legal.includes(s + RANKS[r])) return false;
   return true;
 }
+let reviewWait = 0;
 function pumpReview() {
   if (PlayDD.cur || PlayDD.failed || !PlayDD.queue.length) return;
-  if (ddRobotBusy()) { setTimeout(pumpReview, 300); return; } // a robot is thinking: it goes first
+  if (ddRobotBusy()) { if (!reviewWait) reviewWait = setTimeout(() => { reviewWait = 0; pumpReview(); }, 300); return; } // a robot is thinking: it goes first (one poll at a time)
   // the board in the open hand record goes first
   const want = openRecord !== null && T && T.history[openRecord] && T.history[openRecord].tricks ? reviewKey(T.history[openRecord]) : null;
   let i = want ? PlayDD.queue.findIndex(j => j.k === want) : -1; if (i < 0) i = 0;

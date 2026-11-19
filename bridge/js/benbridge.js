@@ -50,9 +50,9 @@ const BenBridge = (() => {
     if (S.state === 'failed') return Promise.resolve(false);
     if (S.readyP) return S.readyP;
     S.state = 'loading'; S.loaded = 0; S.total = 0; progress();
-    S.readyP = new Promise(res => { S.readyRes = res; });
+    const p = S.readyP = new Promise(res => { S.readyRes = res; });
     manifest().then(m => {
-      if (S.state !== 'loading') return;
+      if (S.state !== 'loading' || S.readyP !== p) return; // stopped (and maybe restarted) meanwhile
       let w;
       try { w = S.w = new Worker(BASE + 'ben-worker.js', m && m.worker === 'module' ? { type: 'module' } : undefined); }
       catch (e) { fail(String(e && e.message || e)); return; }
@@ -72,7 +72,7 @@ const BenBridge = (() => {
   }
   function stop() {
     try { if (S.w) S.w.terminate(); } catch (e) { }
-    S.w = null; S.state = 'off'; S.readyP = null; S.readyRes = null;
+    S.w = null; S.state = 'off'; S.readyP = null; if (S.readyRes) S.readyRes(false); S.readyRes = null;
     for (const f of S.wait.values()) f(null);
     S.wait.clear(); progress();
   }

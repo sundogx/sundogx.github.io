@@ -15,6 +15,7 @@ const Net = {
     this.ws = ws;
     this.hist = []; this.other = []; this.chat = [];
     ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.retry = 0; this.lastMsg = Date.now(); setConn('');
       ws.send(JSON.stringify({ type: 'hello', secret: me.secret, name: me.name }));
       clearInterval(this.pingTimer);
