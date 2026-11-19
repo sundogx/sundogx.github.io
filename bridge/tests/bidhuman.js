@@ -10,6 +10,8 @@
 // Usage: node tests/bidhuman.js [boards=1000] [seed=1] [--base=basebid5] [--types=a,b] [--show=type:k] [--seats=NESW]
 //   --show=type:k prints the k boards of that kind where the robot under test did worst against the baseline partner
 //   (type 'all' for any kind; --best for the boards it gained most on; --cost: sorted by the cost of the deviation instead)
+//   --explain prints, for each kind, how the robots explain the human's off-system call (describeCall) in a few auctions
+//   --human=base: the human bids like the baseline robots when not deviating (default: like the robots under test)
 const fs = require('fs'), path = require('path'), os = require('os');
 Object.assign(globalThis, require('../js/engine.js'));
 const args = process.argv.slice(2), flags = args.filter(a => a.startsWith('--')), pos = args.filter(a => !a.startsWith('--'));
@@ -258,6 +260,10 @@ for (const b of boards) {
     const g = toImps(sg * (ts.score - tb.score)); r.gain.add(g);
     if (ts.auction.map(a => a.call).join() !== tb.auction.map(a => a.call).join()) r.diff++;
     totBad += ts.bad; totFP += ts.fpass; totFPb += tb.fpass;
+    if (flags.includes('--explain') && SYS._describe) { // what the robots say the human's deviating call means
+      const ex = r.ex || (r.ex = new Map()), a = ts.auction, i = ts.fired;
+      if (i >= 0) { const k = a.slice(0, i + 1).filter(x => x.call !== 'P' || a.indexOf(x) === i).map(x => (sameSide(x.by, hum) ? '' : '(') + x.call + (sameSide(x.by, hum) ? '' : ')')).join(' '); if (!ex.has(k)) ex.set(k, SYS._describe(a, i, b.vul)); }
+    }
     if (showK > 0 && (showType === 'all' || showType === type) && (g !== 0 || flags.includes('--cost')))
       shownL.push({ g: flags.includes('--cost') ? toImps(sg * (ts.score - ps.score)) : g, text: `Board ${b.bn} dealer ${b.dealer} vul ${b.vul}, human ${hum} (${type}): ${g} IMPs\n` + SEATS.map(s => `   ${s} ${show(b.hands[s]).padEnd(22)} ${hcp(b.hands[s])}${s === hum ? ' human' : ''}`).join('\n') +
         `\n   dd ${SEATS.map(s => s + ':' + STRAINS.map(x => b.dd[s][x]).join('/')).join(' ')} (${STRAINS.join('')})` +
@@ -273,4 +279,5 @@ for (const t of TYPES) { const r = res[t]; if (!r) continue; allN += r.gain.n; a
   console.log(`${t.padEnd(12)} ${String(r.gain.n).padStart(5)}  ${r.costB.text().padStart(16)}   ${r.costS.text().padStart(16)}   ${r.gain.text(3).padStart(16)}   ${r.diff}`); }
 console.log(`all          ${String(allN).padStart(5)}  new - base ${all.text(3)} IMPs a deviation (sum ${all.s})`);
 console.log(`robot partner: ${totBad} illegal calls or errors; forcing calls by the human passed: ${totFP} (baseline partner ${totFPb})`);
+if (flags.includes('--explain')) for (const t of TYPES) if (res[t] && res[t].ex) { console.log(`\n${t}:`); [...res[t].ex].slice(0, 8).forEach(([k, d]) => console.log(`  ${k.padEnd(28)} ${d}`)); }
 shownL.sort((a, b) => flags.includes('--best') ? b.g - a.g : a.g - b.g).slice(0, +showK).forEach(x => console.log('\n' + x.text));

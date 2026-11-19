@@ -677,6 +677,7 @@ function ntSystem(ctx) {
       T.push(T_('2C', h => h.L.H >= 4 && h.L.S >= 4 && h.L.C <= 1 && h.H < inv, MM(0, 37, { art: true, a: 'Stayman: asks for a 4-card major', t: 'stayman' })));
       T.push(T_('2S', h => (h.L.C >= 6 || h.L.D >= 6) && h.H <= 6, MM(0, 6, { art: true, a: 'Transfer to 3♣: weak with a long minor (passes 3♣ or bids 3♦)', t: 'trC', f: 1 })));
     }
+    if (!BID_OFF('gerber')) T.push(T_('4C', () => false, MM(0, 37, { art: true, f: 1, a: 'Gerber: asks for aces', t: 'gerber' }))); // the robots don't ask, but a human may
     T.push(T_('P', h => h.H < inv, MM(0, inv - 1)));
     if (one) T.push(T_('2N', h => h.H < gf, MM(inv, gf - 1, { inv: true, nt: true })));
     T.push(T_('6N', h => h.H >= six + 1, MM(six + 1, 37)));
@@ -698,6 +699,10 @@ function ntSystem(ctx) {
     if (r === '2N') return [T_('3N', h => h.H >= lo + 1, MM(lo + 1, hi)), T_('P', () => true, MM(lo, lo))];
     if (r === '4N') return [T_('6N', h => h.H >= lo + 1, MM(lo + 1, hi)), T_('P', () => true, MM(lo, lo))];
     const rm = ctx.pLast.m || ANY();
+    if (r === '4C' && rm.tag === 'gerber') { // aces: 4♦ 0 or 4, 4♥ 1, 4♠ 2, 4NT 3
+      const ac = h => [...'SHDC'].filter(s => h.has[s].includes('A')).length;
+      return [['4D', [0, 4]], ['4H', [1]], ['4S', [2]], ['4N', [3]]].map(([c, n]) => T_(c, h => n.includes(ac(h)), MM(lo, hi, { art: true, a: `${n.join(' or ')} ace${n[0] === 1 ? '' : 's'}`, t: 'gans' })));
+    }
     if (/^3[CDHS]$/.test(r) && !rm.art && !BID_OFF('hum')) { // a natural three-level suit (a human's): game forcing in a major, invitational in a minor
       const s = r[1];
       if (MAJ(s) && rm.f) return [T_('4' + s, h => h.L[s] >= 3, MM(lo, hi, { mn: { [s]: 3 }, agree: s })), T_('3N', () => true, MM(lo, hi, { mx: { [s]: 2 } }))];
@@ -747,8 +752,10 @@ function ntSystem(ctx) {
       return T;
     }
     if (r === '2S' && one) return [T_('P', h => h.L.C >= 6, MM(0, 6, { mn: { C: 6 } })), T_('3D', () => true, MM(0, 6, { mn: { D: 6 }, t: 'signoff' }))];
+    if (r === '4C' && after[1].m && after[1].m.tag === 'gerber') return [T_('4N', () => false, MM(0, 37, { a: 'To play (after Gerber)', t: 'signoff' }))]; // then natural
     return [T_('P', () => true, ANY())];
   }
+  if (isOpener && k === 4 && r === '4C' && after[1].m && after[1].m.tag === 'gerber') return c(3) === '4N' || +c(3)[0] >= 6 ? [T_('P', () => true, ANY())] : null;
   if (isOpener && k === 4) {
     const r3 = c(3), tr = r === lv + 'D' ? 'H' : r === lv + 'H' ? 'S' : null, max = h => h.H >= lo + 1;
     if (tr) {
@@ -1695,8 +1702,8 @@ function natural(ctx, h, reserved) {
   const ntOK = opp.every(s => stopper(h, s) || P.mn[s] >= 4 || P.nt) && (h.semi || P.nt || P.bal);
   let strain;
   if (fit && MAJ(fit)) strain = fit;
-  else if (fit && !(ntOK && total >= 25 && total < 33)) strain = fit;
-  else if (fit) strain = fit;
+  else if (fit && !(ntOK && !ctx.quiet && !BID_OFF('mnt') && total >= 25 && total < 33 && !(h.L[fit] >= 6 && h.sh[3] <= 1))) strain = fit;
+  else if (fit) strain = 'N'; // in competition, a minor fit, game values and their suits stopped: 3NT rather than the minor
   else if (h.L[longest(h, opp)] >= 6 && !(ntOK && h.semi && P.nt)) strain = longest(h, opp);
   else if (ntOK && (pBid || h.semi)) strain = 'N';
   else {
@@ -1973,4 +1980,4 @@ function debugTable(hand, seat, auction, vul) { // for tests/bidwhy.js: the tabl
   return T ? T.map(d => d.nat ? 'natural' : `${d.c}${ctx.ok(d.c) ? '' : '(illegal)'}${d.w(h) ? '+' : '-'}`).join(' ') : 'no table: natural';
 }
 
-if (typeof module !== 'undefined') module.exports = { botCall, shown, explainAuction, evalHand, _metas: auctionMetas, _tableName: debugTable };
+if (typeof module !== 'undefined') module.exports = { botCall, shown, explainAuction, evalHand, _metas: auctionMetas, _tableName: debugTable, _describe: describeCall };
