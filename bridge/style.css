@@ -576,3 +576,12 @@ table.daily-lb tr.you td { font-weight: 600; }
 
 /* feature: showpoints */
 .plate .hcpTag { flex: none; font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
+
+/* feature: phonefix — phone layout: bigger tap targets in windows, no sideways scroll */
+@media (max-width: 900px) and (pointer: coarse), (max-width: 600px) {
+  .modal .box { overflow-x: hidden; overflow-wrap: anywhere; }
+  .modal .box select { min-height: 36px; font-size: 16px; max-width: 100%; }
+  .modal .box input[type="text"], .modal .box textarea { font-size: 16px; max-width: 100%; }
+  .modal .box .sc-ex { min-height: 32px; padding: 0 6px; }
+  .modal .box .row { min-width: 0; }
+}
