@@ -277,6 +277,8 @@ function openingTable(ctx) {
     for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 6 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3 && pq(h, s) && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: w27 ? 7 : 6 }, a: `Weak two: 6${w27 ? ' (rarely 7)' : ''} ${SNAME[s]}, 5-10 points`, t: 'weak2' })));
     if (w27) for (const s of ['S', 'H', 'D']) T.push(T_('2' + s, h => h.L[s] === 7 && h.H >= 5 && h.H <= 9 && h.sp[s] < 3 && hon(h, s, 'AKQJ') >= 1 && otherOK(h, s), MM(5, 10, { mn: { [s]: 6 }, mx: { [s]: 7 }, t: 'weak2' })));
     for (const s of ['S', 'H']) T.push(T_('4' + s, h => h.L[s] >= 8 && h.H <= 11, MM(4, 11, { mn: { [s]: 8 }, t: 'pre' })));
+    // not vulnerable, 3♣ also on a good six-card suit (there is no weak 2♣), without a four-card major
+    if (!BID_OFF('p6c')) T.push(T_('3C', h => h.L.C === 6 && h.sh[1] <= 4 && h.H >= 5 && h.H <= 9 && h.sp.C >= 4 && vk <= 0 && h.L.H < 4 && h.L.S < 4, MM(5, 10, { mn: { C: 6 }, t: 'pre' })));
     for (const s of ['S', 'H', 'D', 'C']) T.push(T_('3' + s, h => h.L[s] >= 7 && h.H >= (vk < 0 ? 4 : 5) && h.H <= 10 && h.sp[s] >= 3, MM(5, 10, { mn: { [s]: 7 }, t: 'pre' })));
   }
   T.push(T_('P', () => true, MM(0, pos === 4 ? 14 : 11)));
