@@ -14,6 +14,9 @@
 //   nlead.X  only the opening lead with X                             nplay.X defenders after the lead with X
 // where X names an entry of the JSON in the environment variable NEW, e.g.
 //   NEW='{"w":{"pool":96},"imp":{"agg":"imp"}}' node tests/playsim.js 300 20 ndecl.w,ndef.w,nlead.imp
+// The base ("current") settings are the page's (RobotDD in js/analysis.js, without its time budget); CUR_JSON replaces
+// them, e.g. CUR_JSON='{…,"limits":"min"}' for the earlier auction limits. Options of X apply to the side's own settings too.
+// W (4th argument) workers; seed (5th): use a fresh seed for held-out numbers.
 // Reports, for the side whose play changed: IMPs per board and tricks per board (mean ± standard error),
 // how many boards changed, and the time per sampled decision.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');

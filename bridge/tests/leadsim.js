@@ -12,6 +12,9 @@
 //   node tests/leadsim.js fit <file.jsonl>... [lambda=30]
 // fits the prior's weights (LEAD_W in js/leads.js): ridge regression of each lead's double-dummy tricks, against the
 // average lead from the same hand, on the lead features.
+//   node tests/leadsim.js tune <file.jsonl>...
+// compares the solver lead's number of layouts, prior weight and metric against the page's (needs files made with K >= 96;
+// odd boards are held out). OLDLIM=nobal with gen makes the Kold layouts with the lead sampler minus the balanced-hand limit.
 // tests/playsim.js plays the leads out with the robots instead of double-dummy.
 const fs = require('fs'), path = require('path'), os = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -59,7 +62,9 @@ if (isMainThread && process.argv[2] === 'gen') {
     const limits = {}; for (const s of SEATS) if (s !== leader) limits[s] = L.leadLimits(auction, s, vul);
     const sNew = [], sOld = [];
     for (const h of ddSample({ ...view, limits }, K, seededRand(seed + ':new:' + g))) sNew.push(await solve(ddJob(view, h)));
-    if (Kold) for (const h of ddSample(view, Kold, seededRand(seed + ':old:' + g))) sOld.push(await solve(ddJob(view, h)));
+    // OLDLIM=nobal: sOld from the lead sampler without the balanced-hand limit (to measure it), else the play sampler's
+    const oldView = process.env.OLDLIM === 'nobal' ? { ...view, limits: Object.fromEntries(Object.entries(limits).map(([s, k]) => [s, { ...k, bal: false }])) } : view;
+    if (Kold) for (const h of ddSample(oldView, Kold, seededRand(seed + ':old:' + g))) sOld.push(await solve(ddJob(view, h)));
     parentPort.postMessage({ g, rec: { g, leader, hand: hands[leader], hands, auction, ct, vul, actual, sNew, sOld, heur: B.botPlayOld(t, leader) } });
   });
   (async () => {
