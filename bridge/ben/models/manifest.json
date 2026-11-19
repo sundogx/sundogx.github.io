@@ -1,0 +1,546 @@
+{
+ "about": "BEN (github.com/lorserker/ben, GPL-3.0) networks converted to ONNX; see ../README.md and ../PORTING.md",
+ "ben_commit": "5098782eaac4df07482a1178ce3f6000319fe95e",
+ "ben_config": "src/config/BEN-21GF.conf",
+ "onnx_opset": 17,
+ "weights": "float16 storage, Cast to float32 at load; inputs/outputs float32",
+ "total_bytes": 34274434,
+ "models": [
+  {
+   "name": "bidder",
+   "file": "bidder.onnx",
+   "bytes": 3064736,
+   "sha256": "4363a81159d03bebca0c3fac92789afdf5d2f4e911c729f1704d9f1b7385d5db",
+   "source": "models/TF2models/BEN-21GF-8744_2026-11-11-E30.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      193
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "bid",
+     "shape": [
+      null,
+      null,
+      40
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0029155611991882324,
+    "per_output": {
+     "bid": 0.0029155611991882324
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "binfo",
+   "file": "binfo.onnx",
+   "bytes": 878086,
+   "sha256": "4b8d57e85b0bd9de4fd849e88f4bd997c286c2e0e27da939bb204798c83c1f13",
+   "source": "models/TF2models/BEN-21GF-8744-Info_2026-11-11-E30.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      193
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "hcp",
+     "shape": [
+      null,
+      null,
+      3
+     ],
+     "dtype": "float32"
+    },
+    {
+     "name": "shape",
+     "shape": [
+      null,
+      null,
+      12
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0007304549217224121,
+    "per_output": {
+     "hcp": 0.0006436705589294434,
+     "shape": 0.0007304549217224121
+    },
+    "argmax_agreement": null
+   }
+  },
+  {
+   "name": "lead_nt",
+   "file": "lead_nt.onnx",
+   "bytes": 1146911,
+   "sha256": "c8fb0622bed7219760cbea8577e9737f950129fb779da404194d2ad6fe765ff5",
+   "source": "models/TF2models/LeadV3-NT-Both_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      42
+     ],
+     "dtype": "float32"
+    },
+    {
+     "name": "b",
+     "shape": [
+      null,
+      15
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "lead",
+     "shape": [
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.00023752450942993164,
+    "per_output": {
+     "lead": 0.00023752450942993164
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "lead_suit",
+   "file": "lead_suit.onnx",
+   "bytes": 1146911,
+   "sha256": "c1ac3b5bd41cdc9f408f9e5c1dc6c0c80caeab773852107212215dc0e3088b04",
+   "source": "models/TF2models/LeadV3-Suit-Both_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      42
+     ],
+     "dtype": "float32"
+    },
+    {
+     "name": "b",
+     "shape": [
+      null,
+      15
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "lead",
+     "shape": [
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.00026667118072509766,
+    "per_output": {
+     "lead": 0.00026667118072509766
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "contract",
+   "file": "contract.onnx",
+   "bytes": 67181,
+   "sha256": "58220fd0e365240c6dbcd45dcc1a2925a65a2a680af6e056f387a805530b51a6",
+   "source": "models/TF2models/Contract_2024-12-09-E50.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      50
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "contract",
+     "shape": [
+      null,
+      40
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0010889172554016113,
+    "per_output": {
+     "contract": 0.0010889172554016113
+    },
+    "argmax_agreement": 0.995
+   }
+  },
+  {
+   "name": "trick",
+   "file": "trick.onnx",
+   "bytes": 66147,
+   "sha256": "8d12eff195b4e7c84fd3f8bd6588807004328f6f7a65a7eb23a9da8926526c4b",
+   "source": "models/TF2models/Tricks_2024-12-09-E50.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      55
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "tricks",
+     "shape": [
+      null,
+      14
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0014102160930633545,
+    "per_output": {
+     "tricks": 0.0014102160930633545
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "lefty_nt",
+   "file": "lefty_nt.onnx",
+   "bytes": 3487973,
+   "sha256": "d279b76b8ca614757ed656a77b908415b826b61c90211adf3768321da9acbe0a",
+   "source": "models/TF2models/lefty_nt_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0002247244119644165,
+    "per_output": {
+     "card": 0.0002247244119644165
+    },
+    "argmax_agreement": 0.9975
+   }
+  },
+  {
+   "name": "lefty_suit",
+   "file": "lefty_suit.onnx",
+   "bytes": 3487991,
+   "sha256": "2db192413b610267ae9dab64c2bda37047fdef32ec0b912e872452e6ca494cce",
+   "source": "models/TF2models/lefty_suit_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.00024503469467163086,
+    "per_output": {
+     "card": 0.00024503469467163086
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "dummy_nt",
+   "file": "dummy_nt.onnx",
+   "bytes": 3488001,
+   "sha256": "a2db28380fddda97aba85996998cb47f65c766b03da870f03475fe1141cb9291",
+   "source": "models/TF2models/dummy_nt_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 98,
+    "max_abs_diff": 0.0029556751251220703,
+    "per_output": {
+     "card": 0.0029556751251220703
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "dummy_suit",
+   "file": "dummy_suit.onnx",
+   "bytes": 3488099,
+   "sha256": "f33540aa07c2029c152c4104bd94a5df2d5b732245d2d002df29c8f1e472ede2",
+   "source": "models/TF2models/dummy_suit_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 196,
+    "max_abs_diff": 0.004157602787017822,
+    "per_output": {
+     "card": 0.004157602787017822
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "righty_nt",
+   "file": "righty_nt.onnx",
+   "bytes": 3488087,
+   "sha256": "7b2175bfcc8afce0d07b1cc9369337c1ff8c775f72df873c2ea9e84a59b9bfb1",
+   "source": "models/TF2models/righty_nt_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0003033280372619629,
+    "per_output": {
+     "card": 0.0003033280372619629
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "righty_suit",
+   "file": "righty_suit.onnx",
+   "bytes": 3488121,
+   "sha256": "1be2d7e81a59fd729375e9afba6be66c0c954662a56a25c9615873c0645ef0c5",
+   "source": "models/TF2models/righty_suit_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0002893209457397461,
+    "per_output": {
+     "card": 0.0002893209457397461
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "decl_nt",
+   "file": "decl_nt.onnx",
+   "bytes": 3488095,
+   "sha256": "fcda81f1860335e06eb03a9b7240137694722dc335cd0d1cfcee85d64247eb18",
+   "source": "models/TF2models/decl_nt_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.0003285408020019531,
+    "per_output": {
+     "card": 0.0003285408020019531
+    },
+    "argmax_agreement": 1.0
+   }
+  },
+  {
+   "name": "decl_suit",
+   "file": "decl_suit.onnx",
+   "bytes": 3488095,
+   "sha256": "d5e0bb1382632c09ec4a76b8553621ebca7ae9193c1fb535f48637005f106f15",
+   "source": "models/TF2models/decl_suit_hybrid_2026-10-16.keras",
+   "inputs": [
+    {
+     "name": "x",
+     "shape": [
+      null,
+      null,
+      298
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "outputs": [
+    {
+     "name": "card",
+     "shape": [
+      null,
+      null,
+      32
+     ],
+     "dtype": "float32"
+    }
+   ],
+   "check": {
+    "rows": 400,
+    "max_abs_diff": 0.00033921003341674805,
+    "per_output": {
+     "card": 0.00033921003341674805
+    },
+    "argmax_agreement": 1.0
+   }
+  }
+ ]
+}
