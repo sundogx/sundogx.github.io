@@ -1422,13 +1422,14 @@ function showTableView() {
 }
 function openTable(t) { // practice
   if (T && T.local && T !== t) flushPractice(); /* feature: share */ // e.g. "Play this deal" from a practice or daily table
-  leaveModals(); Net.close();
+  leaveModals(); Net.close(); clearTimeout(robotTimer); robotTimer = null; // a robot move pending on the old table must not land on this one
   T = t; tKey = null; lastRenderedVersion = -1; otherRoom = null; watchers = 0; wasMyTurn = false; clockSkew = 0;
   showTableView(); render();
   history.replaceState(null, '', location.pathname);
 }
 function openOnline(code) {
   clearTimeout(robotTimer); robotTimer = null; leaveModals();
+  if (T && T.local) flushPractice(); // a debounced practice save would otherwise be dropped
   if (T && !T.local) { // leaving another online table, e.g. switching team-match rooms
     T = null; selCard = null; pendingCall = null; selLevel = null;
     $('felt').innerHTML = '<div class="pos-center"><div class="waitmsg">Connecting…</div></div>';
