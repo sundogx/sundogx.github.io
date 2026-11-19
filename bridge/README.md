@@ -22,6 +22,7 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `js/analysis.js` | Runs the double-dummy solver in background workers; hand-record analysis and PBN export. |
 | `js/benbridge.js` | The "Use BEN robots" option: starts the BEN worker, asks it for practice robots' calls and cards, falls back to the usual robots (see below). |
 | `ben/` | BEN robots (GPL-3.0, a separate program): the worker `ben-worker.js` and its models. The messages are in `ben/INTERFACE.md`. |
+| `js/minibridge.js`, `js/rubber.js` | MiniBridge and the New practice options; rubber and Chicago scoring and the score sheet (see below). |
 | `js/app.js` | Everything on screen: drawing the table, bidding box, options, keyboard, lobby. |
 | `js/dds-worker.js`, `js/wasm/` | The WebAssembly solver (see below); it also picks the practice robots' cards. |
 | `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
@@ -175,6 +176,14 @@ Both are on the home page and in the table's More menu (`js/explorer.js`, `js/fl
 A lead within 0.05 tricks of the best counts as the best lead; the streak, the share of best leads and the average cost are kept in localStorage (`bridge-lt`).
 
 Speed: a 13-card lead solve is slow (median ~75 ms on one desktop core, with a tail of seconds), so the evaluation has a time budget, not just a count: each worker stops before a solve that would end after 11 s, and anything still running at 14.5 s is dropped. A desktop (4 workers) solves 200 layouts in 2-6 s; one desktop core alone manages ~145 in 11 s; a phone gets fewer layouts (roughly 50-150), never more than ~15 s. The note under the table gives the number of layouts and the time.
+
+## MiniBridge, rubber and Chicago (practice)
+
+Home page > **New practice** chooses the game and the scoring for a fresh practice table (`js/minibridge.js`, `js/rubber.js`; tests in `tests/minitest.js` and `tests/rubbertest.js`, run by `npm test`).
+
+- **MiniBridge** (no bidding, for beginners): every player's high-card points are on the name plates. The side with more points declares, and of that side the player with more points. Ties: at 20-20 the dealer's side declares; partners with the same points, the one nearer the dealer (the dealer, or the first after the dealer clockwise). Dummy goes face up at once and declarer picks a contract from a small panel: a part-score (the 1-level contract in a strain) or game (5♣, 5♦, 4♥, 4♠, 3NT). The chosen contract is then played and scored like any other (so a part-score earns its tricks plus 50, a game its game bonus, and a failed game goes down from the game level); no doubles. Robot declarers choose the strain and target that scores best double dummy for them (the page's solver, used read-only), or guess from fit and points if the solver isn't available. Results compare each board with that double-dummy choice, in IMPs.
+- **Rubber** and **Chicago** scoring: a score sheet (We = N-S, They = E-W) at the top of Results, above and below the line, with each game ruled off; the boards' dealer and vulnerability follow the rubber (a side with a game is vulnerable) or the four-deal Chicago cycle (none, dealer's side, dealer's side, both; dealers N, E, S, W; a passed-out deal is dealt again by the same dealer). Rubber: 700/500 rubber bonus, and an unfinished rubber's 300/100 shown as "if stopped now". Chicago: 300/500 for each game at once, 100 for a part-score on deal 4 that doesn't make game. Honours (four or five trump honours in one hand, or four aces at notrump) are an option. Duplicate scoring and the IMP comparison with the robots stay as they were alongside.
+- Practice only. Online tables would need the log of boards and the dealer/vulnerability set-up in `js/table.js`'s `startBoard`/`finishBoard` (so the server runs it), MiniBridge's extra phase and declarer's choice as a server action (validated like a call), and the sheet sent to every seat.
 
 ## BEN robots (option)
 

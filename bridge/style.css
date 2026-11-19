@@ -659,3 +659,24 @@ table.daily-lb tr.you td { font-weight: 600; }
 @media (max-width: 640px) { #leadTrainer .topbar { flex-wrap: wrap; } }
 /* feature: playfrom */
 ul.costs .pftry { background: none; border: 0; padding: 2px 0 2px 4px; min-height: 0; font: inherit; color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+/* feature: minibridge — declarer's contract panel, and the new-practice dialog */
+.banner.minipick { width: min(250px, 98%); padding: 10px; }
+.minipick .mgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 6px; }
+.minipick .ml { grid-column: 1 / -1; font-size: 12px; color: var(--ink-soft); text-align: left; margin-top: 2px; }
+.minipick .bcard { padding: 5px 0; font-size: 15px; cursor: pointer; min-width: 0; }
+.minipick .bcard:hover, .minipick .bcard:focus-visible { box-shadow: 0 0 0 1.5px var(--brass); }
+.waitmsg .note { color: inherit; opacity: .8; font-family: var(--sans, inherit); font-size: 13px; margin-top: 4px; }
+fieldset.pm { border: 0; padding: 0; margin: 0 0 10px; }
+fieldset.pm legend { font-weight: 600; margin-bottom: 6px; }
+@media (max-width: 560px) { .banner.minipick { padding: 6px; } .minipick .mgrid { gap: 3px; margin-top: 3px; } .minipick .bcard { font-size: 14px; padding: 3px 0; } .minipick .ml { font-size: 11px; margin-top: 0; } }
+/* feature: rubber — score sheet in Results */
+.rubber { margin-bottom: 14px; }
+.rubber .rs-h { font-family: var(--serif); font-size: 16px; margin: 0 0 6px; }
+.rsheet { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: 14px; margin-bottom: 6px; }
+.rsheet th { font-weight: 600; font-size: 12px; color: var(--ink-soft); border-bottom: 1px solid var(--line); padding: 3px 0; }
+.rsheet td, .rsheet th { width: 50%; text-align: center; }
+.rsheet td { padding: 2px 0; }
+.rsheet td:first-child, .rsheet th:first-child { border-right: 1px solid var(--line); }
+.rsheet tr.rs-line td { border-top: 2px solid var(--ink); padding: 0; height: 2px; }
+.rsheet tr.rs-game td { border-bottom: 1px solid var(--line); }
+.rsheet tr.rs-tot td { border-top: 1px solid var(--ink-soft); font-weight: 700; padding-top: 4px; }

@@ -69,6 +69,7 @@ async function act(fn) {
     const r = fn(s);
     if (r !== false && typeof dealsAfterAct === 'function') dealsAfterAct(s); /* feature: deals */
     if (r !== false && typeof PlayFrom !== 'undefined') PlayFrom.afterAct(s); /* feature: playfrom */
+    if (r !== false && typeof PracticeModes !== 'undefined') PracticeModes.afterAct(s); /* feature: minibridge */
     if (r === false) { if (base !== T) { T = base; render(); } return false; }
     s.version = (s.version || 0) + 1; s.updatedAt = Date.now();
     T = s; render(); return true;
@@ -172,7 +173,7 @@ function plateHTML(t, seat) {
     const lead = t.phase === 'play' && (!tr || tr.cards.length === 0 || tr.cards.length === 4);
     yt = t.phase === 'auction' ? 'Your bid' : seat !== mine ? (lead ? 'Lead from dummy' : 'Play from dummy') : lead ? 'Your lead' : 'Your play';
   }
-  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="sr">${yt}</span>` : ''}${awayTag(t, seat)}${typeof ShowPoints !== 'undefined' ? ShowPoints.tag(t, seat) : '' /* feature: showpoints */}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
+  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="sr">${yt}</span>` : ''}${awayTag(t, seat)}${typeof Mini !== 'undefined' && Mini.on(t) ? Mini.tag(t, seat) /* feature: minibridge */ : typeof ShowPoints !== 'undefined' ? ShowPoints.tag(t, seat) : '' /* feature: showpoints */}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
 }
 const cssPx = (name, dflt) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || dflt;
 // the felt's inner width, height and side-column width as laid out (estimated before the first layout)
@@ -201,7 +202,7 @@ function seatBlock(t, seat, where) {
     const side = where !== 'top', g = feltGeom(), cwid = cssPx('--cw', 64);
     // room for this hand: its own column at the sides; across the top, the width between the corners
     const room = side ? g.colW : g.topW;
-    if (canSee(t, seat)) {
+    if (canSee(t, seat) || (typeof Mini !== 'undefined' && Mini.faceUp(t, seat))) { /* feature: minibridge */
       // a dummy across the top leaves the middle ~200px for the trick; at the sides it sits in the middle row
       const budget = where === 'top' ? g.h - 300 : g.h - 216;
       const cards = currentCards(t, seat), longest = Math.max(0, ...UI_SUITS.map(s => cards.filter(c => suitOf(c) === s).length));
@@ -348,6 +349,8 @@ function renderFelt() {
     center = `<div class="waitmsg">${t.phase === 'done' ? 'Waiting for the other room to finish this board.' : 'A board is in progress.'}<br><span class="note" style="color:inherit;opacity:.85">In a team match, onlookers see each board once both rooms have played it.</span></div>`;
   } else if (t.phase === 'auction') {
     center = auctionGridHTML(t);
+  } else if (t.phase === 'mini' && typeof Mini !== 'undefined') { /* feature: minibridge */
+    center = Mini.centerHTML(t);
   } else if (t.phase === 'play' || t.phase === 'done') {
     const tricks = t.play.tricks;
     const tr = tricks[tricks.length - 1];
@@ -515,7 +518,7 @@ function renderSide(force) {
 }
 function renderAuctionPane(t) {
   if (t.masked) { $('pane-auction').innerHTML = '<p class="empty">In a team match, onlookers see each board once both rooms have played it.</p>'; return; }
-  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + pinfoHTML(t) + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted; gold-outlined calls are explained. Tap any to read it.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
+  $('pane-auction').innerHTML = t.board ? (typeof Mini !== 'undefined' && Mini.on(t) ? '' /* feature: minibridge */ : auctionGridHTML(t)) + pinfoHTML(t) + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted; gold-outlined calls are explained. Tap any to read it.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
 }
 function renderChatPane(t) {
   const log = $('chatLog');
@@ -538,6 +541,7 @@ function renderResultsPane(t) {
       return `<tr class="click" data-record="${i}" tabindex="0" aria-label="Board ${h.board}${h.replayOf ? `, board ${h.replayOf} dealt again` : ''}: hand record"><td>${h.board}${againMark(h)}</td><td>${res(h)}</td><td class="num">${h.scoreNS}</td><td>${o ? res(o) : ''}</td><td class="num">${o ? o.scoreNS : ''}</td><td class="num"><b>${im === null ? '' : im ? sgn(im) : '0'}</b></td></tr>`;
     }).reverse().join('');
     note = 'IMPs against four robots playing the same deals. Tap a board to see its hand record.';
+    if (typeof Mini !== 'undefined' && Mini.on(t)) note = Mini.resultsNote; /* feature: minibridge */
   } else if (t.match) {
     const other = otherRoom && otherRoom.history || [];
     const openNS = (bd) => (t.match.room === 'Open' ? t.history : other).find(h => h.board === bd);
@@ -579,7 +583,7 @@ function renderResultsPane(t) {
   }
   const any = t.history.length || (t.match && otherRoom && otherRoom.history.length);
   const totals = t.match ? '' : t.local ? `<div class="totals"><span>${t.history.length} board${t.history.length === 1 ? '' : 's'}</span><span>${impN ? sgn(imps) + ' IMP' + (Math.abs(imps) === 1 ? '' : 's') : ''}</span></div>` : `<div class="totals"><span>N-S ${ns}</span><span>E-W ${ew}</span></div>`;
-  $('pane-results').innerHTML = redSym(any ? `${totals}${summary}
+  $('pane-results').innerHTML = (typeof RubberUI !== 'undefined' ? RubberUI.sheetHTML(t) : '') /* feature: rubber */ + redSym(any ? `${totals}${summary}
     <table class="reslist"><tr>${head}</tr>${rowsR}</table><p class="note">${note}</p>
     ${t.history.length ? '<div class="row"><button class="btn small" id="pbnAll">Download all boards (PBN)</button></div>' : ''}` : '<p class="empty">Finished boards appear here.</p>');
   const pa = $('pbnAll'); if (pa) pa.addEventListener('click', () => downloadText(`bridge-${t.id}.pbn`, t.history.map(h => pbnBoard(h, t)).join('\n\n') + '\n'));
@@ -617,6 +621,7 @@ function render() {
   renderTop(); showWatchers(); renderOnline(); renderFelt(); renderHand(); renderBidBox(); renderSide(); tick();
   if (keep && (!document.activeElement || document.activeElement === document.body)) { const el = document.querySelector(keep); if (el) el.focus({ preventScroll: true }); }
   if (T.daily) Daily.onRender(T); /* feature: daily */
+  if (typeof Mini !== 'undefined') Mini.onRender(T); /* feature: minibridge */
   if (T.hands && T.phase === 'done' && SEATS.every(s => T.hands[s].every(c => c[0] !== '?'))) requestDD(T.hands, true, T.contract ? T.contract.strain : null);
   const mt = isMyTurn(T);
   if (mt && !wasMyTurn) {
@@ -677,7 +682,7 @@ function showRecord(i, review) { // review: the card-by-card replay takes the di
   const tt = h.tricks && h.tricks.length ? `<h3 style="font-size:16px;margin-top:12px">Play</h3><div id="playBox">${playTableHTML(h)}</div>` : '';
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
     ${review ? `<p class="rphead">${contractHTML(h.contract)} ${resultText(h.contract, h.declTricks)}, N-S ${h.scoreNS}</p><div id="replayBox"></div>` : `<div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>`}
-    ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
+    ${h.mini ? '' /* feature: minibridge */ : auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
     ${otherLine(h)}${h.vs ? `<p>${vsText(h)}.</p>` : ''}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
     <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button><button class="btn small" id="shareOne">Share link</button>${h.tricks && h.tricks.length && !review ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div>${review ? '' : '<div id="replayBox"></div>'}`);
@@ -731,12 +736,12 @@ function redrawReview() {
   if (replayDraw) replayDraw();
 }
 function otherLine(h) {
-  let o = h.other, label = 'Robot table';
+  let o = h.other, label = h.mini ? 'Best double dummy' /* feature: minibridge */ : 'Robot table';
   if (!o && T.match && otherRoom) { o = otherRoom.history.find(x => x.board === h.board); label = T.match.room === 'Open' ? 'Closed room' : 'Open room'; }
   if (!o) return '';
   const im = T.match ? toImps((T.match.room === 'Open' ? h.scoreNS - o.scoreNS : o.scoreNS - h.scoreNS)) : toImps(h.scoreNS - o.scoreNS);
   return `<p><b>${label}:</b> ${o.contract ? contractHTML(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMP${Math.abs(im) === 1 ? "" : "s"} to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMP${Math.abs(im) === 1 ? '' : 's'} to you` : 'No swing')}.</p>
-    ${o.auction ? `<details><summary class="note">Their auction</summary>${auctionGridHTML(T, o.auction, h.dealer, h.vul, null)}</details>` : ''}`;
+    ${o.auction && o.auction.length /* feature: minibridge */ ? `<details><summary class="note">Their auction</summary>${auctionGridHTML(T, o.auction, h.dealer, h.vul, null)}</details>` : ''}`;
 }
 function showClaimDialog() {
   if (!T || T.phase !== 'play' || T.claim) return;
@@ -1062,7 +1067,7 @@ function savedPractice() {
 function renderPracticeBtn() {
   const t = savedPractice();
   $('practiceBtn').textContent = t ? 'Continue practice' : 'Practice with robots';
-  $('practiceNew').classList.toggle('hidden', !t);
+  $('practiceNew').classList.toggle('hidden', !t && typeof PracticeModes === 'undefined'); /* feature: minibridge */
   $('practiceNote').textContent = t ? `Board ${t.board}${t.history.length ? `, ${t.history.length} played` : ''}. You sit South with three robots. Nothing is shared.` : 'You sit South with three robots. Nothing is shared.';
 }
 // practice: the next board starts by itself a few seconds after the last one ends (an option)
@@ -1344,11 +1349,13 @@ function startPractice(fresh) {
   }
   const t = newTable({ name: 'Practice', local: true });
   t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: nm }, W: { kind: 'robot' } };
+  if (typeof PracticeModes !== 'undefined') PracticeModes.apply(t); /* feature: minibridge */
   startBoard(t);
+  if (typeof PracticeModes !== 'undefined') PracticeModes.afterAct(t); /* feature: minibridge */
   openTable(t);
 }
 $('practiceBtn').addEventListener('click', () => startPractice(false));
-$('practiceNew').addEventListener('click', () => startPractice(true));
+$('practiceNew').addEventListener('click', () => typeof PracticeModes !== 'undefined' ? PracticeModes.show() : startPractice(true)); /* feature: minibridge */
 async function api(path, body) {
   const r = await fetch(API_BASE + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
   if (!r.ok) throw new Error('HTTP ' + r.status);
