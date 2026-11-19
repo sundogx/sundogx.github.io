@@ -177,7 +177,7 @@ function plateHTML(t, seat) {
     const lead = t.phase === 'play' && (!tr || tr.cards.length === 0 || tr.cards.length === 4);
     yt = t.phase === 'auction' ? 'Your bid' : seat !== mine ? (lead ? 'Lead from dummy' : 'Play from dummy') : lead ? 'Your lead' : 'Your play';
   }
-  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="sr">${yt}</span>` : ''}${awayTag(t, seat)}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
+  return `<span class="plate ${vul ? 'vul' : ''} ${turn ? 'turn' : ''} ${yt ? 'act' : ''}"><span class="sl" title="${SEAT_NAME[seat]}${vul ? ', vulnerable' : ''}">${seat}</span><span class="nm">${esc(you ? 'You' : seatLabel(t, seat))}</span>${tag}${yt ? `<span class="sr">${yt}</span>` : ''}${awayTag(t, seat)}${typeof ShowPoints !== 'undefined' ? ShowPoints.tag(t, seat) : '' /* feature: showpoints */}${turn && t.phase !== 'done' && (!t.local || t.boardLimit) ? ` <span class="clk" data-since="${t.lastActAt || serverNow()}"></span>` : ''}</span>`;
 }
 const cssPx = (name, dflt) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || dflt;
 // the felt's inner width, height and side-column width as laid out (estimated before the first layout)
@@ -1110,6 +1110,7 @@ function showOptions() {
     ${opt('confirmBid', 'Confirm before bidding', 'Pick a call, then press the Bid button (or Enter) to make it.')}
     ${opt('hint', 'Hints in practice', 'A Hint button shows what the robot would bid or play in your seat.')}
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
+    ${typeof ShowPoints !== 'undefined' ? ShowPoints.optionsHTML(opt) : '' /* feature: showpoints */}
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
     ${window.Notify ? Notify.optionsHTML(opt) : '' /* feature: notify */}

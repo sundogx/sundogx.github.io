@@ -573,3 +573,6 @@ table.daily-lb tr.you td { font-weight: 600; }
 .pc-u { flex: 1; letter-spacing: .5px; }
 .pc-h { font-size: 12px; opacity: .7; }
 .pc-h .pc-p { opacity: 1; }
+
+/* feature: showpoints */
+.plate .hcpTag { flex: none; font-size: 11px; opacity: .7; font-variant-numeric: tabular-nums; }
