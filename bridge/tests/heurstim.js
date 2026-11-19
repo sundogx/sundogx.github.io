@@ -1,4 +1,4 @@
-// Heuristic card play (js/bots.js botPlay) against the previous heuristic (tests/fixtures/basebots2.js), paired:
+// Heuristic card play (js/bots.js botPlay) against the previous heuristic (tests/fixtures/basebots4.js), paired:
 // the same deals, the same robot auctions and contracts; only one side's card play changes.
 // Usage: node tests/heurstim.js [boards=2000] [mode=cmp] [seed=heurstim] [workers=cores-2]
 //   cmp   decl: declarer and dummy play the new heuristic, defenders the old one
@@ -10,6 +10,8 @@
 //         costs against the best card, totalled by category (side, strain, position in the trick, and the
 //         rule in botPlay that chose the card, from botWhyLast() in js/bots.js).
 // NEWOFF=a,b sets globalThis.BOT_OFF (the features switched off) for the new heuristic only, e.g. NEWOFF=fin,hold.
+// OVER=k: every contract is doubled and its level set so declarer needs k tricks more than double dummy (an overbid
+// doubled; the auction stays the robots' own).
 // BASE=path compares against another copy of bots.js instead of the frozen fixture; NEW=path replaces js/bots.js.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
@@ -52,10 +54,11 @@ if (isMainThread) {
 } else {
   Object.assign(globalThis, require('../js/engine.js'));
   const NEWB = require(process.env.NEW ? path.resolve(process.env.NEW) : '../js/bots.js');
-  const OLDB = require(process.env.BASE ? path.resolve(process.env.BASE) : './fixtures/basebots2.js');
+  const OLDB = require(process.env.BASE ? path.resolve(process.env.BASE) : './fixtures/basebots4.js');
   const D = require('../js/ddplay.js');
   const NEWOFF = process.env.NEWOFF != null ? process.env.NEWOFF.split(',').filter(Boolean) : undefined;
-  const newPlay = (t, s) => { globalThis.BOT_OFF = NEWOFF; const c = NEWB.botPlay(t, s); globalThis.BOT_OFF = undefined; return c; };
+  const NEWEXP = (process.env.NEWEXP || '').split(',').filter(Boolean); // experiment switches (globalThis.BOT_EXP)
+  const newPlay = (t, s) => { globalThis.BOT_OFF = NEWOFF; globalThis.BOT_EXP = NEWEXP; const c = NEWB.botPlay(t, s); globalThis.BOT_OFF = undefined; globalThis.BOT_EXP = undefined; return c; };
   const oldPlay = (t, s) => { globalThis.BOT_OFF = undefined; return OLDB.botPlay(t, s); };
   const wasmDir = path.join(__dirname, '..', 'js', 'wasm');
   const create = require(path.join(wasmDir, 'compiled.js'));
@@ -82,8 +85,12 @@ if (isMainThread) {
     const rand = seededRand(seed + ':' + g);
     const hands = deal(rand), dealer = boardDealer(g + 1), vul = boardVul(g + 1), auction = [];
     while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = NEWB.botCall(hands[s], s, dealer, auction, vul); auction.push(r.alert ? { call: r.call, by: s, alert: r.alert } : { call: r.call, by: s }); }
-    const ct = finalContract(auction);
+    let ct = finalContract(auction);
     if (!ct) return parentPort.postMessage({ g, played: false });
+    if (process.env.OVER) { // an overbid, doubled: the level is set OVER tricks above the double-dummy result
+      const dd0 = await ddDecl(hands, ct), lv = Math.min(7, Math.max(1, dd0 - 6 + +process.env.OVER));
+      ct = { ...ct, level: lv, doubled: 1 };
+    }
     const isDecl = s => sameSide(s, ct.declarer);
     const vals = [], leaks = [];
     if (mode === 'cmp') {

@@ -102,6 +102,7 @@ function botPlayOld(t, seat) {
 const FIN_SHARE = 0.45; // declarer's third hand finesses only if the second hand has at least this share of the opponents' high cards
 const BOT_DEFAULT_OFF = ['trlead', 'holdup']; // measured as neutral or harmful against the previous heuristic (tests/heurstim.js)
 const OFF = k => ((typeof globalThis !== 'undefined' && globalThis.BOT_OFF) || BOT_DEFAULT_OFF).includes(k);
+const EXP = k => typeof globalThis !== 'undefined' && !!globalThis.BOT_EXP && globalThis.BOT_EXP.includes(k); // experiments (tests/heurstim.js NEWEXP)
 // ---- Card play v2: finesses, hold-ups, covering honours, ruffing in the short hand, signals ----
 // Weights of the features in swF (a defender's lead after the opening lead), dsF (a discard), dlF (the declaring side's
 // lead) and flF (following suit; only the groups listed, side + seat 1|2 + n|s), by contract kind: fitted with
@@ -398,12 +399,14 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     const firstLead = play.tricks[0].cards[0];
     const dummyLeft = nextSeat(seat) === dummy; // dummy plays right after me
     const cand = SUITS.filter(s => of(legal, s).length);
-    // cash setting tricks: our side's sure winners are enough to beat the contract
-    if (!OFF('setcash')) {
+    // cash setting tricks: our sure winners are exactly the tricks that beat the contract. With more than that, or
+    // in a doubled contract (we play for the biggest penalty), cashing early mostly sets up declarer's cards instead:
+    // the switch below chooses (measured with tests/heurstim.js, OVER=0..2).
+    if (!OFF('setcash') && !c.doubled) {
       const tw = tricksWon(play, c);
       const toSet = 13 - (c.level + 6) + 1 - tw.def;
       const sure = legal.filter(defSure);
-      if (toSet > 0 && sure.length >= toSet) return want ? null : R('L103', high(sure));
+      if (toSet > 0 && sure.length === toSet) return want ? null : R('L103', high(sure));
     }
     const scoreSuit = s => {
       let sc = 0;
@@ -468,6 +471,14 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     if (!OFF('swfit') && BOT_SWITCH_W[trump ? 'suit' : 'NT']) {
       const W = BOT_SWITCH_W[trump ? 'suit' : 'NT'], sc = {};
       for (const s of cand) sc[s] = swF(s).reduce((a, v, i) => a + v * W[i], 0);
+      // a crossruff: declarer has shown out of a side suit, dummy has trumps and is short in a suit we hold: lead
+      // trumps (unless that gives up a trump honour)
+      if (trump && sc[trump] !== undefined && !OFF('trX')) {
+        const dT = of(dummyCards, trump).length, mT = of(my, trump);
+        const ruffable = SUITS.some(x => x !== trump && of(dummyCards, x).length <= 1 && of(my, x).length + (voidIn(partner, x) ? 0 : 1) >= 3 && !voidIn(decl, x));
+        const cross = SUITS.some(x => x !== trump && voidIn(decl, x));
+        if (dT && ruffable && cross && !mT.some(x => rankOf(x) >= 9 && !isMaster(x))) sc[trump] += 1.5;
+      }
       cand.sort((a, b) => sc[b] - sc[a]);
     } else cand.sort((a, b) => scoreSuit(b) - scoreSuit(a));
     return R('defSwitch', leadCardIn(cand[0]));
