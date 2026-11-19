@@ -1,5 +1,8 @@
 // End-to-end checks against a running server (npm run dev, or the deployed Worker).
 //   BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs
+// Start the server with `npx wrangler dev --var TEST_TIME_SCALE:0.0167` (a minute lasts a second) to also check
+// time limits and the host's job passing on while the host is away; without it those checks are skipped.
+// Takes about four minutes (robots play at their usual pace).
 const BASE = process.env.BRIDGE_URL || 'http://localhost:8787';
 const WS = BASE.replace(/^http/, 'ws');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -10,12 +13,13 @@ const check = (ok, what) => { console.log((ok ? 'ok   ' : 'FAIL ') + what); if (
 const post = (body) => fetch(BASE + '/api/tables', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
 
 async function client(code, name) {
-  const c = { name, errs: [], st: null, chat: [], thinks: [], ws: new WebSocket(`${WS}/api/table/${code}/ws`) };
+  const c = { name, errs: [], st: null, chat: [], hist: [], thinks: [], ws: new WebSocket(`${WS}/api/table/${code}/ws`) };
   c.ws.onmessage = e => {
     const m = JSON.parse(e.data);
-    if (m.type === 'state') { c.st = m; c.chat = (m.chatFull ? [] : c.chat).concat(m.chat || []); }
+    if (m.type === 'state') { c.st = m; c.chat = (m.chatFull ? [] : c.chat).concat(m.chat || []); if (m.hist) c.hist = c.hist.slice(0, m.histFrom).concat(m.hist); }
     else if (m.type === 'error') c.errs.push(m.msg);
     else if (m.type === 'think') c.thinks.push(m); // friends mode: the server asks this browser for a robot's card (left unanswered here)
+    else if (m.type === 'notfound') c.notfound = m;
   };
   await new Promise(r => c.ws.onopen = r);
   c.ws.send(JSON.stringify({ type: 'hello', secret: sec(name.toLowerCase()), name }));
@@ -187,6 +191,205 @@ check(spec.t() && spec.t().kibSee === false && spec.t().seed === undefined, 'tea
   for (const c of [oa, ob, ca, cb]) c.ws.close();
 }
 spec.ws.close();
+
+// Play one move for whichever of the humans in `hum` (seat -> client) is to act: pass in the auction, the first legal card in play.
+// Returns true if a move was sent.
+function humanMove(hum) {
+  const c0 = Object.values(hum)[0], t = c0.t();
+  if (t.phase === 'auction') { const s = auctionTurn(t.dealer, t.auction); if (hum[s]) { hum[s].act('call', 'P'); return true; } return false; }
+  if (t.phase !== 'play' || t.claim || t.undoReq) return false;
+  const seat = playTurn(t.play, t.contract), dummy = order[(order.indexOf(t.contract.declarer) + 2) % 4];
+  const who = hum[seat === dummy ? t.contract.declarer : seat];
+  if (!who) return false;
+  const v = who.t(), tr = v.play.tricks, last = tr[tr.length - 1], ps = new Set(tr.flatMap(x => x.cards.map(c => c.card)));
+  let h = v.hands[seat].filter(x => !x.startsWith('?') && !ps.has(x));
+  if (last && last.cards.length < 4) { const f = h.filter(x => x[0] === last.cards[0].card[0]); if (f.length) h = f; }
+  who.act('card', seat, h[0]); return true;
+}
+const until = async (cond, ms, step = 100) => { for (let i = 0; i < ms / step; i++) { if (cond()) return true; await sleep(step); } return !!cond(); };
+// Two humans N-S (S hosts), robots E-W; bid to a contract and concede it, so the board ends at once.
+async function quickBoard(a, b) {
+  const hum = { S: a, N: b };
+  if (!(await toPlay(hum, a))) return false;
+  const t = a.t(), dummy = order[(order.indexOf(t.contract.declarer) + 2) % 4];
+  hum[['S', 'N'].find(s => s !== dummy)].act('claim', 0);
+  return until(() => a.t().phase === 'done', 3000);
+}
+
+// --- host: hand over, and passing on when the host has left
+{
+  const { code: hc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'host', priv: true })).json();
+  const a = await client(hc, 'Alice'), b = await client(hc, 'Bob'); await sleep(400);
+  b.act('sit', 'N'); await sleep(300);
+  b.act('makeHost', 'S'); await sleep(300);
+  check(a.t().host === a.t().createdBy, 'only the host can hand over the host\'s job');
+  a.act('makeHost', 'N'); await sleep(300);
+  check(a.t().host !== a.t().createdBy && a.chat.some(x => /Bob is now the host/.test(x.text)), 'the host can hand the job to a seated player');
+  b.act('makeHost', 'S'); await sleep(300);
+  check(a.t().host === a.t().createdBy, '... and back');
+  // the host stands up while alone, leaves, and someone else sits down: they become the host
+  b.act('standUp'); await sleep(300); a.act('standUp'); await sleep(300);
+  check(a.t().host === a.t().createdBy, 'a host who stands up with nobody seated stays the host');
+  a.ws.close(); await sleep(400);
+  b.act('sit', 'E'); await sleep(400);
+  check(b.t().seats.E && b.t().host !== b.t().createdBy && b.chat.some(x => /Bob is now the host, as the host isn.t at the table/.test(x.text)), 'a host who left the table hands the job to the next player who sits down');
+  b.ws.close();
+}
+
+// --- lobby: public tables show who is there and the settings that matter for joining
+{
+  const { code: lc } = await (await post({ secret: sec('lena'), name: 'Lena', tableName: 'lobby test', priv: false })).json();
+  const a = await client(lc, 'Lena'); await sleep(300);
+  a.act('settings', { locked: true }); await sleep(3500); // the lobby list is cached for 3 seconds
+  const row = (await (await fetch(BASE + '/api/tables')).json()).tables.find(x => x.code === lc);
+  check(row && row.people === 1 && row.locked === true && row.boardLimit === 0 && row.seats.S && row.seats.S.name === 'Lena', 'the lobby lists people at the table, locked seats and the time limit');
+  // --- closing a table
+  const k = await client(lc, 'Kim'); await sleep(300);
+  k.act('close'); await sleep(400);
+  check(!k.notfound && k.errs.some(e => /Only the host/.test(e)), 'only the host can close the table');
+  a.act('close'); await sleep(600);
+  check(a.notfound && a.notfound.closed && k.notfound, 'the host closes the table and everyone at it is told');
+  await sleep(3200);
+  const gone = !(await (await fetch(BASE + '/api/tables')).json()).tables.some(x => x.code === lc);
+  const z = await client(lc, 'Zoe'); await sleep(400);
+  check(gone && z.notfound && !z.notfound.closed, '... it leaves the lobby and its code no longer opens a table');
+  z.ws.close();
+}
+
+// --- closing a team match closes both rooms
+{
+  const mm = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'match2', priv: true, match: true })).json();
+  const a = await client(mm.code, 'Alice'); await sleep(400);
+  const c = await client(a.t().match.otherCode, 'Cara'); await sleep(300);
+  a.act('close'); await sleep(800);
+  check(a.notfound && c.notfound, 'closing one room of a team match closes the other room too');
+}
+
+// --- play a deal again (host only), not in a team match
+{
+  const { code: rc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'replay', priv: false })).json();
+  const a = await client(rc, 'Alice'), b = await client(rc, 'Bob'); await sleep(400);
+  b.act('sit', 'N'); await sleep(200);
+  a.act('robot', 'E'); await sleep(150); a.act('robot', 'W'); await sleep(400);
+  check(await quickBoard(a, b), 'a board finished');
+  const h1 = a.hist[0], bd = a.t().board; // board 1 (if it was passed out, toPlay has moved on to the next one)
+  b.act('next', { replay: 1 }); await sleep(400);
+  check(a.t().phase === 'done' && b.errs.some(e => /Only the host/.test(e)), 'only the host can deal a board again');
+  a.act('next', { replay: 1 }); await sleep(500);
+  const t2 = a.t();
+  check(t2.board === bd + 1 && t2.replayOf === 1 && t2.dealer === h1.dealer && t2.vul === h1.vul && JSON.stringify(t2.hands.S.slice().sort()) === JSON.stringify(h1.hands.S.slice().sort()), 'the host deals board 1 again (same cards, dealer and vulnerability)');
+  check(Object.entries(t2.hands).every(([s, h]) => s === 'S' || h.every(x => x.startsWith('?'))), '... and the other hands stay hidden as usual');
+  check(await quickBoard(a, b) && a.hist.some(h => h.board === bd + 1 && h.replayOf === 1), '... and its record says which board it repeats');
+  a.ws.close(); b.ws.close();
+}
+{
+  const mm = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'match3', priv: true, match: true })).json();
+  const a = await client(mm.code, 'Alice'), b = await client(mm.code, 'Bob'); await sleep(400);
+  b.act('sit', 'N'); await sleep(200);
+  a.act('robot', 'E'); await sleep(150); a.act('robot', 'W'); await sleep(400);
+  await quickBoard(a, b);
+  const bd = a.t().board; // (a passed-out board moves on to the next one)
+  a.act('next', { replay: 1 }); await sleep(400);
+  check(a.t().board === bd && a.errs.some(e => /fixed deals/.test(e)), 'a team match never deals a board again (' + a.t().phase + ' ' + a.t().board + ' ' + a.errs.join('; ') + ')');
+  a.act('close'); await sleep(300);
+  a.ws.close(); b.ws.close();
+}
+
+// --- a robot's claim when a person is its dummy: the person answers it themself
+// (only a board where North, a robot, declares opposite the human South shows this; up to about 90 seconds of boards)
+{
+  const { code: dc } = await (await post({ secret: sec('dora'), name: 'Dora', tableName: 'dummy claim', priv: false })).json();
+  const a = await client(dc, 'Dora'); await sleep(300);
+  for (const s of ['N', 'E', 'W']) { a.act('robot', s); await sleep(120); }
+  let seen = null; const t0 = Date.now();
+  while (!seen && Date.now() - t0 < 90000) {
+    const t = a.t();
+    if (t.claim) {
+      if (t.contract.declarer === 'N' && t.claim.by === 'N' && t.claim.need.includes('S')) { seen = t.claim; break; }
+      if (t.claim.need.includes('S') && !t.claim.acc.S) a.act('respond', true);
+      await sleep(300); continue;
+    }
+    if (t.phase === 'done') { a.act('next'); await sleep(400); continue; }
+    // not the board we want: South concedes as a defender
+    if (t.phase === 'play' && (t.contract.declarer === 'E' || t.contract.declarer === 'W')) { a.act('claim', 0); await sleep(400); continue; }
+    if (t.phase === 'auction' && auctionTurn(t.dealer, t.auction) === 'S') {
+      // raise North's suit opening once, so North declares more often; otherwise pass
+      const last = [...t.auction].reverse().find(x => /^[1-7]/.test(x.call)), mine = t.auction.some(x => x.by === 'S' && x.call !== 'P');
+      const raise = last && last.by === 'N' && !mine && !/NT$/.test(last.call) && +last.call[0] < 4 ? (+last.call[0] + 1) + last.call.slice(1) : 'P';
+      a.act('call', raise); await sleep(300); continue;
+    }
+    if (humanMove({ S: a })) await sleep(300); else await sleep(100);
+  }
+  if (seen) {
+    await sleep(600);
+    const t = a.t();
+    check(t.claim && !t.claim.acc.S && t.phase === 'play', 'a robot declarer\'s claim waits for its human dummy\'s answer');
+    a.act('respond', false); await sleep(500);
+    check(!a.t().claim && a.chat.some(x => /South rejected the claim/.test(x.text)), '... who can reject it');
+  } else console.log('skip  a robot declarer\'s claim with a human dummy (no such board came up in time)');
+  a.ws.close();
+}
+
+// --- friends mode: a robot standing in for an away player never sends that person's cards to another browser
+{
+  const { code: sc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'subs', priv: true })).json();
+  const a = await client(sc, 'Alice'); let b = await client(sc, 'Bob'); await sleep(400);
+  b.act('sit', 'N'); await sleep(200);
+  a.act('robot', 'E'); await sleep(150); a.act('robot', 'W'); await sleep(400);
+  b.ws.close(); await sleep(500);
+  check(a.t().away && a.t().away.N, 'a player whose connection closes is marked away');
+  a.act('sub', 'N'); await sleep(400);
+  check(a.t().subs && a.t().subs.N && a.chat.some(x => /A robot is playing for North/.test(x.text)), 'their partner can let a robot play for them at once');
+  const nCards = () => a.t().play.tricks.flatMap(x => x.cards).filter(c => c.seat === 'N').length;
+  await until(() => (a.t().phase === 'play' && nCards() >= 3) || a.t().phase === 'done' || (humanMove({ S: a }) && false), 60000, 300);
+  check(a.t().phase === 'done' || nCards() >= 3, 'the stand-in bids and plays for North');
+  check(!a.thinks.some(x => x.view.seat === 'N'), 'no think request carries the away player\'s cards (' + a.thinks.length + ' think requests)');
+  b = await client(sc, 'Bob'); await sleep(500);
+  check(!a.t().subs.N && !a.t().away.N && a.chat.some(x => /Bob is back/.test(x.text)), 'when they come back they take over from the robot');
+  a.ws.close(); b.ws.close();
+}
+
+
+// --- friends mode: a browser that doesn't answer think requests (asleep) stops being asked on every card
+{
+  const { code: fc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'sleepy', priv: true })).json();
+  const a = await client(fc, 'Alice'); await sleep(400);
+  for (const s of ['N', 'E', 'W']) { a.act('robot', s); await sleep(150); }
+  const robotCardsOf = h => h.contract ? h.tricks.flatMap(x => x.cards).filter(c => !(c.seat === 'S' || (c.seat === 'N' && h.contract.declarer === 'S'))).length : 0;
+  const robotCards = () => { const t = a.t(); return t.phase === 'play' ? t.play.tricks.flatMap(x => x.cards).filter(c => !(c.seat === 'S' || (c.seat === 'N' && t.contract.declarer === 'S'))).length : 0; };
+  let n = 0; const counted = new Set(); // robot cards played (over the boards it takes)
+  await until(() => {
+    if (a.t().phase === 'done') { const h = a.hist[a.hist.length - 1]; if (h && !counted.has(h.board)) { counted.add(h.board); n += robotCardsOf(h); } a.act('next'); return false; }
+    return n + robotCards() >= 16 || (humanMove({ S: a }) && false);
+  }, 120000, 300);
+  n += a.t().phase === 'play' ? robotCards() : 0;
+  check(n >= 8 && a.thinks.length <= 2 + Math.ceil(n / 8) + 1, `a browser that let two think requests run out is rarely asked again (${a.thinks.length} requests for ${n} robot cards)`);
+  a.act('close'); await sleep(300); a.ws.close();
+}
+
+// --- time limit, and the host's job passing on while the host is away. These need the server started with a short
+// minute: npx wrangler dev --var TEST_TIME_SCALE:0.0167 (a minute is a second); otherwise they are skipped.
+{
+  const { code: tc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'clock', priv: false })).json();
+  const a = await client(tc, 'Alice'), b = await client(tc, 'Bob'); await sleep(400);
+  b.act('sit', 'N'); await sleep(200);
+  a.act('robot', 'E'); await sleep(150); a.act('robot', 'W'); await sleep(300);
+  a.act('settings', { boardLimit: 5 }); await sleep(300);
+  check(a.t().boardLimit === 5 && a.chat.some(x => /Time limit set to 5 minutes/.test(x.text)), 'the host sets a time limit');
+  const fast = await until(() => a.t().timeUp, 9000);
+  if (fast) {
+    check(a.chat.some(x => /Time's up/.test(x.text)), 'when the time is up everyone is told');
+    a.errs.length = 0; a.act('call', 'P'); a.act('claim', 0); await sleep(400);
+    check(a.errs.some(e => /Time's up/.test(e)), '... and the players can no longer bid, play or claim');
+    check(await until(() => a.t().phase === 'done', 120000), 'the robots finish the board, for the people too');
+    // host away: Alice's connection closes; after two (scaled) minutes the next action hands the job to Bob
+    a.act('next'); await sleep(300);
+    a.ws.close(); await sleep(2600);
+    b.act('chat', 'still there?'); await sleep(400);
+    check(b.t().host !== b.t().createdBy && b.chat.some(x => /Bob is now the host, as the host is away/.test(x.text)), 'a host who is away hands the job to a seated player who is here');
+  } else { console.log('skip  time limit and host away (start the server with --var TEST_TIME_SCALE:0.0167 to check them)'); a.ws.close(); }
+  b.ws.close();
+}
 
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nall checks passed');
 process.exit(failed ? 1 : 0);
