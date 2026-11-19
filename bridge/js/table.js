@@ -43,11 +43,14 @@ function fixHost(t) {
   if (!humans.some(o => o.id === t.host) && humans.length) { t.host = humans[0].id; sysMsg(t, `${humans[0].name} is now the host`); }
 }
 
-function startBoard(t) {
+// rec (optional): a finished board (from t.history) to deal again, with its dealer and vulnerability
+// ("play this deal again", online tables; never in a team match, whose deals are fixed by the seed).
+function startBoard(t, rec) {
   t.board += 1;
-  t.dealer = boardDealer(t.board);
-  t.vul = boardVul(t.board);
-  t.hands = t.seed ? deal(seededRand(t.seed + ':' + t.board)) : deal();
+  t.dealer = rec ? rec.dealer : boardDealer(t.board);
+  t.vul = rec ? rec.vul : boardVul(t.board);
+  t.hands = rec ? structuredClone(rec.hands) : t.seed ? deal(seededRand(t.seed + ':' + t.board)) : deal();
+  t.replayOf = rec ? (rec.replayOf || rec.board) : null;
   t.auction = []; t.contract = null; t.play = { tricks: [] }; t.claim = null;
   t.boardStart = Date.now(); t.lastActAt = Date.now(); t.timeUp = false;
   t.phase = 'auction';
@@ -56,6 +59,7 @@ function finishBoard(t, declTricks) {
   const c = t.contract;
   const sc = c ? scoreNS(c, declTricks, t.vul) : 0;
   const rec = { board: t.board, dealer: t.dealer, vul: t.vul, hands: t.hands, auction: t.auction, contract: c, tricks: t.play.tricks, declTricks: c ? declTricks : null, scoreNS: sc };
+  if (t.replayOf) rec.replayOf = t.replayOf; // the same deal as that earlier board
   if (t.local) { try { const o = simulateBoard(t.hands, t.dealer, t.vul); rec.other = { auction: o.auction, contract: o.contract, declTricks: o.declTricks, scoreNS: o.scoreNS }; } catch (e) { console.error(e); } }
   t.history.push(rec);
   t.phase = 'done'; t.claim = null;
@@ -156,7 +160,11 @@ const A = {
     t.chat.push({ from: me.id, name: me.name || 'Player', seat: s, text, ts: Date.now() });
     if (t.chat.length > 120) t.chat.splice(0, t.chat.length - 120);
   },
-  next(t) { if (t.phase !== 'done') return false; startBoard(t); },
+  next(t, rec) {
+    if (t.phase !== 'done') return false;
+    startBoard(t, rec);
+    if (rec) sysMsg(t, `Board ${t.board} is board ${t.replayOf} dealt again`);
+  },
   undo(t, seat) { if (!t.local && t.allowUndo === false) return false; return doUndo(t, seat); },
   robotStep(t, hint) { // hint: { key, card } worked out ahead (the page's solver); used only if the position is unchanged
     const ts = turnSeat(t); if (!ts) return false;
