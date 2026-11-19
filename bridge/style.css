@@ -561,3 +561,15 @@ table.daily-lb tr.you td { font-weight: 600; }
 @media (max-width: 700px) { #shText { font-size: 16px !important; } }
 /* feature: a11y: the statistics labels are row headers but keep the plain look */
 .reslist.stats th { font-weight: normal; font-size: inherit; color: inherit; }
+
+/* feature: played */
+.pc-modal .box { max-width: 340px; }
+.pc { font-size: 15px; }
+.pc-row { display: flex; gap: 10px; padding: 3px 0; border-top: 1px solid rgba(127,127,127,.2); }
+.pc-row:first-child { border-top: 0; }
+.pc-s { width: 1.2em; text-align: center; }
+.pc-s.red { color: var(--card-red); }
+.pc-p { flex: 1; opacity: .5; letter-spacing: .5px; }
+.pc-u { flex: 1; letter-spacing: .5px; }
+.pc-h { font-size: 12px; opacity: .7; }
+.pc-h .pc-p { opacity: 1; }
