@@ -589,6 +589,12 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
           if (cover.length && !dummyHasSeq) return R('L172', low(cover));
         }
         const m = winners.filter(isMaster);
+        // declaring side: partner plays fourth and holds a master that beats the card led: play low and let it win
+        // (round 7)
+        if (onDeclSide && !OFF('p2low')) {
+          const pf = of(pCards, led);
+          if (pf.length && isMaster(high(pf)) && rankOf(high(pf)) > rankOf(winCard)) return R('p2low', low(follow));
+        }
         if (!OFF('second') && onDeclSide && m.length) return R('L182', low(m));
         // defender: take a master when it and our other sure winners beat the contract
         if (!onDeclSide && m.length && !OFF('set2')) {
@@ -620,7 +626,7 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       return R('L201', seq.length ? low(seq) : top);
     };
     const rc = followRule(), rwhy = botWhy;
-    if (follow.length < 2 || OFF('flfit')) return R(rwhy, rc);
+    if (follow.length < 2 || OFF('flfit') || rwhy === 'p2low') return R(rwhy, rc);
     // the fitted choice among a few candidate cards (flF, BOT_FOLLOW_W): the rule's card, low, the cheapest winner,
     // the cheapest sure winner, high; equal cards (no unseen card between them) count once, as the lowest
     const equal = (x, y) => { const lo = Math.min(rankOf(x), rankOf(y)), hi = Math.max(rankOf(x), rankOf(y)); for (let r = lo + 1; r < hi; r++) if (!known.has(led + RANKS[r]) || (!onDeclSide && dummyCards.includes(led + RANKS[r])) || (onDeclSide && pCards.includes(led + RANKS[r]))) return false; return true; };

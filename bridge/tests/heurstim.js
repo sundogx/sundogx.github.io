@@ -9,6 +9,7 @@
 //         real position double-dummy at every decision with more than one distinct card: the tricks the chosen card
 //         costs against the best card, totalled by category (side, strain, position in the trick, and the
 //         rule in botPlay that chose the card, from botWhyLast() in js/bots.js).
+// OLDEXP=a,b: experiments on for the old heuristic (BASE=js/bots.js NEWEXP=a,b OLDEXP=a measures b on top of a).
 // NEWOFF=a,b sets globalThis.BOT_OFF (the features switched off) for the new heuristic only, e.g. NEWOFF=fin,hold.
 // OVER=k: every contract is doubled and its level set so declarer needs k tricks more than double dummy (an overbid
 // doubled; the auction stays the robots' own).
@@ -59,7 +60,8 @@ if (isMainThread) {
   const NEWOFF = process.env.NEWOFF != null ? process.env.NEWOFF.split(',').filter(Boolean) : undefined;
   const NEWEXP = (process.env.NEWEXP || '').split(',').filter(Boolean); // experiment switches (globalThis.BOT_EXP)
   const newPlay = (t, s) => { globalThis.BOT_OFF = NEWOFF; globalThis.BOT_EXP = NEWEXP; const c = NEWB.botPlay(t, s); globalThis.BOT_OFF = undefined; globalThis.BOT_EXP = undefined; return c; };
-  const oldPlay = (t, s) => { globalThis.BOT_OFF = undefined; return OLDB.botPlay(t, s); };
+  const OLDEXP = (process.env.OLDEXP || '').split(',').filter(Boolean); // experiments for the old heuristic (with BASE=js/bots.js)
+  const oldPlay = (t, s) => { globalThis.BOT_OFF = undefined; globalThis.BOT_EXP = OLDEXP; const c = OLDB.botPlay(t, s); globalThis.BOT_EXP = undefined; return c; };
   const wasmDir = path.join(__dirname, '..', 'js', 'wasm');
   const create = require(path.join(wasmDir, 'compiled.js'));
   const { mode, seed } = workerData;
@@ -122,7 +124,7 @@ if (isMainThread) {
           const posName = i === 0 ? 'opening lead' : ['lead', '2nd', '3rd', '4th'][pos];
           const kind = pos === 0 ? '' : suitOf(card) === suitOf(tr.cards[0].card) ? ' follow' : ct.strain !== 'N' && suitOf(card) === ct.strain ? ' ruff' : ' discard';
           leaks.push(['side ' + side, loss], [`${side} ${st} ${posName}${kind}`, loss], [`${side} ${st} why=${why}`, loss]);
-          if (process.env.DUMP && loss >= 1 && new RegExp(process.env.DUMP).test(`${side} ${st} why=${why}`)) { // print the position
+          if (process.env.DUMP && loss >= 1 && new RegExp(process.env.DUMP).test(`${side} ${st} why=${why} | ${side} ${st} ${posName}${kind}`)) { // print the position
             const sh = h => SUITS.map(su => su + (h.filter(x => suitOf(x) === su).map(x => x[1]).join('') || '-')).join(' ');
             const tw = tricksWon(t.play, ct);
             console.log(`\n#${g} ${contractText(ct)} trick ${t.play.tricks.length + (pos ? 0 : 1)} (decl ${tw.decl}, def ${tw.def}) ${s} to play, why=${why}; auction ${auction.map(a => a.call).join(' ')}`);
