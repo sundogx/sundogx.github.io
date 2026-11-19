@@ -59,6 +59,20 @@ const handle = async (req, env) => {
     const url = new URL(req.url);
     const path = url.pathname;
 
+    // Site owner only: close tables by Durable Object id or table code (needs the ADMIN_TOKEN secret, set with
+    // `npx wrangler secret put ADMIN_TOKEN`; without it this route doesn't exist). Body: { ids: [...], codes: [...], lobby: true }.
+    if (path === '/api/admin/purge' && req.method === 'POST') {
+      const tok = env.ADMIN_TOKEN, got = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
+      if (!tok || got.length !== tok.length || got !== tok) return new Response('Not found', { status: 404 });
+      let body; try { body = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
+      const why = 'The site owner closed this table.';
+      const stubs = [...(body.ids || []).slice(0, 200).map(id => env.TABLE.get(env.TABLE.idFromString(String(id)))),
+        ...(body.codes || []).slice(0, 200).map(c => tableStub(env, String(c)))];
+      const res = await Promise.allSettled(stubs.map(s => s.purge(why)));
+      if (body.lobby) await lobbyStub(env).clear();
+      return json({ closed: res.filter(r => r.status === 'fulfilled').length, failed: res.filter(r => r.status === 'rejected').length });
+    }
+
     if (path === '/api/tables' && req.method === 'GET') {
       return json({ tables: await lobbyStub(env).list() });
     }
@@ -404,6 +418,13 @@ export class TableRoom extends DurableObject {
     await this.ctx.storage.deleteAll();
     lobbyStub(this.env).remove(code).catch(() => { });
     for (const ws of this.ctx.getWebSockets()) { this.sendTo(ws, { type: 'notfound', closed: true, msg: why }); try { ws.close(1000, 'closed'); } catch (e) { } }
+  }
+  // Site owner's purge: like shutdown, but also wipes storage when the table never loaded.
+  async purge(why) {
+    const code = this.t && this.t.id;
+    if (this.t) await this.shutdown(why);
+    else { await this.ctx.storage.deleteAlarm(); await this.ctx.storage.deleteAll(); for (const ws of this.ctx.getWebSockets()) { this.sendTo(ws, { type: 'notfound', closed: true, msg: why }); try { ws.close(1000, 'closed'); } catch (e) { } } }
+    return code || null;
   }
   async closeBy(uid) { if (this.t && (this.t.host === uid || this.t.createdBy === uid)) await this.shutdown('The match was closed.'); }
   async closeTable(uid, ws) {
@@ -821,6 +842,7 @@ export class Lobby extends DurableObject {
   }
   async update(summary) { this.listCache = null; await this.ctx.storage.put('t:' + summary.code, summary); }
   async remove(code) { this.listCache = null; await this.ctx.storage.delete('t:' + code); }
+  async clear() { this.listCache = null; const all = await this.ctx.storage.list({ prefix: 't:' }); await this.ctx.storage.delete([...all.keys()]); }
   async list() {
     if (this.listCache && Date.now() - this.listCache.at < 3000) return this.listCache.v;
     const v = await this.readList();
