@@ -354,6 +354,7 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 /* close button pinned to the top corner while a long window scrolls */
 .modal .mtop { position: sticky; top: 0; height: 0; display: flex; justify-content: flex-end; z-index: 2; margin: -8px -8px 0 0; }
 .modal .mclose { height: 32px; min-width: 32px; padding: 0 8px; box-shadow: 0 1px 4px #0003; }
+.sidehead .mclose { height: 32px; min-width: 32px; padding: 0 8px; }
 .diagram { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: auto auto auto; gap: 8px; align-items: center; justify-items: center; margin: 8px 0 12px; }
 .diagram .rows { border: 1px solid var(--line); }
 .diagram .lbl { font-size: 12px; color: var(--ink-soft); text-align: center; }
@@ -385,6 +386,7 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 #seatReqs { background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
 #seatReqs .row { justify-content: space-between; padding: 3px 0; }
 .plate .away { font-size: 11px; background: #ffffff26; border-radius: 3px; padding: 0 4px; }
+.plate.turn .away { background: #00000018; }
 .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--ink); color: var(--page); padding: 8px 14px; border-radius: 8px; z-index: 30; font-size: 14px; max-width: 90vw; }
 .ttable { width: 100%; font-size: 14px; border-collapse: collapse; font-family: var(--serif); }
 .ttable td { padding: 2px 4px; border-bottom: 1px solid var(--line); text-align: center; }
@@ -393,6 +395,7 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 .card.hint { box-shadow: inset 0 0 0 2px var(--brass), -1px 0 0 #0003; }
 .bcard.hint:not(:disabled) { box-shadow: inset 0 0 0 2px var(--brass); }
 .bcard.sel.hint { box-shadow: 0 0 0 3px #000 inset; }
+.bcard.pass.hint:not(:disabled) { box-shadow: inset 0 0 0 2px var(--brass), inset 0 0 0 3px #000; } /* a dark edge inside the gold, so it shows on green */
 .rows .rk.play.hint { box-shadow: inset 0 0 0 1.5px #000; }
 /* play review: a card that cost tricks double dummy */
 .cost { color: var(--ink-soft); font-family: var(--sans); font-size: 11px; font-weight: 600; margin-left: 1px; }
@@ -428,7 +431,8 @@ ul.costs li { margin: 1px 0; }
   .plate { height: auto; min-height: 30px; }
   .corner.tl { transform: scale(.6); transform-origin: top left; } /* board box and trick count fit the narrow corner */
   .felt > .corner.tl { top: 6px; left: 6px; }
-  .rows .rk { padding: 1px 2px; }
+  .rows .rk { padding: 1px 1px; }
+  .rows .rr { gap: 0 1px; } .rows .s { width: 14px; } /* a 4-card suit fits one line in the narrow side column */
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }
 }
@@ -474,3 +478,7 @@ ul.costs li { margin: 1px 0; }
 @media (orientation: landscape) and (max-height: 520px) {
   .felt > .corner.tl { top: 6px; left: 6px; transform: scale(.8); transform-origin: top left; }
 }
+/* online results: each person's IMPs over the boards they played; the host's Seats window */
+.reslist.people { margin: 0 0 12px; }
+.seatlist { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.seatlist b { display: inline-block; min-width: 44px; font-weight: 600; }

@@ -199,7 +199,8 @@ function seatBlock(t, seat, where) {
   } else if (o.kind === 'robot' && !t.local && !mine && !midBoard) {
     inner += `<div class="sitbtns"><button class="btn small" data-sit="${seat}">Take seat</button></div>`;
   }
-  if (where !== 'bottom' && t.hands && t.phase !== 'waiting') {
+  // once the board is over the hands go (the hand record has them; the host may move players before the next board)
+  if (where !== 'bottom' && t.hands && t.phase !== 'waiting' && t.phase !== 'done') {
     const side = where !== 'top', g = feltGeom(), cwid = cssPx('--cw', 64);
     // room for this hand: its own column at the sides; across the top, the width between the corners
     const room = side ? g.colW : g.topW;
@@ -335,7 +336,7 @@ function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ?
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   let html = '';
-  if (t.board) html += `<div class="corner tl">${boardBoxHTML(t, o)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && (!t.local || t.boardLimit) ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
+  if (t.board) html += `<div class="corner tl">${boardBoxHTML(t, o)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && t.boardLimit ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
   html += `<div class="pos-top">${seatBlock(t, o.top, 'top')}</div>`;
   html += `<div class="pos-left">${seatBlock(t, o.left, 'left')}</div>`;
   html += `<div class="pos-right">${seatBlock(t, o.right, 'right')}</div>`;
@@ -438,12 +439,21 @@ function resultBanner(t) {
   const sideScore = !mine ? h.scoreNS : (sideOf(mine) === 'NS' ? h.scoreNS : -h.scoreNS);
   const label = mine ? 'Your side' : 'N-S';
   const i = t.history.length - 1, next = mine || t.local || isHost(t);
+  // online: a board can't start with an empty seat, so offer a robot for it instead of Next
+  const empty = t.local ? [] : SEATS.filter(s => !t.seats[s]);
+  const seatsBtn = movesOK(t) ? '<button class="btn small" data-seats="1" title="Move players before the next board">Seats</button>' : '';
+  const go = !next ? '' : empty.length ? `<p class="note" style="margin:4px 0 0">${empty.map(s => SEAT_NAME[s]).join(' and ')} ${empty.length > 1 ? 'are' : 'is'} empty.</p><div class="row">${empty.map(s => `<button class="btn primary" data-robot="${s}">${empty.length > 1 ? 'Robot ' + s : 'Add robot'}</button>`).join('')}${seatsBtn}</div>`
+    : `<div class="row"><button class="btn primary" data-next="1">Next board</button>${seatsBtn}</div>`;
   // one compact panel: contract and result, tricks and score, then the buttons (it must fit the middle of a phone's table)
   return `<div class="banner result"><h3>${h.contract ? `${contractHTML(h.contract)} <span class="res">${resultText(h.contract, h.declTricks)}</span>` : 'Passed out'}</h3>
-    <div>${h.contract ? `${h.declTricks} trick${h.declTricks === 1 ? '' : 's'} for declarer<br>` : ''}${label} <b class="sc">${sideScore > 0 ? '+' : ''}${sideScore}</b></div>
-    ${next ? '<div class="row"><button class="btn primary" data-next="1">Next board</button></div>' : ''}
+    <div>${h.contract ? `${h.declTricks} trick${h.declTricks === 1 ? '' : 's'} for declarer<br>` : ''}${label} <b class="sc">${sideScore > 0 ? '+' : ''}${sideScore}</b>${h.vs ? `<br>${vsText(h)}` : ''}</div>
+    ${go}
     <div class="row sub"><button class="btn small" data-record="${i}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn small" data-review="${i}" aria-label="Review the play">Review</button>` : ''}</div></div>`;
 }
+// a deal played again: N-S here against N-S on the board it repeats
+const vsText = h => `Board ${h.vs.board} again: ${h.vs.imps ? `N-S ${h.vs.imps > 0 ? '+' : ''}${h.vs.imps} IMP${Math.abs(h.vs.imps) === 1 ? '' : 's'}` : 'no swing'}`;
+// the host can move players between boards (not in a team match, where the rooms' seats make the teams)
+const movesOK = t => !t.local && !t.match && isHost(t) && (t.phase === 'done' || t.phase === 'waiting');
 // Phones: the contract and the trick count sit under your hand (the sidebar is out of sight there); a phone held
 // sideways also shows the end-of-board panel there, in the room the bidding box leaves, rather than over the table.
 const phoneInfo = window.matchMedia('(max-width: 560px), (orientation: landscape) and (max-height: 520px)');
@@ -452,7 +462,7 @@ function renderPlayInfo(t, banner) { $('playInfo').innerHTML = !phoneInfo.matche
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
   const seat = mine || orient(t).bottom; // spectators see the bottom seat here when allowed
-  if (!t.hands || t.phase === 'waiting' || (!mine && !canSee(t, seat))) { el.innerHTML = ''; return; }
+  if (!t.hands || t.phase === 'waiting' || t.phase === 'done' || (!mine && !canSee(t, seat))) { el.innerHTML = ''; return; }
   const cards = currentCards(t, seat).slice().sort((a, b) => UI_SUITS.indexOf(suitOf(a)) - UI_SUITS.indexOf(suitOf(b)) || rankOf(b) - rankOf(a));
   const legal = mine ? myLegal(t, mine) : [];
   const myTurn = legal.length > 0;
@@ -567,6 +577,18 @@ function renderResultsPane(t) {
       return `<tr class="click" data-record="${i}" tabindex="0"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td class="num">${par ? par.scoreNS : DD.failed ? '–' : '…'}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
     }).reverse().join('');
     if (impN) summary = `<p class="note" style="margin:-4px 0 8px">N-S ${sgn(imps)} IMPs against par over ${impN} board${impN === 1 ? '' : 's'}.</p>`;
+    // each person over the boards they played (people may change seats between boards); E-W's sign is flipped
+    const per = new Map();
+    t.history.forEach(h => {
+      const par = parFor(h); if (!par || !h.players) return;
+      const im = toImps(h.scoreNS - par.scoreNS);
+      for (const s of SEATS) {
+        const p = h.players[s]; if (!p || p.kind !== 'human') continue;
+        const e = per.get(p.id) || { name: p.name, imps: 0, n: 0 }; e.name = p.name;
+        e.imps += sideOf(s) === 'NS' ? im : -im; e.n++; per.set(p.id, e);
+      }
+    });
+    if (per.size) summary += `<table class="reslist people"><tr><th>Player</th><th class="num">Boards</th><th class="num">IMPs</th></tr>${[...per.entries()].sort((a, b) => b[1].imps - a[1].imps).map(([id, e]) => `<tr><td>${esc(id === me.id ? 'You' : e.name)}</td><td class="num">${e.n}</td><td class="num">${e.imps ? sgn(e.imps) : '0'}</td></tr>`).join('')}</table>`;
     if (!DD.failed) note += ' Par fills in once the analysis finishes.';
   }
   const any = t.history.length || (t.match && otherRoom && otherRoom.history.length);
@@ -616,7 +638,7 @@ function render() {
     if (T.phase === 'auction' && bidActive() && !$('modalRoot').firstChild) $('bidArea').scrollIntoView({ block: 'nearest' });
   }
   wasMyTurn = mt;
-  claimFeedback(T); chatUnread(T);
+  claimFeedback(T); chatUnread(T); refreshSeats();
   updateTitle();
   scheduleRobot();
   autoNext(T); savePractice();
@@ -630,10 +652,10 @@ function closeModal() {
   const r = modalReturn; modalReturn = null;
   if (r && r.isConnected) r.focus({ preventScroll: true });
 }
-function modal(html, bare) { // bare: the window has its own buttons, so no Close button at the bottom
+function modal(html, bare) { // bare: a question with its own answer buttons (one of them cancels), so no ✕
   if (!$('modalRoot').firstChild) modalReturn = document.activeElement;
-  // a close button that stays at the top while a long window (the hand record) scrolls, and one at the bottom
-  $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box"><div class="mtop"><button class="btn small mclose" data-close="1" aria-label="Close">✕</button></div>${html}${bare ? '' : '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div>'}</div></div>`;
+  // one close button, ✕ at the top right, which stays in view while a long window (the hand record) scrolls
+  $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box">${bare ? '' : '<div class="mtop"><button class="btn small mclose" data-close="1" aria-label="Close">✕</button></div>'}${html}</div></div>`;
   const m = $('modalRoot').firstChild;
   setBackgroundInert(true);
   m.addEventListener('click', e => { if (e.target === m || e.target.dataset.close) closeModal(); });
@@ -662,7 +684,7 @@ function showRecord(i) {
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
     <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
-    ${otherLine(h)}
+    ${otherLine(h)}${h.vs ? `<p>${vsText(h)}.</p>` : ''}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
     <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div><div id="replayBox"></div>`);
   openRecord = i;
@@ -1151,6 +1173,7 @@ function showSettings() {
     <p class="note" style="margin:0 0 12px">When the time runs out, the robots finish the board.</p>
     <h3 style="font-size:16px">Seats</h3>
     ${people.length ? people.map(s => `<div class="row" style="justify-content:space-between;margin-bottom:6px"><span>${SEAT_NAME[s]}: ${esc(seatLabel(t, s))}</span><span class="row" style="gap:6px">${!t.local && t.seats[s].kind === 'human' ? `<button class="btn small" data-mkhost="${s}">Make host</button>` : ''}<button class="btn small" data-kick="${s}">Remove</button></span></div>`).join('') : '<p class="note">Nobody else is seated.</p>'}
+    ${movesOK(t) ? '<div class="row" style="margin-top:10px"><button class="btn" data-seats="1">Move players</button></div>' : ''}
     ${t.phase === 'auction' ? '<div class="row" style="margin-top:10px"><button class="btn" id="setRedeal">Redeal this board</button></div>' : ''}
     ${t.local ? '' : '<div class="row" style="margin-top:10px"><button class="btn" id="setClose">Close the table</button></div>'}`);
   const bind = (id, key) => $(id).addEventListener('change', e => doAct('settings', { [key]: e.target.checked }));
@@ -1165,11 +1188,30 @@ function showSettings() {
   });
 }
 
+// Host, between boards: swap two seats, or move everyone one seat clockwise.
+function seatsListHTML(t) { return SEATS.map(s => `<div><b>${SEAT_NAME[s]}</b> ${esc(t.seats[s] ? (mySeat(t) === s ? 'You' : seatLabel(t, s)) : 'Empty')}</div>`).join(''); }
+function showSeats() {
+  const t = T; if (!t || !movesOK(t)) return;
+  const opt = sel => SEATS.map(s => `<option value="${s}" ${s === sel ? 'selected' : ''}>${SEAT_NAME[s]}</option>`).join('');
+  const m = modal(`<h3>Seats</h3><div class="seatlist" id="seatList">${seatsListHTML(t)}</div>
+    <div class="row" style="margin-top:10px"><label class="row" style="gap:6px">Swap <select id="swapA" aria-label="First seat">${opt('N')}</select></label><label class="row" style="gap:6px">and <select id="swapB" aria-label="Second seat">${opt('E')}</select></label><button class="btn" id="swapGo">Swap</button></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="rotateGo">Rotate seats</button><span class="note">Everyone moves one seat clockwise.</span></div>`);
+  $('swapGo').addEventListener('click', () => { const a = $('swapA').value, b = $('swapB').value; if (a === b) { toast('Choose two different seats'); return; } doAct('swap', a, b); });
+  $('rotateGo').addEventListener('click', () => doAct('swap', 'rotate'));
+  return m;
+}
+// keep the open Seats window up to date; close it once a board starts
+function refreshSeats() {
+  const el = $('seatList'); if (!el) return;
+  if (!movesOK(T)) closeModal(); else el.innerHTML = seatsListHTML(T);
+}
+
 // ---------- clocks ----------
 const mmss = ms => { const t = Math.max(0, Math.floor(ms / 1000)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
 function tick() {
   const now = serverNow();
-  document.querySelectorAll('.clk[data-since]').forEach(el => { el.textContent = mmss(now - +el.dataset.since); });
+  // a player's thinking time shows only once they have been thinking a while, so the plates don't tick all the time
+  document.querySelectorAll('.clk[data-since]').forEach(el => { const ms = now - +el.dataset.since; el.textContent = ms >= 20000 ? mmss(ms) : ''; });
   document.querySelectorAll('.bclk[data-start]').forEach(el => {
     const lim = +el.dataset.limit * 60000, used = now - +el.dataset.start;
     el.textContent = lim ? `Time ${mmss(used)} of ${mmss(lim)}` : `Time ${mmss(used)}`;
@@ -1208,6 +1250,7 @@ document.addEventListener('click', e => {
   else if (d.record !== undefined) showRecord(+d.record);
   else if (d.alert) showExplain(b, d.alert);
   else if (d.sub) doAct('sub', d.sub);
+  else if (d.seats) showSeats();
   else if (d.quick) doAct('chat', d.quick);
   else if (d.undoreply) doAct('undoReply', d.undoreply === 'yes');
   else if (d.undocancel) doAct('undoCancel');
