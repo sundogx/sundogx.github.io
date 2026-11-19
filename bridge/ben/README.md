@@ -71,7 +71,7 @@ Team matches on the same deals (`tools/benvs.mjs`, 300 boards each, IMPs per boa
 - BEN play with `maxPool: 0` against `maxPool: 1000` (`OPP=ben BENBID=0 NEW='{"maxPool":0}'`): +0.22 ± 0.11, so
   extending the pool is off at the browser's time budget.
 - BEN play with 4000 ms, k 60, pool 200 against the defaults: +0.18 ± 0.15 (not enough to justify the slower play).
-- BEN opening leads with 4000 ms against 1500 ms (`OPP=ben BENBID=0 NEW='{"leadms":4000}'`): −0.31 ± 0.16, so 1500 ms stays.
+- BEN opening leads with 4000 ms against 1500 ms (`OPP=ben BENBID=0 NEW='{"leadms":4000}'`): −0.30 ± 0.16, so 1500 ms stays.
 - BEN bidding with and without rescue bids (`o.rescue`, BEN's `evaluate_rescue_bid`; `OPP=ben DET=1 DDSCORE=1 BENPLAY=0
   NEW='{"rescue":false}'`): no rescue bid made and no board changed, so it is off (it costs a sampling pass on lone passes).
 - BEN play with and without BEN's `validate_logical_play` and `check_discards` weights (`o.logic`; `OPP=ben BENBID=0 DET=1
