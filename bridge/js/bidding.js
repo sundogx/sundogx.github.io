@@ -1880,6 +1880,33 @@ function defTricks(ctx, h, pPts) { // defensive tricks my side can expect agains
   return 1.89 + 0.705 * trT + 0.484 * t + 0.134 * pPts + 0.138 * h.H + 0.2 * f.tL + 0.291 * ru - 0.131 * f.oFit - 0.115 * lv + 0.271 * (f.tL <= 1) - 0.758 * (lv >= 6)
     + 0.067 * f.pPass - 0.397 * f.pBid + 0.073 * f.pLo - 0.033 * f.oLo + 0.066 * f.iBid;
 }
+// does their contract fit what their calls showed? (sound contracts are harder to beat than the estimate says)
+function fitsShown(ctx, h) {
+  const lb = ctx.lb, lv = +lb.call[0], st = lb.call[1], L = ctx.L, R = ctx.R, P = ctx.P;
+  const [pm, lm, rm] = pointShares(ctx, h);
+  const need = st === 'N' ? 17 + 2.7 * lv : 13 + 3 * lv;
+  const oHi = Math.min(37, L.hi) + Math.min(37, R.hi);
+  const ptOver = Math.max(0, h.H + L.lo + R.lo + P.lo - 40);
+  const trOver = st === 'N' ? 0 : Math.max(0, h.L[st] + L.mn[st] + R.mn[st] + (P.mn[st] || 0) - 13);
+  let cardOver = 0; for (const s of SUITS) cardOver += Math.max(0, h.L[s] + L.mn[s] + R.mn[s] + (P.mn[s] || 0) - 13);
+  const shortHi = Math.max(0, need - oHi), shortMid = need - lm - rm;
+  // was the call that set the contract one the system makes (a table call), or read by its natural meaning?
+  let tbl = 1;
+  try { const pre = ctx.prefix.slice(0, lb.i), c2 = mkCtx(pre, lb.by, ctx.metas.slice(0, lb.i), ctx.vul), T = tablesFor(c2); tbl = T && T.some(d => d.c === lb.call) ? 1 : 0; } catch (e) { tbl = 1; }
+  const pre = ctx.items.slice(0, lb.i), prevBid = [...pre].reverse().find(x => bidValue(x.call) >= 0);
+  let cheapL = 1; if (prevBid) { for (let l = 1; l <= 7; l++) if (bidValue(l + st) > bidValue(prevBid.call)) { cheapL = l; break; } }
+  const jump = lv - cheapL, bm = lb.m || ANY(), bPH = pre.some(x => x.by === lb.by && x.call === 'P' && !pre.some(y => y.by === lb.by && bidValue(y.call) >= 0 && y.i < x.i));
+  const bPard = pre.filter(x => x.by === partnerOf(lb.by)), pardSilent = bPard.every(x => x.call === 'P') ? 1 : 0;
+  const theirBids = ctx.theirs.filter(x => bidValue(x.call) >= 0).length, weBid = ctx.ours.some(x => bidValue(x.call) >= 0) ? 1 : 0;
+  return { ptOver, trOver, cardOver, shortHi, shortMid, tbl, myTr: st === 'N' ? 0 : h.L[st], jump, bHi: Math.min(37, bm.hi), bLo: bm.lo, bPH: bPH ? 1 : 0, pardSilent, theirBids, weBid, sameBid: lb.by === theirDeclarer(ctx) ? 1 : 0 };
+}
+// the defence estimate's correction for how the contract was reached, fitted to the residual of defTricks
+// (tests/bidoverbid.js --penlog, people's overbids and the robots' own contracts together): a contract one
+// player bid with partner silent, or after passing, goes down more often than the shown points say
+function fitAdj(st, f) {
+  if (st === 'N') return -0.474 + 0.313 * f.pardSilent + 0.096 * f.bPH + 0.176 * f.sameBid + 0.407 * f.tbl;
+  return -0.005 + 0.296 * f.pardSilent + 0.164 * f.bPH - 0.266 * f.sameBid - 0.083 * f.tbl;
+}
 function penaltyGain(ctx, D) { // expected IMPs from doubling rather than passing, their tricks spread around 13 - D
   const lv = +ctx.lb.call[0], st = ctx.lb.call[1], decl = theirDeclarer(ctx), sd = lv >= 6 ? 1 : BID_K('psd') ?? 1.5;
   const c0 = { level: lv, strain: st, doubled: 0, declarer: decl }, c1 = Object.assign({}, c0, { doubled: 1 });
@@ -1898,9 +1925,11 @@ function judgeX(ctx, h, extra = 0) { // true: double their contract for penalty 
   const lv = +lb.call[0], st = lb.call[1];
   if (lv < (BID_K('pxl') ?? 2)) return false;
   const [pPts] = pointShares(ctx, h);
-  const D = defTricks(ctx, h, pPts) + (BID_K('pxd') ?? 0);
+  let D = defTricks(ctx, h, pPts) + (BID_K('pxd') ?? 0);
+  const fs = globalThis.BID_PENLOG || BID_K('fitx') ? fitsShown(ctx, h) : null, f0 = Object.assign({}, defTricks.f);
+  if (BID_K('fitx')) D += BID_K('fitx') * fitAdj(st, fs); // measured worse (round 7): off
   const g = penaltyGain(ctx, D);
-  if (globalThis.BID_PENLOG) globalThis.BID_PENLOG.push(Object.assign({ decl: theirDeclarer(ctx), st, lv, D, g }, defTricks.f));
+  if (globalThis.BID_PENLOG) globalThis.BID_PENLOG.push(Object.assign({ decl: theirDeclarer(ctx), st, lv, D, g, lbBy: lb.by }, f0, fs));
   return g >= (BID_K('pxm') ?? 3.5) + extra; // a high bar: the estimate is rough, and they may run or redouble
 }
 

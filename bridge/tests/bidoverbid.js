@@ -161,11 +161,12 @@ for (let g = 0; g < N; g++) { const bn = g + 1, hands = deal(rand), dd = cache[k
 const seatsUsed = flag('seats', 'NESW').split('');
 const [showType, showK] = (flag('show', '') || ':0').split(':');
 const PENLOG = flag('penlog', ''), penRows = [];
-function logged(b, f, src) { // with --penlog: the robots' penalty-double judgements (judgeX) and the real double-dummy defence
+function logged(b, f, src, hum) { // with --penlog: the robots' penalty-double judgements (judgeX) and the real double-dummy defence;
+  // hum: the contract judged was bid by the human's side. Rows without lbBy come from a baseline fixture (it logs too): drop them
   if (!PENLOG) return f();
   globalThis.BID_PENLOG = [];
   const r = f();
-  for (const e of globalThis.BID_PENLOG) penRows.push(Object.assign(e, { def: 13 - b.dd[e.decl][e.st], vul: b.vul, src }));
+  for (const e of globalThis.BID_PENLOG) penRows.push(Object.assign(e, { def: 13 - b.dd[e.decl][e.st], vul: b.vul, src, hum: hum && sameSide(e.lbBy, hum) ? 1 : 0 }));
   globalThis.BID_PENLOG = null;
   return r;
 }
@@ -177,7 +178,7 @@ function runBoards(list) { // one record per (board, human seat, overbid) that f
     for (const hum of seatsUsed) for (const type of TYPES) {
       const tb = bidOne(b, hum, type, BASE);
       if (tb.fired < 0) continue;
-      const ts = SYS === BASE ? tb : logged(b, () => bidOne(b, hum, type, SYS), type);
+      const ts = SYS === BASE ? tb : logged(b, () => bidOne(b, hum, type, SYS), type, hum);
       const sg = sideOf(hum) === 'NS' ? 1 : -1; // the human's side
       const r = { type, cost: toImps(sg * (tb.score - plain.score)), g: toImps(-sg * (ts.score - tb.score)), diff: ts.auction.map(a => a.call).join() !== tb.auction.map(a => a.call).join() };
       for (const [t, k] of [[tb, 'B'], [ts, 'S']]) if (t.ct && sameSide(t.ct.declarer, hum)) {
