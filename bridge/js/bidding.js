@@ -105,7 +105,7 @@ function mkCtx(prefix, seat, metas, vul) {
     prefix, seat, p, lho, rho, items, ours, theirs, first, lb,
     opener: first ? first.by : null, weOpened: !!first && sameSide(first.by, seat),
     mine: ours.filter(x => x.by === seat), pards: ours.filter(x => x.by === p),
-    Me: agg(of(seat)), P: agg(of(p)), O: { mn: {}, lo: L.lo + R.lo },
+    Me: agg(of(seat)), P: agg(of(p)), O: { mn: {}, lo: L.lo + R.lo }, L, R,
     iPH: items.some(x => x.by === seat && x.call === 'P' && x.i < ourFirst),
     pPH: items.some(x => x.by === p && x.call === 'P' && x.i < ourFirst),
     quiet: theirs.length === 0,
@@ -143,7 +143,7 @@ function dblMeaning(ctx) {
   if (ctx.ours.some(x => x.call === 'XX')) return MM(8, 37, { mn: st === 'N' ? {} : { [st]: 4 }, a: 'Penalty', t: 'xpen' });
   if (st === 'N') {
     if (!ourBids.length && lv === 1 && ctx.first && ctx.first.call === '1N' && ctx.first === lb) return MM(15, 37, { a: 'Penalty: 15+ points', t: 'xpen' });
-    return MM(10, 37, { a: 'Penalty', t: 'xpen' });
+    return MM(10, 37, { a: lv >= 3 ? 'Penalty: expects to beat the contract' : 'Penalty', t: 'xpen' });
   }
   const balancing = ctx.prefix.length >= 3 && ctx.rhoCall === 'P' && ctx.prefix[ctx.prefix.length - 2].call === 'P' && lb.by === ctx.lho;
   // our side has not bid yet: takeout
@@ -173,7 +173,7 @@ function dblMeaning(ctx) {
   // I opened, partner passed, RHO came in: takeout with a strong hand
   if (!BID_OFF('xstrong') && ctx.first && ctx.first.by === ctx.seat && ourBids.length === 1 && ctx.pards.length === 0 && lv <= 2 && lb.by === ctx.rho && ctx.theirs.length === 1 && ctx.mine.length === 1)
     return MM(16, 37, { mx: { [st]: 2 }, a: 'Takeout double: strong hand (16+), short in their suit', t: 'xreopen' });
-  return MM(10, 37, { mn: { [st]: 3 }, a: 'Penalty', t: 'xpen' });
+  return MM(10, 37, { mn: { [st]: 3 }, a: lv >= 3 ? 'Penalty: expects to beat the contract' : 'Penalty', t: 'xpen' });
 }
 
 // ---- 4NT: Roman Key Card Blackwood (1430) or quantitative ----
@@ -1360,6 +1360,11 @@ function compMore(ctx) {
   }
   // partner doubled their contract for penalty and it came round to me: leave it in
   if (!BID_OFF('xpass') && pl && pl.call === 'X' && pl.m && pl.m.tag === 'xpen' && ctx.rhoCall === 'P' && lastNonPass(ctx.prefix) === ctx.prefix[pl.i] && +ctx.lb.call[0] >= 3) return [T_('P', () => true, ANY())];
+  // ... at the two level too, unless I have a void in their suit and a long suit of my own
+  if (!BID_OFF('xpass2') && !ctx.gf && pl && pl.call === 'X' && pl.m && pl.m.tag === 'xpen' && ctx.rhoCall === 'P' && lastNonPass(ctx.prefix) === ctx.prefix[pl.i] && +ctx.lb.call[0] === 2 && ctx.lb.call[1] !== 'N') {
+    const st = ctx.lb.call[1];
+    return [T_('P', h => !(h.L[st] === 0 && h.sh[0] >= 6) && h.H + ctx.P.lo < 25, ANY()), { nat: true }];
+  }
   // they came in over our strong 2♣
   if (!BID_OFF('int2c') && ctx.weOpened && ctx.first.call === '2C' && ctx.first.m && ctx.first.m.art && ctx.ours.length === 1 && ctx.theirs.length === 1 && bidValue(ctx.theirs[0].call) >= 0 && ctx.lb === ctx.theirs[0]) {
     const st = ctx.lb.call[1], T = [];
@@ -1616,7 +1621,7 @@ function tablesFor(ctx) {
       if (/^3[CDHS]$/.test(c0)) return respPre(ctx);
       return null;
     }
-    if (k === 2 && ctx.opener === ctx.seat) {
+    if (k === 2 && ctx.opener === ctx.seat && pl) {
       const c1 = seq[1], m1 = pl.m || ANY();
       if (/^1[HS]$/.test(c0)) {
         const t = c0[1];
@@ -1636,7 +1641,7 @@ function tablesFor(ctx) {
       if (/^2[DHS]$/.test(c0) && m1.f >= 1 && bidValue(c1) >= 0) { const s = c1[1]; return [T_(ctx.cheap(s) + s, h => h.L[s] >= 3 || (h.L[s] >= 2 && h.H >= 9), MM(5, 10, { mn: { [s]: 2 }, agree: s })), T_(ctx.cheap(c0[1]) + c0[1], () => true, MM(5, 10))]; }
       return null;
     }
-    if (k === 3 && ctx.opener === ctx.p) {
+    if (k === 3 && ctx.opener === ctx.p && pl) {
       const c1 = seq[1], m0 = ctx.items[ctx.ours[1].i].m || ANY();
       if (/^1[HS]$/.test(c0) && pl.m && pl.m.tag === 'hsgt') return gameTryAnswer(ctx);
       if (/^1[HS]$/.test(c0) && c1 === '1N') return resp1M1N(ctx);
@@ -1822,6 +1827,92 @@ function forcedBid(ctx, h, ok, fit) { // something that keeps the auction going,
   return 'P';
 }
 
+// ---- Penalty doubles by judgement: is their contract going down? ----
+// Used when a double of their contract is for penalty by the auction (dblMeaning 'xpen') and the tables chose to
+// pass, or to compete on (then the bar is higher): the defence is estimated from my hand (trump tricks and length,
+// side-suit tricks, shortness) and partner's expected share of the points nobody has shown, with weights fitted to
+// the double-dummy defence; the double is made when its expected IMP gain (their tricks spread around that
+// estimate, scored doubled and undoubled) is clearly positive. A contract the
+// opponents' own calls don't support (a weak hand jumping to game) leaves partner more of the points, so it is
+// doubled more readily.
+function pointShares(ctx, h) { // expected points of [partner, LHO, RHO]: their shown ranges scaled to the points I can't see
+  const rng = [ctx.P, ctx.L, ctx.R].map(a => [a.lo, Math.max(a.lo, Math.min(a.hi, 37))]);
+  const left = 40 - h.H;
+  let mids = rng.map(([lo, hi]) => (lo + Math.min(hi, lo + 12)) / 2);
+  for (let it = 0; it < 5; it++) { const sum = mids.reduce((a, b) => a + b, 0) || 1; mids = mids.map((m, i) => Math.max(rng[i][0], Math.min(rng[i][1], m * left / sum))); }
+  return mids;
+}
+function theirDeclarer(ctx) {
+  const st = ctx.lb.call[1];
+  const x = ctx.items.find(y => !sameSide(y.by, ctx.seat) && bidValue(y.call) >= 0 && y.call[1] === st);
+  return x ? x.by : ctx.lb.by;
+}
+function defTricks(ctx, h, pPts) { // defensive tricks my side can expect against their contract
+  const st = ctx.lb.call[1], over = theirDeclarer(ctx) === ctx.rho;
+  const theirSuit = s => ctx.theirs.some(x => bidValue(x.call) >= 0 && x.call[1] === s && !(x.m && x.m.art)) || ctx.O.mn[s] >= 4;
+  const K = (k, d) => BID_K(k) ?? d;
+  let t = 0, trT = 0;
+  for (const s of SUITS) {
+    const L = h.L[s], x = h.has[s], A = x.includes('A'), Kg = x.includes('K'), Q = x.includes('Q'), J = x.includes('J');
+    if (s === st) {
+      let tt = (A ? 1 : 0) + (Kg ? (L >= 2 ? (over ? 0.9 : 0.65) : 0.15) : 0) + (Q ? (L >= 3 ? (over ? 0.75 : 0.5) : L === 2 ? 0.2 : 0) : 0) + (J && L >= 4 ? 0.35 : 0);
+      if (L >= 4) tt += K('ptl', 0.45) * (L - 3);
+      trT = Math.min(tt, L);
+    } else if (st === 'N') {
+      const hn = (A ? 1 : 0) + (Kg && L >= 2 ? 0.8 : 0) + (Q && L >= 3 ? 0.45 : 0) + (J && L >= 4 ? 0.2 : 0);
+      t += hn + (L >= 5 && hn >= 1.5 ? 0.6 * (L - 4) : 0);
+    } else {
+      let st2 = 0;
+      if (A && Kg) st2 = L <= 5 ? 2 : 1.4; else if (A) st2 = L <= 6 ? 1 : 0.5;
+      else if (Kg && Q) st2 = L <= 5 ? 1 : 0.6;
+      else if (Kg) st2 = L >= 2 ? (over ? 0.6 : 0.35) : 0.1;
+      if (!A && !Kg && Q && L >= 2 && L <= 4) st2 += 0.2;
+      if (A && Kg && Q && L <= 4) st2 += 0.3;
+      t += theirSuit(s) ? st2 * 0.75 : st2;
+    }
+  }
+  const ru = st !== 'N' && h.L[st] >= 1 && h.L[st] <= 4 && SUITS.some(s => s !== st && h.L[s] <= 1) ? 1 : 0;
+  const lbI = ctx.lb.i, pAfter = ctx.items.filter(x => x.by === ctx.p && x.i > lbI);
+  defTricks.f = { pPass: pAfter.length && pAfter.every(x => x.call === 'P') ? 1 : 0, pBid: ctx.pards.some(x => x.call !== 'P') ? 1 : 0, pLo: ctx.P.lo, oLo: ctx.L.lo + ctx.R.lo, oHi: Math.min(37, ctx.L.hi + ctx.R.hi), weOp: ctx.weOpened ? 1 : 0, iBid: ctx.mine.some(x => x.call !== 'P') ? 1 : 0, trT, sideT: t, pPts, H: h.H, tL: st === 'N' ? 0 : h.L[st], ru, oFit: st === 'N' ? 0 : ctx.L.mn[st] + ctx.R.mn[st], nt: st === 'N' ? 1 : 0, over: over ? 1 : 0 };
+  // a linear fit to the double-dummy defence on 12,000 such decisions (tests/bidoverbid.js --penlog)
+  const lv = +ctx.lb.call[0], f = defTricks.f;
+  if (st === 'N') return 1.535 + 0.627 * t + 0.275 * pPts + 0.152 * h.H - 0.253 * lv - 0.54 * (lv >= 6) + 0.189 * f.pPass + 0.054 * f.pBid + 0.025 * f.pLo - 0.04 * f.oLo + 0.378 * f.weOp + 0.207 * f.iBid;
+  return 1.89 + 0.705 * trT + 0.484 * t + 0.134 * pPts + 0.138 * h.H + 0.2 * f.tL + 0.291 * ru - 0.131 * f.oFit - 0.115 * lv + 0.271 * (f.tL <= 1) - 0.758 * (lv >= 6)
+    + 0.067 * f.pPass - 0.397 * f.pBid + 0.073 * f.pLo - 0.033 * f.oLo + 0.066 * f.iBid;
+}
+function penaltyGain(ctx, D) { // expected IMPs from doubling rather than passing, their tricks spread around 13 - D
+  const lv = +ctx.lb.call[0], st = ctx.lb.call[1], decl = theirDeclarer(ctx), sd = lv >= 6 ? 1 : BID_K('psd') ?? 1.5;
+  const c0 = { level: lv, strain: st, doubled: 0, declarer: decl }, c1 = Object.assign({}, c0, { doubled: 1 });
+  const mean = 13 - D; let ev = 0, ws = 0;
+  for (let k = 0; k <= 13; k++) {
+    const z = (k - mean) / sd, w = Math.exp(-z * z / 2);
+    ev += w * toImps(scoreContract(c0, k, ctx.vul) - scoreContract(c1, k, ctx.vul));
+    ws += w;
+  }
+  return ev / ws;
+}
+function judgeX(ctx, h, extra = 0) { // true: double their contract for penalty (extra: how much more the double must gain)
+  const lb = ctx.lb; if (!lb || sameSide(lb.by, ctx.seat) || !ctx.ok('X') || (lb.m && lb.m.art)) return false;
+  const lnp = lastNonPass(ctx.prefix); if (!lnp || lnp.call !== lb.call || lnp.by !== lb.by) return false;
+  if (dblMeaning(ctx).tag !== 'xpen') return false;
+  const lv = +lb.call[0], st = lb.call[1];
+  if (lv < (BID_K('pxl') ?? 2)) return false;
+  const [pPts] = pointShares(ctx, h);
+  const D = defTricks(ctx, h, pPts) + (BID_K('pxd') ?? 0);
+  const g = penaltyGain(ctx, D);
+  if (globalThis.BID_PENLOG) globalThis.BID_PENLOG.push(Object.assign({ decl: theirDeclarer(ctx), st, lv, D, g }, defTricks.f));
+  return g >= (BID_K('pxm') ?? 3.5) + extra; // a high bar: the estimate is rough, and they may run or redouble
+}
+
+function convertX(ctx, h) {
+  const pl = ctx.pLast, lb = ctx.lb;
+  if (!pl || pl.call !== 'X' || !pl.m || !['xto', 'xreopen'].includes(pl.m.tag) || ctx.rhoCall !== 'P' || !lb || sameSide(lb.by, ctx.seat) || lastNonPass(ctx.prefix) !== ctx.prefix[pl.i]) return false;
+  const st = lb.call[1], lv = +lb.call[0];
+  if (st === 'N' || h.L[st] < 4 || hon(h, st, 'AKQJT') < 2) return false;
+  const [pPts] = pointShares(ctx, h);
+  const D = defTricks(ctx, h, pPts);
+  return D - (7 - lv) >= (BID_K('xcv') ?? 1.5);
+}
 // ---- Entry points ----
 function auctionMetas(auction, vul) { // what every call so far means, by the system
   const metas = [];
@@ -1847,6 +1938,12 @@ function chooseCall(hand, seat, auction, vul) {
   }
   if (!call) call = natural(ctx, h, new Set(T ? T.filter(d => d.c).map(d => d.c) : []));
   call = slamAsk(ctx, h, T, call) || slamCtl(ctx, h, T, call) || natRescue(ctx, h, T, call) || call;
+  if (call === 'P' && judgeX(ctx, h) && !BID_OFF('pjx')) call = 'X';
+  // partner's takeout double of their suit contract, RHO passed: convert it to penalties with their trumps stacked
+  // behind them (a trap pass, or just a trump stack) when the defence should beat it by a trick and a half
+  else if (!BID_OFF('xconv') && call !== 'P' && convertX(ctx, h)) call = 'P';
+  // competing or sacrificing over their contract when it is going down anyway: double instead
+  else if (!BID_OFF('pxb') && bidValue(call) >= 0 && (!ctx.gf || !BID_OFF('pxf')) && !ctx.forced && ctx.lb && !sameSide(ctx.lb.by, seat) && !ctx.mine.some(x => x.m && x.m.f) && judgeX(ctx, h, (BID_K('pxb') ?? 2) + (ctx.gf ? BID_K('pxf') ?? 1.5 : 0))) call = 'X';
   if (call === 'P' && !BID_OFF('nopassf')) { // never pass partner's forcing call (a human's, read by its natural meaning) below game
     const pl = ctx.pLast;
     if (pl && pl === ctx.lb && ctx.rhoCall === 'P' && pl.m && pl.m.f >= 1 && !ourGame(ctx) && !ctx.items.some(x => x.by === ctx.seat && x.i > pl.i)) {
