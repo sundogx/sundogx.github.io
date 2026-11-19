@@ -125,7 +125,7 @@ const A = {
   },
   // A claim of n of the remaining tricks (0 concedes them all). Robot opponents answer at once (resolveRobotClaim);
   // the claimer's partner never has to agree. Not while an undo request is open (online), nor by dummy.
-  claim(t, seat, n, seenLeft) { // seenLeft: the tricks left when the claimer chose n (more tricks may have finished since)
+  claim(t, seat, n, seenLeft, askPartner) { // seenLeft: the tricks left when the claimer chose n (more tricks may have finished since)
     if (t.phase !== 'play' || t.claim || seat === dummySeat(t)) return false;
     if (t.undoReq) { toast('Answer the undo request first'); return false; }
     const left = 13 - completedTricks(t.play).length;
@@ -134,7 +134,10 @@ const A = {
     const opp = sameSide(seat, t.contract.declarer)
       ? [nextSeat(t.contract.declarer), partnerOf(nextSeat(t.contract.declarer))]
       : [t.contract.declarer];
-    t.claim = { by: seat, tricks: n, need: opp, acc: {} };
+    // a robot's claim is also put to a human partner, so every person at the table can accept or reject it
+    const pt = partnerOf(seat), po = occupant(t, pt);
+    const need = askPartner && po && po.kind === 'human' ? opp.concat([pt]) : opp;
+    t.claim = { by: seat, tricks: n, need, acc: {} };
     const o = occupant(t, seat);
     sysMsg(t, `${SEAT_NAME[seat]}${o && o.kind === 'robot' ? ' (robot)' : ''} claims ${n} of the remaining ${left} tricks`);
     resolveRobotClaim(t);
@@ -182,7 +185,8 @@ function resolveRobotClaim(t) {
   const c = t.claim; if (!c) return;
   let ok = null;
   for (const s of c.need) {
-    const o = occupant(t, controllerOf(t, s));
+    // the claimer's partner answers for themself (a robot declarer controls dummy, but a person at dummy decides)
+    const o = occupant(t, sameSide(s, c.by) ? s : controllerOf(t, s));
     if (o && o.kind === 'robot') {
       if (ok === null) ok = claimAccept(t, c.by, c.tricks, t.local ? CLAIM_NODES_PAGE : CLAIM_NODES);
       if (!ok) { sysMsg(t, `Robot ${SEAT_NAME[s]} rejected the claim. Play continues.`); t.claim = null; return; }
@@ -206,7 +210,7 @@ function robotClaim(t) {
   const n = robotClaimCount(t, by, t.local ? ROBOT_CLAIM_NODES_PAGE : ROBOT_CLAIM_NODES);
   if (n == null) return false;
   t.robotClaimAt = { b: t.board, d: done, side };
-  return A.claim(t, by, n) !== false;
+  return A.claim(t, by, n, undefined, true) !== false;
 }
 // Would undoing for this seat take back something after which more became visible: the opening lead
 // (dummy goes face up), or a call or card that robots have answered since (their calls or cards were seen)?

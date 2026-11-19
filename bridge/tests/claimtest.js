@@ -212,6 +212,20 @@ function brute(t, claimer) {
     const d = table('S', { E: 'ann' }, 3 + (i % 5), 0); // West's partner East is Ann
     if (G.turnSeat(d) === 'W' && B.robotClaimCount(d, 'W', 6000) != null) { held++; G.A.robotStep(d); check(!d.claim, 'robot claims for a person'); }
   }
+  // a robot declarer's claim is also put to its human partner (dummy), who can accept or reject it
+  let pc = 0;
+  for (let i = 0; i < 400 && pc < 10; i++) {
+    const t = table('W', { E: 'ann' }, 3 + (i % 5), 0);
+    const lead = G.turnSeat(t); if (lead !== 'W' && lead !== 'E') continue;
+    if (B.robotClaimCount(t, 'W', 6000) == null) continue;
+    pc++;
+    G.A.robotStep(t);
+    check(t.claim && t.claim.need.includes('E') && t.phase === 'play', 'human partner asked about the robot claim');
+    const t2 = structuredClone(t);
+    G.A.respond(t, 'E', true); check(t.phase === 'done', 'partner accepts: board ends');
+    G.A.respond(t2, 'E', false); check(!t2.claim && t2.phase === 'play', 'partner rejects: play continues');
+  }
+  check(pc >= 5, 'found robot claims with a human partner');
   check(rc >= 10, 'found robot claims to test');
   console.log(`table flow: ${flows} claim flows and ${rc} robot claims (${held} held back for a person partner), ${fails - f5} failures`);
 
