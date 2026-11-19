@@ -37,7 +37,7 @@ function shareDecode(s) {
     let v = SH_B64.indexOf(p[2][k]); if (v < 0) throw new Error('Not a deal link');
     for (let j = 2; j >= 0; j--) { const i = k * 3 + j; if (i < 52) hands[SEATS[v & 3]].push(SH_DECK[i]); v >>= 2; }
   }
-  const calls = [...(p[3] || '')].map(ch => shCallOf(SH_B64.indexOf(ch)));
+  const calls = []; for (const ch of p[3] || '') { const i = SH_B64.indexOf(ch); if (i < 0 || i > 37) break; calls.push(shCallOf(i)); }
   const plays = [...(p[4] || '')].map(ch => SH_DECK[SH_B64.indexOf(ch)]);
   return buildDeal({ board: +p[0] || 1, dealer, vul, hands, calls, plays, claim: p[5] != null && p[5] !== '' ? +p[5] : null });
 }

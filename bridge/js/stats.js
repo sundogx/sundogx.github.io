@@ -19,11 +19,13 @@ Stats.open = function () {
     try { rq = indexedDB.open('bridge-history', 1); } catch (e) { res(); return; }
     rq.onupgradeneeded = () => rq.result.createObjectStore('boards', { keyPath: 'id' });
     rq.onerror = () => res();
+    rq.onblocked = () => res();
     rq.onsuccess = () => {
       Stats.db = rq.result;
+      Stats.db.onversionchange = () => { Stats.db.close(); Stats.db = null; };
       let all;
       try { all = Stats.db.transaction('boards').objectStore('boards').getAll(); } catch (e) { console.error(e); res(); return; }
-      all.onsuccess = () => { Stats.list = all.result.sort((a, b) => a.date - b.date); Stats.list.forEach(r => Stats.keys.add(r.id)); res(); };
+      all.onsuccess = () => { Stats.list = (all.result || []).sort((a, b) => a.date - b.date); Stats.list.forEach(r => Stats.keys.add(r.id)); res(); };
       all.onerror = () => res();
     };
   });
