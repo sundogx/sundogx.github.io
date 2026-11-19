@@ -34,13 +34,13 @@ function leadCardOf(cards, strain) {
 function leadCards(hand, strain) { return SUITS.filter(s => hand.some(c => c[0] === s)).map(s => leadCardOf(hand.filter(c => c[0] === s), strain)); }
 
 // ---- What the auction showed, tightened for the lead ----
-function leadShown(auction, seat) {
-  try { if (typeof shown === 'function') return shown(auction, seat); } catch (e) { }
+function leadShown(auction, seat, vul) {
+  try { if (typeof shown === 'function') return shown(auction, seat, vul); } catch (e) { }
   return null;
 }
-function leadLimits(auction, seat) {
-  const k = leadDD().ddAuctionLimits(auction, seat);
-  const info = leadShown(auction, seat);
+function leadLimits(auction, seat, vul) {
+  const k = leadDD().ddAuctionLimits(auction, seat, vul);
+  const info = leadShown(auction, seat, vul);
   if (info) {
     if (info.ptsMax < 37) k.hcpMax = Math.min(k.hcpMax, info.ptsMax + (info.nt ? 0 : 1));
     if (info.maxLen) for (const s of SUITS) if (info.maxLen[s] < 13) k.lenMax[s] = Math.min(k.lenMax[s], info.maxLen[s]);
@@ -166,7 +166,7 @@ function leadValues(view, cands, results, metric = LEAD_METRIC) {
 // auction limits for the sampler, and the prior. Done where the view is made, where js/bidding.js is loaded.
 function leadView(view, t) {
   const auction = t.auction || [];
-  for (const s of SEATS) if (!view.known[s]) view.limits[s] = leadLimits(auction, s);
+  for (const s of SEATS) if (!view.known[s]) view.limits[s] = leadLimits(auction, s, t.vul);
   view.prior = leadPrior(view.known[view.seat], auction, t.contract, view.seat);
   return view;
 }

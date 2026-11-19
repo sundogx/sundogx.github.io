@@ -3,6 +3,8 @@
 //  { k, play: view, opts }    a robot's card by double-dummy sampling (js/ddplay.js ddChoose)
 //  { k, leadSamples: view, opts }  an opening lead: solver results on sampled layouts (js/leads.js leadSample),
 //                             streamed one by one ({ k, result }) and then all together ({ k, results })
+//  { k, playSamples: view, opts }  a share of the layouts of a card decision (js/ddplay.js ddDeals, ddSolveDeals),
+//                             streamed one by one ({ k, result, weight }), then { k, done }
 //  { wasm: WebAssembly.Module }    the solver compiled by the page, so each worker needn't compile it
 //  { warm: true }             warm up (make the solver instance, run the sampler and a small solve) before the first real job
 // The solver is DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to WebAssembly; see wasm/NOTICE.txt and wasm/build.sh.
@@ -48,6 +50,17 @@ self.onmessage = async e => {
       const results = await leadSample(leadSamples, solve, { ...(opts || {}), onResult: r => self.postMessage({ k, result: r }) });
       self.postMessage({ k, results });
     } catch (err) { self.postMessage({ k, results: null, error: String(err && err.message || err) }); }
+    return;
+  }
+  if (m.playSamples) { // a share of the layouts of a slow card decision: results stream back with their weights
+    const { k, playSamples: view, opts } = m;
+    try {
+      const solve = await getSolver();
+      const o = ddOpts(view, opts || {}), t0 = ddNow();
+      const { deals, weights } = ddDeals(view, o, t0);
+      await ddSolveDeals(view, deals, solve, o, t0, (r, i) => self.postMessage({ k, result: r, weight: weights ? weights[i] : 1 }));
+      self.postMessage({ k, done: true });
+    } catch (err) { self.postMessage({ k, error: String(err && err.message || err) }); }
     return;
   }
   if (m.play) { // robot card: { k, play: view (only what the robot may see), opts }

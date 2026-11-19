@@ -12,6 +12,9 @@
 //   node tests/leadsim.js fit <file.jsonl>... [lambda=30]
 // fits the prior's weights (LEAD_W in js/leads.js): ridge regression of each lead's double-dummy tricks, against the
 // average lead from the same hand, on the lead features.
+//   node tests/leadsim.js tune <file.jsonl>...
+// compares the solver lead's number of layouts, prior weight and metric against the page's (needs files made with K >= 96;
+// odd boards are held out). OLDLIM=nobal with gen makes the Kold layouts with the lead sampler minus the balanced-hand limit.
 // tests/playsim.js plays the leads out with the robots instead of double-dummy.
 const fs = require('fs'), path = require('path'), os = require('os');
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -23,7 +26,7 @@ const L = require('../js/leads.js');
 function board(seed, g) {
   const rand = seededRand(seed + ':' + g);
   const hands = deal(rand), dealer = boardDealer(g + 1), vul = boardVul(g + 1), auction = [];
-  while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(hands[s], s, dealer, auction); auction.push({ call: r.call, by: s }); }
+  while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(hands[s], s, dealer, auction, vul); auction.push({ call: r.call, by: s }); }
   return { hands, auction, vul, ct: finalContract(auction) };
 }
 
@@ -56,10 +59,12 @@ if (isMainThread && process.argv[2] === 'gen') {
     const t = { hands, auction, contract: ct, vul, play: { tricks: [] } };
     const view = { ...ddView(t, leader), auction };
     const actual = await solve(ddJob(view, hands));
-    const limits = {}; for (const s of SEATS) if (s !== leader) limits[s] = L.leadLimits(auction, s);
+    const limits = {}; for (const s of SEATS) if (s !== leader) limits[s] = L.leadLimits(auction, s, vul);
     const sNew = [], sOld = [];
     for (const h of ddSample({ ...view, limits }, K, seededRand(seed + ':new:' + g))) sNew.push(await solve(ddJob(view, h)));
-    if (Kold) for (const h of ddSample(view, Kold, seededRand(seed + ':old:' + g))) sOld.push(await solve(ddJob(view, h)));
+    // OLDLIM=nobal: sOld from the lead sampler without the balanced-hand limit (to measure it), else the play sampler's
+    const oldView = process.env.OLDLIM === 'nobal' ? { ...view, limits: Object.fromEntries(Object.entries(limits).map(([s, k]) => [s, { ...k, bal: false }])) } : view;
+    if (Kold) for (const h of ddSample(oldView, Kold, seededRand(seed + ':old:' + g))) sOld.push(await solve(ddJob(view, h)));
     parentPort.postMessage({ g, rec: { g, leader, hand: hands[leader], hands, auction, ct, vul, actual, sNew, sOld, heur: B.botPlayOld(t, leader) } });
   });
   (async () => {
@@ -71,6 +76,19 @@ if (isMainThread && process.argv[2] === 'gen') {
   const recs = load(process.argv.slice(3));
   const old = recs.every(r => r.sOld.length);
   evaluate(recs, leadRules({ old }), old ? 'shipped' : 'heurOld');
+} else if (process.argv[2] === 'tune') {
+  // node tests/leadsim.js tune <files...>: layouts (k), prior weight (w) and metric of the solver lead, against the
+  // page's setting (k=48, w=2, tricks). Needs files made with K >= 96. Half the boards (odd g) are held out.
+  const recs = load(process.argv.slice(3)).filter(r => r.sNew.length >= 96);
+  const cands = r => L.leadCards(r.hand, r.ct.strain);
+  const rule = (k, w, metric) => r => L.leadPick(recView(r), cands(r), r.sNew.slice(0, k), { w, metric }).card;
+  const rules = { base: rule(48, 2, 'tricks'), botLead: r => L.botLead(r.hand, r.auction, r.ct, r.leader) };
+  for (const k of [24, 48, 72, 96]) for (const w of [0, 1, 2, 3]) rules[`k${k}w${w}`] = rule(k, w, 'tricks');
+  for (const k of [48, 96]) for (const w of [1, 2]) { rules[`k${k}w${w}imp`] = rule(k, w * 4, 'imp'); }
+  for (const half of [0, 1]) {
+    console.log(half ? 'held out (odd boards):' : 'tuning (even boards):');
+    evaluate(recs.filter(r => r.g % 2 === half), rules, 'base', false, false);
+  }
 } else if (process.argv[2] === 'fit') {
   const W = fitW(load(process.argv.slice(3).filter(f => !f.startsWith('lambda='))), +(process.argv.find(a => a.startsWith('lambda=')) || 'lambda=30').slice(7));
   for (const k of ['N', 'S']) console.log(k, L.LEAD_FEATURES.map((n, i) => `${n} ${W[k][i].toFixed(2)}`).join(', '));
