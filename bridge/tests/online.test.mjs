@@ -1,5 +1,8 @@
 // End-to-end checks against a running server (npm run dev, or the deployed Worker).
 //   BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs
+// Start the server with `npx wrangler dev --var TEST_TIME_SCALE:0.0167` (a minute lasts a second) to also check
+// time limits and the host's job passing on while the host is away; without it those checks are skipped.
+// Takes about four minutes (robots play at their usual pace).
 const BASE = process.env.BRIDGE_URL || 'http://localhost:8787';
 const WS = BASE.replace(/^http/, 'ws');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -229,7 +232,7 @@ async function quickBoard(a, b) {
   check(a.t().host === a.t().createdBy, 'a host who stands up with nobody seated stays the host');
   a.ws.close(); await sleep(400);
   b.act('sit', 'E'); await sleep(400);
-  check(b.t().seats.E && b.t().host !== b.t().createdBy && b.chat.some(x => /Bob is now the host, as the host has left/.test(x.text)), 'a host who left the table hands the job to the next player who sits down');
+  check(b.t().seats.E && b.t().host !== b.t().createdBy && b.chat.some(x => /Bob is now the host, as the host isn.t at the table/.test(x.text)), 'a host who left the table hands the job to the next player who sits down');
   b.ws.close();
 }
 
@@ -352,11 +355,40 @@ async function quickBoard(a, b) {
   const { code: fc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'sleepy', priv: true })).json();
   const a = await client(fc, 'Alice'); await sleep(400);
   for (const s of ['N', 'E', 'W']) { a.act('robot', s); await sleep(150); }
+  const robotCardsOf = h => h.contract ? h.tricks.flatMap(x => x.cards).filter(c => !(c.seat === 'S' || (c.seat === 'N' && h.contract.declarer === 'S'))).length : 0;
   const robotCards = () => { const t = a.t(); return t.phase === 'play' ? t.play.tricks.flatMap(x => x.cards).filter(c => !(c.seat === 'S' || (c.seat === 'N' && t.contract.declarer === 'S'))).length : 0; };
-  await until(() => robotCards() >= 16 || a.t().phase === 'done' || (humanMove({ S: a }) && false), 90000, 300);
-  const n = robotCards();
+  let n = 0; const counted = new Set(); // robot cards played (over the boards it takes)
+  await until(() => {
+    if (a.t().phase === 'done') { const h = a.hist[a.hist.length - 1]; if (h && !counted.has(h.board)) { counted.add(h.board); n += robotCardsOf(h); } a.act('next'); return false; }
+    return n + robotCards() >= 16 || (humanMove({ S: a }) && false);
+  }, 120000, 300);
+  n += a.t().phase === 'play' ? robotCards() : 0;
   check(n >= 8 && a.thinks.length <= 2 + Math.ceil(n / 8) + 1, `a browser that let two think requests run out is rarely asked again (${a.thinks.length} requests for ${n} robot cards)`);
   a.act('close'); await sleep(300); a.ws.close();
+}
+
+// --- time limit, and the host's job passing on while the host is away. These need the server started with a short
+// minute: npx wrangler dev --var TEST_TIME_SCALE:0.0167 (a minute is a second); otherwise they are skipped.
+{
+  const { code: tc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'clock', priv: false })).json();
+  const a = await client(tc, 'Alice'), b = await client(tc, 'Bob'); await sleep(400);
+  b.act('sit', 'N'); await sleep(200);
+  a.act('robot', 'E'); await sleep(150); a.act('robot', 'W'); await sleep(300);
+  a.act('settings', { boardLimit: 5 }); await sleep(300);
+  check(a.t().boardLimit === 5 && a.chat.some(x => /Time limit set to 5 minutes/.test(x.text)), 'the host sets a time limit');
+  const fast = await until(() => a.t().timeUp, 9000);
+  if (fast) {
+    check(a.chat.some(x => /Time's up/.test(x.text)), 'when the time is up everyone is told');
+    a.errs.length = 0; a.act('call', 'P'); a.act('claim', 0); await sleep(400);
+    check(a.errs.some(e => /Time's up/.test(e)), '... and the players can no longer bid, play or claim');
+    check(await until(() => a.t().phase === 'done', 120000), 'the robots finish the board, for the people too');
+    // host away: Alice's connection closes; after two (scaled) minutes the next action hands the job to Bob
+    a.act('next'); await sleep(300);
+    a.ws.close(); await sleep(2600);
+    b.act('chat', 'still there?'); await sleep(400);
+    check(b.t().host !== b.t().createdBy && b.chat.some(x => /Bob is now the host, as the host is away/.test(x.text)), 'a host who is away hands the job to a seated player who is here');
+  } else { console.log('skip  time limit and host away (start the server with --var TEST_TIME_SCALE:0.0167 to check them)'); a.ws.close(); }
+  b.ws.close();
 }
 
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nall checks passed');

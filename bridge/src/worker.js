@@ -150,7 +150,9 @@ const MAX_ONLOOKERS = 60;  // onlookers' connections per table, so players can a
 const MAX_PER_IP = 12;     // connections per table from one address
 const hex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
 const TIME_UP = "Time's up for this board, so the robots are finishing it.";
-const deadline = t => (t.boardLimit && t.boardStart && live(t) && !t.timeUp) ? t.boardStart + t.boardLimit * 60e3 : null;
+// TEST_TIME_SCALE (only set for automated tests) shortens the time limits and the host's away time, e.g. 0.0167 makes a minute one second.
+let timeScale = 1;
+const deadline = t => (t.boardLimit && t.boardStart && live(t) && !t.timeUp) ? t.boardStart + t.boardLimit * 60e3 * timeScale : null;
 const ACTIONS = {
   sit: (t, u, seat) => {
     if (!SEATS.includes(seat)) return false;
@@ -343,17 +345,18 @@ function tidyPresence(t) {
 function passHost(t, here) {
   const seated = SEATS.filter(s => t.seats[s] && t.seats[s].kind === 'human');
   const hs = seated.find(s => t.seats[s].id === t.host);
-  const gone = hs ? !!(t.away && t.away[hs] && Date.now() - t.away[hs] >= HOST_AWAY_MS) : !here.has(t.host);
+  const gone = hs ? !!(t.away && t.away[hs] && Date.now() - t.away[hs] >= HOST_AWAY_MS * timeScale) : !here.has(t.host);
   if (!gone) return;
   const to = seated.find(s => t.seats[s].id !== t.host && here.has(t.seats[s].id) && !(t.away && t.away[s]));
   if (!to) return;
   t.host = t.seats[to].id;
-  G.sysMsg(t, `${t.seats[to].name} is now the host, as the host ${hs ? 'is away' : 'has left'}`);
+  G.sysMsg(t, `${t.seats[to].name} is now the host, as the host ${hs ? 'is away' : 'isn\'t at the table'}`);
 }
 
 export class TableRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
+    { const v = Number(env.TEST_TIME_SCALE); if (v > 0) timeScale = v; }
     this.t = null; this.other = []; this.lobbyKey = '';
     this.think = undefined; // friends mode: the open request for a robot's card (undefined: look on the connections, see getThink)
     ctx.blockConcurrencyWhile(async () => {
@@ -375,7 +378,7 @@ export class TableRoom extends DurableObject {
     this.t = t;
     await this.save();
     this.reportLobby();
-    await this.ctx.storage.setAlarm(Date.now() + IDLE_DELETE_MS);
+    await this.setAlarm(Date.now() + IDLE_DELETE_MS);
     return true;
   }
 
@@ -397,7 +400,7 @@ export class TableRoom extends DurableObject {
     if (!this.t) return;
     const code = this.t.id;
     this.t = null; this.other = []; this.think = null;
-    await this.ctx.storage.deleteAlarm();
+    await this.ctx.storage.deleteAlarm(); this.alarmAt = null;
     await this.ctx.storage.deleteAll();
     lobbyStub(this.env).remove(code).catch(() => { });
     for (const ws of this.ctx.getWebSockets()) { this.sendTo(ws, { type: 'notfound', closed: true, msg: why }); try { ws.close(1000, 'closed'); } catch (e) { } }
@@ -591,13 +594,18 @@ export class TableRoom extends DurableObject {
       const due = Date.now() + pause * (scale >= 0 ? scale : 1);
       this.robotDue = { mark, due };
       this.askThink(due);
-      await this.ctx.storage.setAlarm(due);
+      await this.setAlarm(due);
     } else {
       this.robotDue = null;
       const d = deadline(this.t); // wake up when the board's time runs out
-      await this.ctx.storage.setAlarm(d ? Math.max(Date.now() + 1000, d) : Date.now() + IDLE_DELETE_MS);
+      if (d) { const at = Math.max(Date.now() + 1000, d); if (this.alarmAt !== at) await this.setAlarm(at); return; }
+      // The idle check needs no new write with every move: any alarm already set will do, as alarm()
+      // works out how long the table has really been idle and sets the next one.
+      if (this.alarmAt === undefined) this.alarmAt = await this.ctx.storage.getAlarm(); // (not known after waking up)
+      if (this.alarmAt == null || this.alarmAt > Date.now() + IDLE_DELETE_MS) await this.setAlarm(Date.now() + IDLE_DELETE_MS);
     }
   }
+  async setAlarm(at) { await this.ctx.storage.setAlarm(at); this.alarmAt = at; }
 
   // Friends mode: the double-dummy solver needs more CPU time than the free plan gives this server, so a
   // player's browser works out the robot's card (js/net.js 'think'). That browser gets the robot's view
@@ -654,10 +662,11 @@ export class TableRoom extends DurableObject {
     if (!th || th.done || !this.t || u.uid !== th.uid || m.key !== th.key + '#' + th.nonce || G.playKey(this.t) !== th.key) return;
     th.done = true; th.card = typeof m.card === 'string' && m.card.length === 2 ? m.card : null; // legality is checked when it's played
     if (u.th && u.th.nonce === th.nonce) try { ws.serializeAttachment({ ...u, miss: 0, th: { ...u.th, done: true, card: th.card } }); } catch (e) { }
-    if (Date.now() >= th.due) this.ctx.storage.setAlarm(Date.now()).catch(e => console.error(e)); // the robot's pause is over: play now
+    if (Date.now() >= th.due) this.setAlarm(Date.now()).catch(e => console.error(e)); // the robot's pause is over: play now
   }
 
   async alarm() {
+    this.alarmAt = null; // it fired; whatever runs below sets the next one
     if (!this.t) return;
     const d = deadline(this.t);
     if (d && Date.now() >= d) {
@@ -669,7 +678,7 @@ export class TableRoom extends DurableObject {
     }
     if (this.robotPending()) {
       const th = this.getThink(), key = this.t.phase === 'play' ? G.playKey(this.t) : null;
-      if (th && key && th.key === key && !th.done && Date.now() < th.at + THINK_MS) { await this.ctx.storage.setAlarm(th.at + THINK_MS); return; } // still thinking
+      if (th && key && th.key === key && !th.done && Date.now() < th.at + THINK_MS) { await this.setAlarm(th.at + THINK_MS); return; } // still thinking
       if (th && key && th.key === key && !th.done) this.thinkMissed(th);
       const hint = th && th.done && th.card && th.key === key ? { key, card: th.card } : null;
       const ok = await this.apply({}, t => {
@@ -681,17 +690,17 @@ export class TableRoom extends DurableObject {
         return A.card(t, ts, ok ? hint.card : G.botPlay(t, ts));
       });
       this.botFails = ok ? 0 : (this.botFails || 0) + 1;
-      if (!ok) await this.ctx.storage.setAlarm(Date.now() + (this.botFails < 5 ? 2000 : IDLE_DELETE_MS)); // retry a few times, then leave it to the players
+      if (!ok) await this.setAlarm(Date.now() + (this.botFails < 5 ? 2000 : IDLE_DELETE_MS)); // retry a few times, then leave it to the players
       return;
     }
     const idle = Date.now() - (this.t.updatedAt || 0);
     if (idle >= IDLE_DELETE_MS) {
       // someone still has it open: look again in an hour (not every minute, which would wake the table all day)
-      if (this.ctx.getWebSockets().length) { await this.ctx.storage.setAlarm(Date.now() + 3600e3); return; }
+      if (this.ctx.getWebSockets().length) { await this.setAlarm(Date.now() + 3600e3); return; }
       await this.shutdown('This table was closed after three days without play.');
       return;
     }
-    await this.ctx.storage.setAlarm(Date.now() + Math.max(60e3, IDLE_DELETE_MS - idle));
+    await this.setAlarm(Date.now() + Math.max(60e3, IDLE_DELETE_MS - idle));
   }
 
   // ----- what each person may see -----
