@@ -8,7 +8,7 @@ const Prefs = (() => {
   let p = {};
   try { p = JSON.parse(localStorage.getItem('bridge-prefs')) || {}; } catch (e) { }
   try { if (p.contrast === undefined && localStorage.getItem('bridge-contrast') === '1') p.contrast = true; } catch (e) { }
-  return Object.assign({ contrast: false, deck4: false, confirm: false, confirmBid: false, speed: 'normal' }, p);
+  return Object.assign({ contrast: false, deck4: false, confirm: false, confirmBid: false, speed: 'normal', hint: false, autoNext: false }, p);
 })();
 function savePrefs() { try { localStorage.setItem('bridge-prefs', JSON.stringify(Prefs)); } catch (e) { } }
 function applyPrefs() {
@@ -131,7 +131,7 @@ function rowsHTML(cards, legal = [], seat = '') {
   return `<div class="rows">${UI_SUITS.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
     const ranks = cs.length ? cs.map(c => legal.includes(c)
-      ? `<button class="rk play ${c === selCard ? 'sel' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
+      ? `<button class="rk play ${c === selCard ? 'sel' : ''} ${isHint(c) ? 'hint' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
       : `<button class="rk" disabled>${rankLabel(c[1])}</button>`).join('') : '<span class="void">–</span>';
     return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''} s-${s}">${SYM[s]}</span><span class="rr">${ranks}</span></div>`;
   }).join('')}</div>`;
@@ -158,7 +158,7 @@ function colsHTML(cards, legal = [], seat = '', small = false, budget = 0, maxW 
     if (!cs.length) return '';
     return `<div class="dcol">${cs.map(c => {
       const ok = legal.includes(c);
-      const cls = (any ? (ok ? 'legal' : 'dim') : '') + (ok && c === selCard ? ' sel' : '');
+      const cls = (any ? (ok ? 'legal' : 'dim') : '') + (ok && c === selCard ? ' sel' : '') + (ok && isHint(c) ? ' hint' : '');
       return cardHTML(c, cls, ok ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"');
     }).join('')}</div>`;
   }).join('')}</div>`;
@@ -244,13 +244,14 @@ let explainTimer = null;
 function showExplain(el, text) {
   hideExplain();
   const r = el.getBoundingClientRect(), d = document.createElement('div');
-  d.className = 'explain'; d.id = 'explainPop'; d.setAttribute('role', 'status'); d.textContent = text;
+  d.className = 'explain'; d.id = 'explainPop'; d.setAttribute('role', 'status'); d.innerHTML = redSym(esc(text));
   document.body.appendChild(d);
   const w = d.offsetWidth, x = Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2));
   const below = r.bottom + 6 + d.offsetHeight < window.innerHeight;
   d.style.left = x + 'px'; d.style.top = (below ? r.bottom + 6 : r.top - d.offsetHeight - 6) + window.scrollY + 'px';
   explainTimer = setTimeout(hideExplain, 6000);
   setTimeout(() => document.addEventListener('pointerdown', hideExplain, { once: true }), 0);
+  return d;
 }
 function hideExplain() { clearTimeout(explainTimer); const p = document.getElementById('explainPop'); if (p) p.remove(); }
 // What every call means by the robots' system (bidding.js), worked out once per auction and vulnerability:
@@ -445,7 +446,7 @@ function renderHand() {
   const w = el.clientWidth || 360;
   const cw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
-  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
+  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : '') + (legal.includes(c) && isHint(c) ? ' hint' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
 }
 const STRAIN_WORD = { C: 'clubs', D: 'diamonds', H: 'hearts', S: 'spades', N: 'notrump' };
 let bidFocus = null; // the bidding-box button that last had the focus
@@ -471,12 +472,13 @@ function renderBidBox() {
   const legal = show ? legalCalls(t.dealer, t.auction) : [];
   const minLevel = [1, 2, 3, 4, 5, 6, 7].find(l => STRAINS.some(s => legal.includes(l + s)));
   if (selLevel && !STRAINS.some(s => legal.includes(selLevel + s))) selLevel = null;
-  $('bbLevels').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${selLevel === l ? 'sel' : ''}" data-level="${l}" aria-pressed="${selLevel === l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('');
+  const hc = show && hint && hint.call && hint.key === hintKey(t) ? hint.call : null;
+  $('bbLevels').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${selLevel === l ? 'sel' : ''} ${hc && hc[0] === String(l) ? 'hint' : ''}" data-level="${l}" aria-pressed="${selLevel === l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('');
   $('bbStrains').innerHTML = STRAINS.map(s => {
     const ok = selLevel && legal.includes(selLevel + s);
-    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s} ${ok && pendingCall === selLevel + s ? 'sel' : ''}" data-strain="${s}" aria-label="${selLevel ? selLevel + ' ' : ''}${STRAIN_WORD[s]}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
+    return `<button class="bcard ${isRed(s) ? 'red' : ''} s-${s} ${ok && pendingCall === selLevel + s ? 'sel' : ''} ${hc && hc[1] === s && (!selLevel || selLevel === +hc[0]) ? 'hint' : ''}" data-strain="${s}" aria-label="${selLevel ? selLevel + ' ' : ''}${STRAIN_WORD[s]}" ${ok ? '' : 'disabled'}>${SYM[s]}</button>`;
   }).join('');
-  const ps = c => pendingCall === c ? 'sel' : '';
+  const ps = c => (pendingCall === c ? 'sel' : '') + (hc === c ? ' hint' : '');
   $('bbSpecial').innerHTML = `<button class="bcard pass ${ps('P')}" data-call="P" ${show ? '' : 'disabled'}>Pass</button><button class="bcard dbl ${ps('X')}" data-call="X" aria-label="Double" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl ${ps('XX')}" data-call="XX" aria-label="Redouble" ${legal.includes('XX') ? '' : 'disabled'}>XX</button>`;
   if (show && bidFocus && (keep || (kbdNav && (!document.activeElement || document.activeElement === document.body)))) {
     const el = area.querySelector(bidFocus);
@@ -516,13 +518,15 @@ function renderResultsPane(t) {
   const sgn = v => (v > 0 ? '+' : '') + v;
   let head, rowsR, summary = '', note = 'Tap a board to see its hand record.';
   if (t.local) {
-    head = '<th>Bd</th><th>You</th><th>Res</th><th class="num">N-S</th><th>Robots</th><th class="num">IMPs</th>';
+    // your table against a table of four robots playing the same deals, board by board, in IMPs
+    head = '<th>Bd</th><th>You</th><th class="num">N-S</th><th>Robots</th><th class="num">N-S</th><th class="num">IMPs</th>';
+    const res = c => c ? cShort(c.contract) + (c.contract ? ' ' + resultText(c.contract, c.declTricks) : '') : '';
     rowsR = t.history.map((h, i) => {
       const o = h.other; const im = o ? toImps(h.scoreNS - o.scoreNS) : null;
       if (im !== null) { imps += im; impN++; }
-      return `<tr class="click" data-record="${i}" tabindex="0"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td>${o ? cShort(o.contract) + (o.contract ? ' ' + resultText(o.contract, o.declTricks) : '') : ''}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
+      return `<tr class="click" data-record="${i}" tabindex="0" aria-label="Board ${h.board}: hand record"><td>${h.board}</td><td>${res(h)}</td><td class="num">${h.scoreNS}</td><td>${o ? res(o) : ''}</td><td class="num">${o ? o.scoreNS : ''}</td><td class="num"><b>${im === null ? '' : im ? sgn(im) : '0'}</b></td></tr>`;
     }).reverse().join('');
-    if (impN) summary = `<p class="note" style="margin:-4px 0 8px">Against a table of four robots playing the same deals, N-S ${imps >= 0 ? 'won' : 'lost'} ${Math.abs(imps)} IMP${Math.abs(imps) === 1 ? '' : 's'} over ${impN} board${impN === 1 ? '' : 's'}.</p>`;
+    note = 'IMPs against four robots playing the same deals. Tap a board to see its hand record.';
   } else if (t.match) {
     const other = otherRoom && otherRoom.history || [];
     const openNS = (bd) => (t.match.room === 'Open' ? t.history : other).find(h => h.board === bd);
@@ -551,7 +555,8 @@ function renderResultsPane(t) {
     if (!DD.failed) note += ' Par fills in once the analysis finishes.';
   }
   const any = t.history.length || (t.match && otherRoom && otherRoom.history.length);
-  $('pane-results').innerHTML = redSym(any ? `${t.match ? '' : `<div class="totals"><span>N-S ${ns}</span><span>E-W ${ew}</span></div>`}${summary}
+  const totals = t.match ? '' : t.local ? `<div class="totals"><span>${t.history.length} board${t.history.length === 1 ? '' : 's'}</span><span>${impN ? sgn(imps) + ' IMP' + (Math.abs(imps) === 1 ? '' : 's') : ''}</span></div>` : `<div class="totals"><span>N-S ${ns}</span><span>E-W ${ew}</span></div>`;
+  $('pane-results').innerHTML = redSym(any ? `${totals}${summary}
     <table class="reslist"><tr>${head}</tr>${rowsR}</table><p class="note">${note}</p>
     ${t.history.length ? '<div class="row"><button class="btn small" id="pbnAll">Download all boards (PBN)</button></div>' : ''}` : '<p class="empty">Finished boards appear here.</p>');
   const pa = $('pbnAll'); if (pa) pa.addEventListener('click', () => downloadText(`bridge-${t.id}.pbn`, t.history.map(h => pbnBoard(h, t)).join('\n\n') + '\n'));
@@ -571,10 +576,12 @@ function renderTop() {
   $('undoBtn').classList.toggle('hidden', $('undoBtn').disabled || (!t.local && t.allowUndo === false));
   $('claimBtn').disabled = !(mine && t.phase === 'play' && !t.claim && mine !== dummySeat(t) && t.play.tricks.length > 0);
   $('claimBtn').classList.toggle('hidden', $('claimBtn').disabled);
+  $('hintBtn').classList.toggle('hidden', !hintOK(t));
 }
 function render() {
   if (!T) return;
   autoTab(T);
+  if (hint && hint.key !== hintKey(T)) { hint = null; if ($('explainPop') && $('explainPop').dataset.hint) hideExplain(); }
   if (selCard) { const ts = turnSeat(T); if (T.phase !== 'play' || !ts || !myLegal(T, ts).includes(selCard)) selCard = null; }
   const ae = document.activeElement; let keep = null;
   if (ae && ae !== document.body && ae.dataset) for (const a of ['play', 'level', 'strain', 'call', 'confirmcall', 'cancelcall', 'claim', 'next', 'record', 'review', 'ai']) {
@@ -597,20 +604,21 @@ function render() {
   claimFeedback(T); chatUnread(T);
   updateTitle();
   scheduleRobot();
+  autoNext(T); savePractice();
 }
 
 // ---------- modals ----------
 let modalReturn = null;
 function setBackgroundInert(on) { for (const id of ['home', 'tableView']) { const el = $(id); if (el) el.inert = on; } }
 function closeModal() {
-  $('modalRoot').innerHTML = ''; openRecord = null; setBackgroundInert(false);
+  $('modalRoot').innerHTML = ''; openRecord = null; replayDraw = null; setBackgroundInert(false);
   const r = modalReturn; modalReturn = null;
   if (r && r.isConnected) r.focus({ preventScroll: true });
 }
-function modal(html) {
+function modal(html, bare) { // bare: the window has its own buttons, so no Close button at the bottom
   if (!$('modalRoot').firstChild) modalReturn = document.activeElement;
   // a close button that stays at the top while a long window (the hand record) scrolls, and one at the bottom
-  $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box"><div class="mtop"><button class="btn small mclose" data-close="1" aria-label="Close">✕</button></div>${html}<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div></div></div>`;
+  $('modalRoot').innerHTML = `<div class="modal" role="dialog" aria-modal="true"><div class="box"><div class="mtop"><button class="btn small mclose" data-close="1" aria-label="Close">✕</button></div>${html}${bare ? '' : '<div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close="1">Close</button></div>'}</div></div>`;
   const m = $('modalRoot').firstChild;
   setBackgroundInert(true);
   m.addEventListener('click', e => { if (e.target === m || e.target.dataset.close) closeModal(); });
@@ -622,7 +630,7 @@ function modal(html) {
     if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
     else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   });
-  openRecord = null;
+  openRecord = null; replayDraw = null;
   const b = m.querySelector('button:not(.mclose):not(:disabled)') || m.querySelector('button'); if (b) b.focus({ preventScroll: true });
   return m;
 }
@@ -635,13 +643,7 @@ function showLastTrick() {
 function showRecord(i) {
   const h = T.history[i]; if (!h) return;
   const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s])}</div>`;
-  let tt = '';
-  if (h.tricks && h.tricks.length) {
-    tt = `<h3 style="font-size:16px;margin-top:12px">Play</h3><table class="ttable"><tr><td></td>${SEATS.map(s => `<td>${s}</td>`).join('')}</tr>${h.tricks.map((tr, k) => {
-      const w = tr.cards.length === 4 ? trickWinner(tr, h.contract.strain) : null;
-      return `<tr><td>${k + 1}</td>${SEATS.map(s => { const pc = tr.cards.find(x => x.seat === s); return `<td class="${s === w ? 'w' : ''} ${pc && isRed(suitOf(pc.card)) ? 'red' : ''} ${pc ? 's-' + suitOf(pc.card) : ''}">${pc ? SYM[suitOf(pc.card)] + rankLabel(pc.card[1]) : ''}</td>`; }).join('')}</tr>`;
-    }).join('')}</table><p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>`;
-  }
+  const tt = h.tricks && h.tricks.length ? `<h3 style="font-size:16px;margin-top:12px">Play</h3><div id="playBox">${playTableHTML(h)}</div>` : '';
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
     <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
@@ -653,12 +655,53 @@ function showRecord(i) {
   $('modalRoot').querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => exportRecord(h, b.dataset.export)));
   if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h));
 }
+// the cards that kept the double-dummy result: "any ♣" for a whole suit of the legal cards, else the cards themselves
+function betterText(r) {
+  const out = [];
+  for (const su of UI_SUITS) {
+    const b = r.best.filter(c => suitOf(c) === su); if (!b.length) continue;
+    const all = (r.legal || []).filter(c => suitOf(c) === su).length === b.length && b.length > 1;
+    if (all) out.push(`any <span class="${isRed(su) ? 'red' : ''} s-${su}">${SYM[su]}</span>`); else out.push(...sortForHand(b).map(cardText));
+  }
+  return out.length > 1 ? out.slice(0, -1).join(', ') + ' or ' + out[out.length - 1] : out.join('');
+}
+const cardText = c => `<span class="${isRed(suitOf(c)) ? 'red' : ''} s-${suitOf(c)}">${SYM[suitOf(c)]}${rankLabel(c[1])}</span>`;
+// The play, trick by trick. Once the review (js/analysis.js playReview) has checked a card double dummy, a card
+// that cost tricks carries a small −1 (or −2...), and the list under the table says what would have kept them.
+function playTableHTML(h) {
+  const rv = playReview(h), flat = reviewFlat(h), loss = {};
+  if (rv) flat.forEach((pc, i) => { const r = rv.res[i]; if (r && r.loss > 0) loss[pc.trick + pc.seat] = r.loss; });
+  const table = `<table class="ttable"><tr><td></td>${SEATS.map(s => `<td>${s}</td>`).join('')}</tr>${h.tricks.map((tr, k) => {
+    const w = tr.cards.length === 4 ? trickWinner(tr, h.contract.strain) : null;
+    return `<tr><td>${k + 1}</td>${SEATS.map(s => { const pc = tr.cards.find(x => x.seat === s), l = loss[k + s]; return `<td class="${s === w ? 'w' : ''} ${pc && isRed(suitOf(pc.card)) ? 'red' : ''} ${pc ? 's-' + suitOf(pc.card) : ''}">${pc ? SYM[suitOf(pc.card)] + rankLabel(pc.card[1]) : ''}${l ? `<sup class="cost" title="Cost ${l} trick${l > 1 ? 's' : ''} double dummy">−${l}</sup>` : ''}</td>`; }).join('')}</tr>`;
+  }).join('')}</table>`;
+  let review = '';
+  if (rv && !rv.done) review = `<p class="note">Checking each card double dummy… ${rv.n} of ${rv.res.length}</p>`;
+  else if (rv) {
+    const bad = flat.map((pc, i) => ({ pc, r: rv.res[i] })).filter(x => x.r && x.r.loss > 0);
+    if (!bad.length) review = '<p class="note">Double dummy, no card played cost a trick.</p>';
+    else {
+      const decl = h.contract.declarer, dummy = partnerOf(decl), side = { d: 0, o: 0 };
+      bad.forEach(x => { side[sameSide(x.pc.seat, decl) ? 'd' : 'o'] += x.r.loss; });
+      const tr = n => n + ' trick' + (n === 1 ? '' : 's');
+      review = `<p class="note" style="margin-bottom:2px">Double dummy, ${[side.d ? 'declarer gave away ' + tr(side.d) : '', side.o ? 'the defence gave away ' + tr(side.o) : ''].filter(Boolean).join(' and ')}:</p><ul class="costs">${bad.map(x => `<li>Trick ${x.pc.trick + 1}, ${SEAT_NAME[x.pc.seat]}${x.pc.seat === dummy ? ' (dummy)' : ''} played ${cardText(x.pc.card)} <span class="cost">−${x.r.loss}</span>${x.r.best.length ? `. Better: ${betterText(x.r)}` : ''}</li>`).join('')}</ul>`;
+    }
+  }
+  return table + review + '<p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>';
+}
+// called by js/analysis.js as the review of the open hand record comes in
+function redrawReview() {
+  if (!T || openRecord === null) return;
+  const h = T.history[openRecord], box = $('playBox');
+  if (h && box) box.innerHTML = playTableHTML(h);
+  if (replayDraw) replayDraw();
+}
 function otherLine(h) {
   let o = h.other, label = 'Robot table';
   if (!o && T.match && otherRoom) { o = otherRoom.history.find(x => x.board === h.board); label = T.match.room === 'Open' ? 'Closed room' : 'Open room'; }
   if (!o) return '';
   const im = T.match ? toImps((T.match.room === 'Open' ? h.scoreNS - o.scoreNS : o.scoreNS - h.scoreNS)) : toImps(h.scoreNS - o.scoreNS);
-  return `<p><b>${label}:</b> ${o.contract ? contractHTML(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMPs to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMPs to you` : 'No swing')}.</p>
+  return `<p><b>${label}:</b> ${o.contract ? contractHTML(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMP${Math.abs(im) === 1 ? "" : "s"} to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMP${Math.abs(im) === 1 ? '' : 's'} to you` : 'No swing')}.</p>
     ${o.auction ? `<details><summary class="note">Their auction</summary>${auctionGridHTML(T, o.auction, h.dealer, h.vul, null)}</details>` : ''}`;
 }
 function showClaimDialog() {
@@ -782,6 +825,9 @@ function renderRecent() {
   $('recentList').querySelectorAll('[data-rejoin]').forEach(b => b.addEventListener('click', () => { if (needName()) openOnline(b.dataset.rejoin); }));
 }
 
+window.addEventListener('pagehide', flushPractice);
+document.addEventListener('visibilitychange', () => { if (document.hidden) flushPractice(); });
+
 // ----- tell people in another tab or app that it's their turn -----
 const BASE_TITLE = document.title;
 function updateTitle() { document.title = T && isMyTurn(T) && document.hidden ? 'Your turn: ' + BASE_TITLE : BASE_TITLE; }
@@ -884,11 +930,25 @@ function undoBanner(t) {
 }
 
 // ----- replay a finished board card by card -----
+let replayDraw = null; // updates the open replay's note when the play review comes in
 function startReplay(h) {
   const flat = [];
   h.tricks.forEach((tr, k) => tr.cards.forEach((pc, j) => flat.push({ ...pc, trick: k, pos: j })));
   let step = flat.length; // number of cards shown as played
   const box = $('replayBox');
+  // the line under the replay: the card just played, what it cost double dummy (once the review has it), the tricks so far
+  const note = () => {
+    const cur = step ? flat[step - 1] : null;
+    if (!cur) return 'Before the opening lead.';
+    const tw = { decl: 0, def: 0 };
+    h.tricks.slice(0, cur.pos === 3 ? cur.trick + 1 : cur.trick).forEach(tr => {
+      if (tr.cards.length === 4) (sameSide(trickWinner(tr, h.contract.strain), h.contract.declarer) ? tw.decl++ : tw.def++);
+    });
+    const rv = playReview(h), r = rv && rv.res[step - 1];
+    const cost = r && r.loss > 0 ? ` It cost ${r.loss} trick${r.loss > 1 ? 's' : ''} double dummy${r.best.length ? ` (better: ${betterText(r)})` : ''}.` : '';
+    return `Trick ${cur.trick + 1}, card ${cur.pos + 1}: ${SEAT_NAME[cur.seat]} played ${cardText(cur.card)}.${cost} Declarer ${tw.decl}, defence ${tw.def}.`;
+  };
+  replayDraw = () => { const el = box.querySelector('.rpnote'); if (el && box.isConnected) el.innerHTML = note(); };
   const draw = () => {
     const played = new Set(flat.slice(0, step).map(x => x.card));
     const cur = step ? flat[step - 1] : null;
@@ -897,13 +957,9 @@ function startReplay(h) {
     const shown = inTrick; // a finished trick stays visible until the next lead
     const winner = shown.length === 4 ? trickWinner({ cards: shown }, h.contract.strain) : null;
     const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s].filter(c => !played.has(c)))}</div>`;
-    const tw = { decl: 0, def: 0 };
-    h.tricks.slice(0, cur ? (cur.pos === 3 ? trickNo + 1 : trickNo) : 0).forEach(tr => {
-      if (tr.cards.length === 4) (sameSide(trickWinner(tr, h.contract.strain), h.contract.declarer) ? tw.decl++ : tw.def++);
-    });
     const centre = `<div class="tr">${shown.map(x => `<div style="text-align:center">${cardHTML(x.card, x.seat === winner ? 'win' : '', 'tabindex="-1"')}<div class="lbl">${x.seat}</div></div>`).join('') || '<span class="lbl">Opening lead next</span>'}</div>`;
     box.innerHTML = `<div class="replay"><div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}${centre}${hand('E')}<div></div>${hand('S')}<div></div></div>
-      <p class="note" style="text-align:center">${step ? `Trick ${trickNo + 1}, card ${cur.pos + 1}: ${SEAT_NAME[cur.seat]} played ${rankLabel(cur.card[1])}${SYM[cur.card[0]]}.` : 'Before the opening lead.'} Declarer ${tw.decl}, defence ${tw.def}.</p>
+      <p class="note rpnote" style="text-align:center" aria-live="polite">${note()}</p>
       <div class="row ctl"><button class="btn small" data-rp="start" aria-label="Back to the start">Start</button><button class="btn small" data-rp="trickback">Previous trick</button><button class="btn small" data-rp="back" aria-label="Previous card">Back</button><button class="btn small primary" data-rp="fwd" aria-label="Next card">Next</button><button class="btn small" data-rp="trickfwd">Next trick</button><button class="btn small" data-rp="end">End</button></div></div>`;
     box.querySelectorAll('[data-rp]').forEach(b => b.addEventListener('click', () => {
       const a = b.dataset.rp;
@@ -922,6 +978,72 @@ function playMark(t) { return [t.board, t.phase, t.auction.length, t.play.tricks
 
 function showWatchers() { $('watchers').textContent = watchers ? `${watchers} watching` : ''; }
 
+// ---------- hints (practice only, an option) ----------
+// What the robot would do in your seat: its call with the system's meaning of it, or its card (the solver's
+// choice, as the robots pick theirs, else the heuristic's). The suggestion gets a thin gold outline until you act.
+let hint = null; // { key, call } or { key, card }
+const hintKey = t => [t.id, t.board, t.phase, t.auction.length, t.play.tricks.reduce((n, tr) => n + tr.cards.length, 0)].join(':');
+const hintOK = t => !!(Prefs.hint && t && t.local && isMyTurn(t) && !t.timeUp && (t.phase === 'auction' || t.phase === 'play'));
+const isHint = c => !!(hint && hint.card === c && T && hint.key === hintKey(T));
+async function showHint() {
+  if (!hintOK(T)) return;
+  const key = hintKey(T), btn = $('hintBtn'), say = text => { const d = showExplain(btn, text); d.dataset.hint = '1'; };
+  if (T.phase === 'auction') {
+    const mine = mySeat(T), r = botCall(T.hands[mine], mine, T.dealer, T.auction, T.vul);
+    let why = null;
+    try { why = describeCall(T.auction.concat([{ call: r.call, by: mine }]), T.auction.length, T.vul); } catch (e) { }
+    hint = { key, call: r.call }; renderBidBox();
+    say(`${r.call === 'P' ? 'Pass' : r.call === 'X' ? 'Double' : r.call === 'XX' ? 'Redouble' : 'Bid ' + callText(r.call)}${why ? '. ' + why : ''}`);
+    return;
+  }
+  const ts = turnSeat(T);
+  if (hint && hint.key === key && hint.card) { say(`Play ${SYM[suitOf(hint.card)]}${rankLabel(hint.card[1])}`); return; }
+  say('Thinking…');
+  let card = null;
+  try { card = typeof robotDDCard === 'function' ? await robotDDCard(T, ts) : null; } catch (e) { card = null; }
+  if (!T || hintKey(T) !== key) return; // you played meanwhile
+  if (!card || !myLegal(T, ts).includes(card)) { try { card = botPlay(T, ts); } catch (e) { card = null; } }
+  if (!card) { hideExplain(); return; }
+  hint = { key, card }; renderHand(); renderFelt();
+  say(`Play ${SYM[suitOf(card)]}${rankLabel(card[1])}${ts !== mySeat(T) ? ' from dummy' : ''}`);
+}
+$('hintBtn').addEventListener('click', showHint);
+
+// ---------- practice: kept on this device, so leaving or reloading the page doesn't lose it ----------
+let practiceSaved = -1, practiceSaveTimer = null;
+function savePractice() {
+  if (!T || !T.local || T.version === practiceSaved) return;
+  clearTimeout(practiceSaveTimer);
+  practiceSaveTimer = setTimeout(() => {
+    if (!T || !T.local) return;
+    practiceSaved = T.version;
+    Local.set('bt:practice', { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() });
+  }, 400);
+}
+function flushPractice() { if (T && T.local) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set('bt:practice', { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
+function savedPractice() {
+  const t = Local.get('bt:practice');
+  return t && t.local && t.seats && t.hands && Array.isArray(t.history) && Array.isArray(t.chat) && t.play ? t : null;
+}
+function renderPracticeBtn() {
+  const t = savedPractice();
+  $('practiceBtn').textContent = t ? 'Continue practice' : 'Practice with robots';
+  $('practiceNew').classList.toggle('hidden', !t);
+  $('practiceNote').textContent = t ? `Board ${t.board}${t.history.length ? `, ${t.history.length} played` : ''}. You sit South with three robots. Nothing is shared.` : 'You sit South with three robots. Nothing is shared.';
+}
+// practice: the next board starts by itself a few seconds after the last one ends (an option)
+let autoNextAt = null;
+function autoNext(t) {
+  if (!Prefs.autoNext || !t.local || t.phase !== 'done') return;
+  const key = t.id + ':' + t.board;
+  if (autoNextAt === key) return;
+  autoNextAt = key;
+  setTimeout(() => {
+    if (!T || !Prefs.autoNext || T.phase !== 'done' || T.id + ':' + T.board !== key || $('modalRoot').firstChild || !$('tableView').querySelector('[data-next]')) return;
+    doAct('next');
+  }, Math.round(5000 * speedMult()));
+}
+
 // ---------- display options ----------
 function showOptions() {
   const opt = (k, label, note) => `<label class="row" style="gap:8px;margin-bottom:8px;flex-wrap:nowrap;align-items:flex-start"><input type="checkbox" data-pref="${k}" ${Prefs[k] ? 'checked' : ''} style="margin-top:4px"> <span>${label}${note ? `<br><span class="note">${note}</span>` : ''}</span></label>`;
@@ -930,11 +1052,13 @@ function showOptions() {
     ${opt('deck4', 'Four-colour deck', 'Clubs green and diamonds orange, so every suit has its own colour.')}
     ${opt('confirm', 'Confirm before playing a card', 'The first tap raises a card, the second tap plays it.')}
     ${opt('confirmBid', 'Confirm before bidding', 'Pick a call, then press the Bid button (or Enter) to make it.')}
+    ${opt('hint', 'Hints in practice', 'A Hint button shows what the robot would bid or play in your seat.')}
+    ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
     <h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
     <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble, <b>Enter</b> to confirm</td></tr>
     <tr><td>Playing</td><td><b>←</b> <b>→</b> choose a card, <b>Enter</b> to play it</td></tr>
-    <tr><td>Anytime</td><td><b>L</b> last trick, <b>Esc</b> close a window</td></tr>
+    <tr><td>Anytime</td><td><b>L</b> last trick, <b>H</b> hint (when hints are on), <b>N</b> next board, <b>?</b> this window, <b>Esc</b> close a window</td></tr>
     <tr><td>Replay</td><td><b>←</b> <b>→</b> step through the play</td></tr></table>`);
   m.querySelectorAll('[data-pref]').forEach(cb => cb.addEventListener('change', () => {
     Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (T) render();
@@ -991,6 +1115,9 @@ document.addEventListener('keydown', e => {
   }
   if (k === 'Escape' && selCard) { selCard = null; renderHand(); renderFelt(); }
   if (k === 'l' && !$('lastTrickBtn').disabled) showLastTrick();
+  else if (k === 'h' && hintOK(T)) { showHint(); e.preventDefault(); }
+  else if (k === 'n' && T.phase === 'done' && $('felt').querySelector('[data-next]')) { doAct('next'); e.preventDefault(); }
+  else if (k === '?') { showOptions(); e.preventDefault(); }
 });
 
 // ---------- host settings ----------
@@ -1128,16 +1255,24 @@ function needName() {
   if (!me.name) { toast('Enter your name first'); $('nameInput').focus(); return false; }
   return true;
 }
-$('practiceBtn').addEventListener('click', () => {
+function startPractice(fresh) {
   // a name typed in the box counts (the chat uses it too), even if Save name wasn't pressed
   const typed = $('nameInput').value.trim().slice(0, 20);
   if (typed && typed !== me.name) { me.name = typed; saveMe(); }
   const nm = me.name || 'You';
+  const saved = !fresh && savedPractice();
+  if (saved) { // carry on where you left off (this device may have taken another identity meanwhile)
+    saved.seats.S = { kind: 'human', id: me.id, name: nm };
+    for (const m of saved.chat) if (!m.sys && m.seat === 'S') m.from = me.id;
+    try { openTable(saved); return; } catch (e) { console.error(e); }
+  }
   const t = newTable({ name: 'Practice', local: true });
   t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: nm }, W: { kind: 'robot' } };
   startBoard(t);
   openTable(t);
-});
+}
+$('practiceBtn').addEventListener('click', () => startPractice(false));
+$('practiceNew').addEventListener('click', () => startPractice(true));
 async function api(path, body) {
   const r = await fetch(API_BASE + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
   if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -1216,9 +1351,20 @@ function goHome() {
   wasMyTurn = false; clockSkew = 0;
   $('tableView').classList.add('hidden'); $('home').classList.remove('hidden');
   history.replaceState(null, '', location.pathname);
+  renderPracticeBtn();
   loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
 }
 function leaveTable() {
+  // leaving an online board you're playing in empties your seat and stops the game: ask first
+  if (T && !T.local && mySeat(T) && (T.phase === 'auction' || T.phase === 'play') && !T.masked && !$('modalRoot').firstChild) {
+    const m = modal(`<h3>Leave during the board?</h3><p>Your seat will be empty, and the game stops until someone sits there or adds a robot.</p><div class="row"><button class="btn primary" id="leaveYes">Leave</button><button class="btn" data-close="1">Stay</button></div>`, true);
+    m.querySelector('#leaveYes').addEventListener('click', () => { closeModal(); leaveNow(); });
+    return;
+  }
+  leaveNow();
+}
+function leaveNow() {
+  flushPractice();
   if (T && !T.local && mySeat(T)) {
     if (Net.ws && Net.ws.readyState === 1) doAct('standUp');
     else toast('You are offline, so your seat stays reserved until you reconnect or the table notices you are away.');
@@ -1233,6 +1379,7 @@ window.addEventListener('hashchange', async () => {
 });
 (async function init() {
   await loadMe();
+  renderPracticeBtn();
   await adoptIdentityFromLink();
   const code = location.hash.slice(1).toUpperCase();
   if (/^[A-Z]{5}$/.test(code) && me.name) openOnline(code);
