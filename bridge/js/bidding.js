@@ -55,7 +55,7 @@ const keycards = (h, tr) => [...'SHDC'].filter(s => h.has[s].includes('A')).leng
 // art: artificial (says nothing about the suit named); agree: trump suit this call agrees; a: the alert text.
 function MM(lo, hi, o = {}) {
   return { lo, hi, mn: o.mn || {}, mx: o.mx || {}, bal: !!o.bal, f: o.f || 0, inv: !!o.inv, art: !!o.art, agree: o.agree || null,
-    alert: o.a || null, tag: o.t || '', trump: o.trump || null, kc: o.kc || null, nt: !!o.nt, stop: o.stop || null };
+    alert: o.a || null, tag: o.t || '', trump: o.trump || null, kc: o.kc || null, nt: !!o.nt, stop: o.stop || null, q: o.q, short: o.short || null };
 }
 const ANY = () => MM(0, 37);
 function mergeM(ms) { // a call listed more than once in a table means "any of these"
