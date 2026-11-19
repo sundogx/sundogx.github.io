@@ -65,10 +65,13 @@ Agreement of the port's final choice with BEN's recorded one (`tools/bencheck.mj
 Team matches on the same deals (`tools/benvs.mjs`, 300 boards each, IMPs per board for the first-named side):
 
 - BEN bidding against the site's robots, contracts scored double dummy (`DET=1 DDSCORE=1 BENPLAY=0`): −0.18 ± 0.15.
-- BEN lead and card play against the site's robots, both sides bidding with the robots (`BENBID=0`): +0.28 ± 0.26.
+- BEN lead and card play against the site's robots, both sides bidding with the robots (`BENBID=0`): +0.28 ± 0.26;
+  with the unique-layout sampling, on another 277 boards (seed `final`): +0.01 ± 0.24 (the same as before it on the 128
+  boards both ran).
 - BEN play with `maxPool: 0` against `maxPool: 1000` (`OPP=ben BENBID=0 NEW='{"maxPool":0}'`): +0.22 ± 0.11, so
   extending the pool is off at the browser's time budget.
 - BEN play with 4000 ms, k 60, pool 200 against the defaults: +0.18 ± 0.15 (not enough to justify the slower play).
+- BEN opening leads with 4000 ms against 1500 ms (`OPP=ben BENBID=0 NEW='{"leadms":4000}'`): −0.31 ± 0.16, so 1500 ms stays.
 - BEN bidding with and without rescue bids (`o.rescue`, BEN's `evaluate_rescue_bid`; `OPP=ben DET=1 DDSCORE=1 BENPLAY=0
   NEW='{"rescue":false}'`): no rescue bid made and no board changed, so it is off (it costs a sampling pass on lone passes).
 - BEN play with and without BEN's `validate_logical_play` and `check_discards` weights (`o.logic`; `OPP=ben BENBID=0 DET=1
