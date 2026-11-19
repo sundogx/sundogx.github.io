@@ -112,6 +112,15 @@ The hand analysis runs DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to W
 - **The checks.** `node tests/ddtest.js [n]` checks a reused instance against a brute-force search on n endings and on mid-trick positions card by card. It also checks full deals solved on a reused instance against a fresh instance. `FRESH=1` gives every solve a fresh instance instead. On 5,000 endings, 11,179 mid-trick cards and 400 full deals there were no mismatches.
 - **Analysis workers.** The hand record uses one worker per strain job: two workers, or one on devices with four cores or fewer. It waits while a robot is thinking about a card or a lead.
 - **Par.** `js/par.js` turns a table into the par contract.
+- **Play review.** The hand record checks every card played (`playReview` in `js/analysis.js`): the position just before each card is solved for the player to move, and a card that takes fewer tricks for its side than the best card there is marked with what it cost (−1) in the play table, listed under it with the cards that were better, and named in the replay. It uses one worker of its own (made from a few lines in `js/analysis.js`, loading `wasm/compiled.js`, `engine.js` and `ddplay.js`), skips forced cards and runs of equals, and waits while a robot is thinking. A board takes about 0.1 s.
+
+## Practice aids
+
+- **Hints** (Options, off by default): in practice a Hint button (or H) shows what the robot would do in your seat: its call with the system's meaning, or its card (the solver's choice, as for the robots' own cards, else the heuristic's), outlined in gold until you act. Online tables have no hints.
+- **Next board automatically** (Options, off by default): a practice board is followed by the next a few seconds after it ends, unless a window is open.
+- **Kept on this device:** the practice table (its last 60 boards) is saved in the browser, so Leave table or a reload doesn't lose it. The home page then offers Continue practice and New practice.
+- **Results** in practice: each board against a table of four robots playing the same deals, both scores and the IMPs, with the running total.
+- Leaving an online table during a board you're seated at asks first, since it empties your seat.
 
 ## Robot card play
 
