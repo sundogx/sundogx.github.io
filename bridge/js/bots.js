@@ -99,6 +99,7 @@ function botPlayOld(t, seat) {
 }
 
 
+let FIN_SHARE = typeof process !== 'undefined' && process.env && process.env.FINSH ? +process.env.FINSH : 0.45;
 const BOT_DEFAULT_OFF = ['trlead', 'holdup']; // measured as neutral or harmful against the previous heuristic (tests/heurstim.js)
 const OFF = k => ((typeof globalThis !== 'undefined' && globalThis.BOT_OFF) || BOT_DEFAULT_OFF).includes(k);
 // ---- Card play v2: finesses, hold-ups, covering honours, ruffing in the short hand, signals ----
@@ -116,11 +117,26 @@ const BOT_DLEAD_W = { NT: [0.7, 0, 0, 0, 0, 0, 0, 0.8, 0.9, -0.8, 0.4, 1, -0.5, 
 const BOT_FOLLOW_NAMES = ['rule', 'low', 'wins', 'sureWin', 'overtake', 'above', 'honour', 'rank', 'coverHonour', 'setNow', 'nextBeats', 'endgame', 'unblock', 'finesse1', 'secondWin', 'honourDoubleton', 'high', 'ourLead', 'finFew', 'finMany', 'fin2Few'];
 const BOT_FOLLOW_W = { decl1n: [-0.8, -0.8, 1.8, 2.8, 0, 0.9, -1.1, -0.5, 2.2, 2.8, 0, 0.4, 1.4, 0.8, -1, 0.5, -2.4, 0, -0.6, 0.8, 0.3], decl1s: [0, -0.7, 1.1, 1.9, 0, 0.5, -0.6, -0.4, 1.5, 1.9, 0, 0.7, 0.7, 0.6, -0.8, 0.5, -1.1, 0, 0.1, 0.5, -0.1], def1n: [0.4, -0.3, 3, 5.6, 0, 0.2, 0.4, -2.1, 0.6, 0.3, 1, 0.2, 0, -0.2, -2.6, 0.2, -0.6, 0, -1.8, 0.6, -0.5], def1s: [0.1, -0.3, 1.7, 3.2, 0, 0.3, 0.1, -1, 1.7, 0.3, 0.9, 0.4, 0, -0.3, -1.4, 0.5, -0.5, 0, 0, 0.2, -0.7], def2n: [2.4, -1.5, 2.4, 10.4, -6.1, 0.3, 2.1, -3.1, 0, 0.9, -0.5, 1.9, 0, 3.6, 0, 1, -0.1, 0, -1.9, 2.6, 2], def2s: [0.9, -0.3, 2.8, 7.7, -5.2, -0.1, 1.8, -1.9, 0, 1, 0, 0.4, 0, 1.1, 0, 0.2, -0.2, 0, -0.8, 1.8, -0.2] };
 const BOT_DISCARD_W = { declNT: [0, 0.6, -0.9, 0, 0, 0, 0.1, -0.6, 0, 0, 0, 0, 0, 0.2, 0, 0.4, 0], declSuit: [-0.1, 0.3, -0.2, -0.1, 0.2, -0.1, 0.3, -0.3, 0.3, -0.5, 0, 0, 0, 0.2, 0.1, 0.1, 0], defNT: [0, 0.3, -0.3, 0, 0, -0.2, 0.5, -0.6, 0, -0.7, 0.2, -0.1, 0.1, 0.3, 0, 0.6, 0], defSuit: [-0.1, 0.3, -0.1, 0, 0, 0, 0.2, -0.7, 0.9, -0.4, 0, 0.2, 0, 0.1, 0, 0.3, 0] };
-// what declarer's calls showed (shown() in js/bidding.js), cached per auction
-const shownCache = new WeakMap();
-function declShown(auction, decl) {
-  let m = shownCache.get(auction); if (!m) shownCache.set(auction, m = {});
-  return m[decl] || (m[decl] = shown(auction, decl));
+// What each seat's calls showed (the meanings auctionMetas in js/bidding.js gives every call, as shown() reads
+// them): HCP range and suit lengths, worked out once per auction (a small cache keyed by the calls).
+const shownCache = new Map();
+function seatShown(auction, vul, who) {
+  const key = (vul || '') + ':' + auction.map(a => a.by + a.call).join(' ');
+  let m = shownCache.get(key);
+  if (!m) {
+    const metasOf = typeof auctionMetas === 'function' ? auctionMetas : _metas;
+    const metas = metasOf(auction, vul);
+    m = {};
+    for (const w of SEATS) {
+      const r = { pts: 0, ptsMax: 37, len: { S: 0, H: 0, D: 0, C: 0 } };
+      auction.forEach((a, i) => { const x = metas[i]; if (a.by !== w || !x) return; r.pts = Math.max(r.pts, x.lo); r.ptsMax = Math.min(r.ptsMax, x.hi); for (const su of SUITS) if (x.mn && x.mn[su]) r.len[su] = Math.max(r.len[su], x.mn[su]); });
+      if (r.ptsMax < r.pts) r.ptsMax = r.pts;
+      m[w] = r;
+    }
+    if (shownCache.size > 64) shownCache.clear();
+    shownCache.set(key, m);
+  }
+  return m[who];
 }
 function botFeatures(t, seat, kind) { const r = botPlay(t, seat, kind); return r && r.opts ? r : null; }
 let botWhy = ''; // which rule chose the last card (tests/heurstim.js leak report)
@@ -172,6 +188,30 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
   // known voids: a seat that failed to follow suit is void in it
   const voidIn = (who, su) => play.tricks.some(tr => suitOf(tr.cards[0].card) === su && tr.cards.some(pc => pc.seat === who && suitOf(pc.card) !== su));
 
+  // the declaring side's estimate of a defender's share of the opponents' unseen high cards, from the auction
+  // (shown() in js/bidding.js; a hand that passed when it could open has at most 11) less the high cards it has played
+  let oppSh = null;
+  const oppShare = who => {
+    if (!oppSh) {
+      const a = t.auction || [], L = nextSeat(decl), Rh = partnerOf(L);
+      let ourH = hcp(hands[decl]) + hcp(hands[dummy]);
+      const T = 40 - ourH, est = {};
+      const rng = w => {
+        let lo = 0, hi = 37;
+        try { const sh = seatShown(a, t.vul, w); lo = sh.pts || 0; hi = sh.ptsMax || 37; } catch (e) { /* none */ }
+        const i0 = a.findIndex(x => x.by === w);
+        if (i0 >= 0 && a[i0].call === 'P' && !a.slice(0, i0).some(x => bidValue(x.call) >= 0)) hi = Math.min(hi, 11);
+        return [Math.min(lo, T), Math.min(hi, T)];
+      };
+      const [l1, h1] = rng(L), [l2, h2] = rng(Rh);
+      let e1 = (T + (l1 + h1) / 2 - (l2 + h2) / 2) / 2;
+      e1 = Math.max(l1, Math.min(h1, Math.max(T - h2, Math.min(T - l2, e1))));
+      const pl = w => { let n = 0; for (const tr of play.tricks) for (const pc of tr.cards) if (pc.seat === w) n += hcp([pc.card]); return n; };
+      const r1 = Math.max(0, e1 - pl(L)), r2 = Math.max(0, T - e1 - pl(Rh));
+      oppSh = { [L]: r1 + r2 ? r1 / (r1 + r2) : 0.5, [Rh]: r1 + r2 ? r2 / (r1 + r2) : 0.5 };
+    }
+    return oppSh[who];
+  };
   // a defender's sure winner: a master that neither declarer (known void) nor dummy (void) can ruff
   const defSure = x => isMaster(x) && (!trump || x[0] === trump || (!(voidIn(decl, x[0]) && !voidIn(decl, trump)) && !(dummyUp && of(dummyCards, x[0]).length === 0 && of(dummyCards, trump).length)));
 
@@ -225,6 +265,13 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       // ruff losers in the short trump hand
       if (!OFF('ruff') && (T.O.length || !OFF('ruff2')) && T.B.length > 0 && T.B.length < T.A.length) {
         for (const s of SUITS) if (s !== trump && !info[s].B.length && info[s].A.length && !info[s].A.every(isMaster)) return R('ruffShort', low(info[s].A));
+        // partner has a singleton: cash the master (ours or partner's) to make the void, when we have losers to ruff
+        if (!OFF('mkvoid')) for (const s of SUITS) {
+          const I = info[s];
+          if (s === trump || I.B.length !== 1 || I.A.length < 2 || I.A.slice(1).every(isMaster)) continue;
+          if (isMaster(I.B[0]) && rankOf(low(I.A)) < rankOf(I.B[0])) return R('mkVoid', low(I.A));
+          if (isMaster(I.A[0])) return R('mkVoid', I.A[0]);
+        }
       }
       // draw trumps, but leave the opponents' trumps that are higher than all of ours
       if (T.O.length && (OFF('leaveT') || T.O.some(x => rankOf(x) < ourTop))) {
@@ -412,7 +459,7 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     const shareP = () => {
       if (pShare !== null) return pShare;
       let lo = 0, hi = 37;
-      try { const sh = declShown(t.auction || [], decl); lo = sh.pts || 0; hi = sh.ptsMax || 37; } catch (e) { /* no inference */ }
+      try { const sh = seatShown(t.auction || [], t.vul, decl); lo = sh.pts || 0; hi = sh.ptsMax || 37; } catch (e) { /* no inference */ }
       const est = hi < 37 ? (lo + hi) / 2 : lo ? lo + 2 : 10;
       let U = 0; for (const su of SUITS) for (const r of 'AKQJ') if (!known.has(su + r)) U += 'JQKA'.indexOf(r) + 1;
       let dp = 0; for (const tr of play.tricks) for (const pc of tr.cards) if (pc.seat === decl) dp += hcp([pc.card]);
@@ -421,7 +468,7 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
     };
     const declLen = s0 => {
       if (voidIn(decl, s0)) return 0;
-      let n = 0; try { n = declShown(t.auction || [], decl).len[s0] || 0; } catch (e) { n = 0; }
+      let n = 0; try { n = seatShown(t.auction || [], t.vul, decl).len[s0] || 0; } catch (e) { n = 0; }
       for (const tr of play.tricks) for (const pc of tr.cards) if (pc.seat === decl && suitOf(pc.card) === s0) n--;
       return Math.max(0, n);
     };
@@ -567,7 +614,9 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
           return R('3rdVoid', low(winners));
         }
         const k = x => unseenAbove(x).length, kmin = Math.min(...winners.map(k));
-        const lim = voidIn(second, led) || (kmin === 0 && !OFF('3safe') && (() => { const q = suitCount(); return q.sure >= q.need; })()) ? kmin : Math.max(1, kmin);
+        let lim = voidIn(second, led) || (kmin === 0 && !OFF('3safe') && (() => { const q = suitCount(); return q.sure >= q.need; })()) ? kmin : Math.max(1, kmin);
+        // the auction says the second hand has few of the opponents' remaining high cards: don't finesse
+        if (lim > kmin && !OFF('finAuc') && oppShare(second) < FIN_SHARE) lim = kmin;
         return R(lim > kmin ? '3rdFin' : '3rdTop', low(winners.filter(x => k(x) <= lim)));
       }
       // defender third hand: high, but cheapest of equals
