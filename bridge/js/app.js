@@ -65,6 +65,7 @@ function toast(msg, ms = 2600) {
 async function act(fn) {
   actChain = actChain.then(async () => {
     let base = T;
+    if (!base) return false; // left the table while an earlier action was queued
     const { history, chat, ...rest } = base;
     const s = structuredClone(rest);
     s.history = history.slice(); s.chat = chat.slice();
@@ -1492,5 +1493,5 @@ window.addEventListener('hashchange', async () => {
   if (/^[A-Z]{5}$/.test(code) && me.name) openOnline(code);
   else if (/^[A-Z]{5}$/.test(code)) $('codeInput').value = code;
   loadLobby();
-  lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
+  clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);
 })();
