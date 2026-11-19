@@ -79,7 +79,7 @@ if (kind !== 'bid') {
       else {
         const view = viewOf(d, dec, ct, dealer, vul);
         const vv = process.env.PLIM === 'none' ? { ...view, limits: {} } : process.env.PLIM === 'min' ? { ...view, limits: Object.fromEntries(Object.keys(view.limits).map(s => [s, D.ddAuctionLimits(view.auction, s, vul, false)])) } : view;
-        res = await B.play(spy(log), solve, vv, { ms: 2400, pool: +process.env.POOL || undefined, k: +process.env.K || undefined });
+        res = await B.play(spy(log), solve, vv, { ms: 2400, pool: +process.env.POOL || undefined, k: +process.env.K || undefined, maxPool: process.env.MAXPOOL ? +process.env.MAXPOOL : undefined });
         { // the double-dummy result on the real layout
           const hands = Object.fromEntries(d.deal.split(' ').map((h, i) => ['NESW'[i], pbnHand(h)]));
           const gone = new Set(view.tricks.flatMap(t => t.cards.map(c => c.card)));

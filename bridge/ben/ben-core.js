@@ -532,14 +532,18 @@ const BenCore = (() => {
     // sample the hidden hands (JS: the app's auction-limit sampler deals the pool; BEN's networks weight it)
     const poolN = o.pool || 120, k = o.k || 40, t0 = now();
     const hidden = [...SEATS4].filter(s => !view.known[s]);
-    const seenL = new Set(), pool = ddSample(view.limits ? view : { ...view, limits: {} }, poolN, rand).filter(h => { // unique layouts, as BEN's get_unique_samples
+    const cnt = new Map(), keys = [];
+    const draw = () => ddSample(view.limits ? view : { ...view, limits: {} }, poolN, rand).filter(h => { // unique layouts, as BEN's get_unique_samples (with their counts)
       const key = hidden.map(s => h[s].slice().sort().join('')).join('|');
-      return !seenL.has(key) && seenL.add(key);
+      if (cnt.has(key)) { cnt.set(key, cnt.get(key) + 1); return false; }
+      cnt.set(key, 1); keys.push(key); return true;
     });
+    const pool = draw();
     if (!pool.length) return { card: nnTop(), info: { ...info, why: 'no samples' } };
     const fullOf = (h, s) => [...h[s], ...playedBy[s]];
     const vul = vulArr(view.vul), aucCalls = view.auction.map(a => a.call), dealer = view.auction.length ? view.auction[0].by : 'N';
     const auc = padded(aucCalls, dealer);
+    const weigh = async pool => {
     const w = pool.map(() => ({ bid: 1, lead: 1, play: 1 }));
     for (const s of hidden) { // bidding: min over its calls of the bidder's probability of the call made
       const hix = SEATS4.indexOf(s), idx = [];
@@ -567,6 +571,15 @@ const BenCore = (() => {
       const op = (await nn.run(playModel(r, strain), { x: { data: A, dims: [N, Tp, PF] } })).card;
       pool.forEach((h, n) => { let mn = 1; for (const [ti, c] of mine) mn = Math.min(mn, red24(op, (n * Tp + ti) * 32, c32(c))); w[n].play = Math.min(w[n].play, mn); });
     }
+    return w; };
+    const w = await weigh(pool);
+    // o.maxPool: when few layouts fit the play so far, deal more, as BEN's 5000-board pool would (closer to BEN's vectors, 1013 vs 1010/1130,
+    // but -0.22 +- 0.11 IMPs/board over 300 boards at the browser's time budget, so off by default)
+    const fits = i => !(w[i].lead < 0.10) && !(w[i].play < 0.10);
+    for (let tries = 0; tries < 8 && pool.length < (o.maxPool || 0) && now() - t0 < (o.ms || Infinity) * 0.3 && pool.filter((_, i) => fits(i)).length < 10; tries++) {
+      const more = draw(); if (!more.length) break;
+      w.push(...await weigh(more)); pool.push(...more);
+    }
     // filters as BEN's thresholds (lowered until enough layouts pass), then the best k by bidding score
     let ids = pool.map((_, i) => i);
     const keep = (key, thr0, step, minPass, mult) => {
@@ -587,7 +600,7 @@ const BenCore = (() => {
       if (res.length >= minK && now() - t0 > ms) break;
       const r = await solve(ddJob(view, pool[i]));
       if (!r) continue;
-      res.push(r); prob.push(quality > 0.5 ? Math.max(w[i].bid, 1e-4) : 1);
+      res.push(r); prob.push((quality > 0.5 ? Math.max(w[i].bid, 1e-4) : 1) * cnt.get(keys[i]));
     }
     if (res.length < Math.min(4, ids.length)) return { card: nnTop(), info: { ...info, why: 'dd budget' } };
     const ps = prob.reduce((a, b) => a + b, 0), pk = prob.map(x => x / ps);
