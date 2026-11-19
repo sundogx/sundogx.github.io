@@ -24,14 +24,17 @@ const DDSCORE = !!process.env.DDSCORE, ddMemo = new Map();
 // DET=1: BEN bids with fixed sample counts instead of time budgets, so reruns repeat exactly (for A/B tests of the app's bidding)
 const DETB = process.env.DET ? { ms: Infinity, budget: Infinity, maxBoards: 4000, step: 2000, need: 30 } : {};
 const benPlay = process.env.BENPLAY !== '0', benBid = process.env.BENBID !== '0', OPP = process.env.OPP === 'ben', NEW = JSON.parse(process.env.NEW || '{}');
-const opt = v => v === 'new' ? { bidms: NEW.bidms || BIDMS, leadms: NEW.leadms || LEADMS, playms: NEW.playms || PLAYMS, x: NEW } : { bidms: BIDMS, leadms: LEADMS, playms: PLAYMS, x: {} };
+// BIDBUDGET: rollout cap for BEN calls (default 2.4 x BIDMS); CAP: calls slower than this many ms become the app's call, as in the page
+const BIDBUDGET = +process.env.BIDBUDGET || 0, CAP = +process.env.CAP || 0;
+const opt = v => v === 'new' ? { bidms: NEW.bidms || BIDMS, leadms: NEW.leadms || LEADMS, playms: NEW.playms || PLAYMS, bidbudget: NEW.bidbudget || BIDBUDGET, x: NEW } : { bidms: BIDMS, leadms: LEADMS, playms: PLAYMS, bidbudget: BIDBUDGET, x: {} };
 async function room(hands, dealer, vul, side, rand) { // side(seat) -> true for the BEN (variant) side
   const ben = s => side(s) ? 'new' : OPP ? 'base' : false;
   const auction = [];
   while (!auctionOver(auction)) {
     const s = auctionTurn(dealer, auction);
     let call;
-    if (ben(s) && benBid) { const O = opt(ben(s)); const br = (await B.bid(nn, dd, { hand: hands[s], seat: s, dealer, auction: auction.map(a => ({ call: a.call, by: a.by })), vul }, { ...O.x, ms: O.bidms, budget: O.bidms * 2.4, t0: B.now(), ...DETB })); call = br.call; if (br.info && br.info.rescue) console.error('rescue', s, br.info.rescue); }
+    if (ben(s) && benBid) { const O = opt(ben(s)), tb = B.now(); const br = (await B.bid(nn, dd, { hand: hands[s], seat: s, dealer, auction: auction.map(a => ({ call: a.call, by: a.by })), vul }, { ...O.x, ms: O.bidms, budget: O.bidbudget || O.bidms * 2.4, t0: B.now(), ...DETB })); call = br.call;
+      if (CAP && B.now() - tb > CAP) { console.error('late', ben(s), s, (B.now() - tb) | 0); call = R.botCall(hands[s], s, dealer, auction, vul).call; } if (br.info && br.info.rescue) console.error('rescue', s, br.info.rescue); }
     else call = R.botCall(hands[s], s, dealer, auction, vul).call;
     if (!isLegalCall(dealer, auction, call)) { call = 'P'; }
     auction.push({ call, by: s });

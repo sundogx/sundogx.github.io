@@ -77,6 +77,9 @@ Team matches on the same deals (`tools/benvs.mjs`, 300 boards each, IMPs per boa
 - BEN bidding with 1800 ms against 1100 ms (same seeds): +0.19 ± 0.13 and +0.23 ± 0.14, together +0.21 ± 0.09 over 600
   boards (63 changed). Not changed either: the tool's rollout cap is 2.4 × ms (4.3 s), above the page's 4 s wait, so the
   browser's 2600 ms cap would need its own match.
+- BEN bidding with 2500 ms (rollouts capped at 3400 ms) against 1100 ms (2600 ms), with calls over 3.9 s replaced by the
+  app's call as the page does (`BIDBUDGET=2600 CAP=3900 NEW='{"bidms":2500,"bidbudget":3400}'`, same seeds): −0.06 ± 0.16 and
+  −0.05 ± 0.16 over 588 boards, so the gain above needs more time than the page's 4 s wait and 1100 ms stays.
 - BEN opening leads with 4000 ms against 1500 ms (`OPP=ben BENBID=0 NEW='{"leadms":4000}'`): −0.30 ± 0.16, so 1500 ms stays.
 - BEN bidding with and without rescue bids (`o.rescue`, BEN's `evaluate_rescue_bid`; `OPP=ben DET=1 DDSCORE=1 BENPLAY=0
   NEW='{"rescue":false}'`): no rescue bid made and no board changed, so it is off (it costs a sampling pass on lone passes).
