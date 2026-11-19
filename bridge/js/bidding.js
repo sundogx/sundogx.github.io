@@ -188,6 +188,50 @@ function fourNTMeaning(ctx) {
   return MM(0, 37, { a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)`, t: 'rkcb', trump: tr, art: true, f: 1 });
 }
 
+// ---- Calls the robots never make, read by their usual natural meaning (a human partner's) ----
+// A responder's jump shift is strong and game forcing (weak in competition), a double jump preemptive; 1M-3NT is
+// 13-15 balanced; a three-level suit over our 1NT is natural (a major forces to game, a minor invites 3NT);
+// opener's jump shift forces to game; after 1M-2M opener's new suit (or 2NT) is a game try.
+function humanMean(ctx, call) {
+  if (BID_OFF('hum') || !ctx.first || bidValue(call) < 0) return null;
+  const lv = +call[0], st = call[1], jump = lv - ctx.cheap(st), op = ctx.first, t = op.call[1];
+  const myBids = ctx.mine.filter(x => bidValue(x.call) >= 0);
+  const ourSuit = ctx.ours.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art));
+  const theyOnce = ctx.theirs.length === 1 && ctx.theirs[0].by === ctx.rho && ctx.rhoCall !== 'P';
+  // their suit, which our side has not bid or shown: a cue bid, strong and forcing (says nothing about the suit)
+  if (st !== 'N' && ctx.theirs.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art)) && !ourSuit && !ctx.Me.mn[st] && !ctx.P.mn[st] && lv < gameLevel(st) && !BID_OFF('humcue'))
+    return MM(ctx.mine.length ? Math.max(ctx.Me.lo, 13) : 13, 37, { art: true, f: 1, a: 'Cue bid: a strong hand, forcing', t: 'hcue' });
+  if (!ctx.weOpened) { // partner's overcall, my first call: a jump raise is preemptive
+    const pl = ctx.pLast;
+    if (pl && ctx.pards.length === 1 && bidValue(pl.call) >= 0 && pl.m && pl.m.tag === 'ovc' && !ctx.mine.length && st === pl.call[1] && jump === 1 && lv < gameLevel(st)) return MM(0, 9, { mn: { [st]: 4 }, agree: st, t: 'pre' });
+    return null;
+  }
+  if (op.by === ctx.p && /^1[CDHS]$/.test(op.call) && !ctx.mine.length && ctx.pards.length === 1 && !ctx.iPH && lv <= 3) { // responder's first call
+    if (st === t && jump === 1 && theyOnce) return MM(3, 9, { mn: { [st]: MIN(st) ? 5 : 4 }, agree: st, t: 'pre' });
+    if (st !== 'N' && st !== t && !ctx.oppSuits.includes(st)) {
+      if (jump === 1 && ctx.quiet) return MM(17, 37, { mn: { [st]: 5 }, f: 2, a: 'Jump shift: 17+ points, game forcing', t: 'jsr' });
+      if (jump === 1 && theyOnce) return MM(3, 9, { mn: { [st]: 6 }, t: 'pre' });
+      if (jump === 2 && ctx.quiet) return MM(3, 9, { mn: { [st]: 6 }, t: 'pre' });
+    }
+    if (call === '3N' && MAJ(t) && ctx.quiet) return MM(13, 15, { bal: true, nt: true });
+    if (call === '2N' && MIN(t) && ctx.rhoCall === 'X' && ctx.theirs.length === 1) return MM(10, 37, { mn: { [t]: 4 }, agree: t, art: true, f: 1, a: `Jordan 2NT: 4+ ${SNAME[t]}, limit raise or better`, t: 'jordan' });
+  }
+  if (!ctx.quiet) return null;
+  const nb = ntBase(ctx);
+  if (nb && nb.k === 0 && !nb.interfered && nb.x.by === ctx.p && !ctx.mine.length && lv === 3 && st !== 'N' && (nb.x.call === '1N' || MAJ(st))) { // natural over our 1NT/2NT
+    const lo = nb.x.m.lo;
+    return MAJ(st) ? MM(Math.max(0, 25 - lo), 37, { mn: { [st]: 5 }, f: 2 }) : MM(Math.max(0, 23 - lo), Math.max(0, 24 - lo), { mn: { [st]: 6 }, inv: true });
+  }
+  if (op.by === ctx.seat && /^1[CDHS]$/.test(op.call) && myBids.length === 1 && ctx.pards.length === 1 && bidValue(ctx.pards[0].call) >= 0 && !ctx.gf) { // opener's second call
+    const pm = ctx.pards[0].m || ANY();
+    if (MAJ(t) && ctx.pards[0].call === '2' + t && pm.tag === 'raise' && bidValue(call) < bidValue('3' + t) && st !== t)
+      return st === 'N' ? MM(16, 18, { f: 1, inv: true, a: 'Invites game', t: 'hsgt' })
+        : MM(16, 18, { mn: { [st]: 3 }, f: 1, inv: true, a: `Invites game: asks for help in ${SNAME[st]} (help-suit game try)`, t: 'hsgt' });
+    if (st !== 'N' && !ourSuit && jump === 1 && lv <= 3 && !pm.art) return MM(18, 37, { mn: { [st]: 4 }, f: 2, a: 'Jump shift: 18+ points, game forcing', t: 'jso' });
+  }
+  return null;
+}
+
 // ---- Natural meaning of a call no table covers ----
 function natMean(ctx, call) {
   if (call === 'P') return ANY();
@@ -197,6 +241,7 @@ function natMean(ctx, call) {
   const lv = +call[0], st = call[1], Me = ctx.Me, P = ctx.P;
   const pBid = ctx.pards.some(x => bidValue(x.call) >= 0 && !(x.m && x.m.art));
   const myBids = ctx.mine.filter(x => bidValue(x.call) >= 0);
+  const hm = humanMean(ctx, call); if (hm) return hm;
   if (st === 'N') {
     const lo = myBids.length || pBid ? Me.lo : lv === 1 ? 8 : lv === 2 ? 12 : 13;
     return MM(lo, 37, { nt: true, stop: ctx.oppSuits });
@@ -361,6 +406,11 @@ function reb1M2M(ctx) { // 1M - 2M
 }
 function acceptInv(ctx, game, mid) { // partner invited: accept with the top half of what I showed
   return [T_(game, h => h.H + h.lp >= mid || supPts(h, game[1]) >= mid + 1, ANY()), T_('P', () => true, ANY())];
+}
+function gameTryAnswer(ctx) { // 1M - 2M - opener's game try (a new suit or 2NT): game with a maximum or help in that suit
+  const t = ctx.seq[0][1], s = ctx.pLast.call[1];
+  const losers = h => s === 'N' ? 0 : Math.min(3, h.L[s]) - ['A', 'K', 'Q'].slice(0, Math.min(3, h.L[s])).filter(r => h.has[s].includes(r)).length;
+  return [T_('4' + t, h => supPts(h, t) >= 9 || (supPts(h, t) >= 7 && (s === 'N' ? h.H >= 7 : losers(h) <= 1)), MM(7, 10, { agree: t })), T_('3' + t, () => true, MM(4, 8, { agree: t, t: 'signoff' }))];
 }
 function reb1MJ(ctx) { // 1M - 2NT Jacoby
   const t = ctx.seq[0][1], T = [];
@@ -647,6 +697,12 @@ function ntSystem(ctx) {
     if (r === '4H') return [T_('4S', () => true, MM(lo, hi, { art: true, a: 'Completes the transfer' }))];
     if (r === '2N') return [T_('3N', h => h.H >= lo + 1, MM(lo + 1, hi)), T_('P', () => true, MM(lo, lo))];
     if (r === '4N') return [T_('6N', h => h.H >= lo + 1, MM(lo + 1, hi)), T_('P', () => true, MM(lo, lo))];
+    const rm = ctx.pLast.m || ANY();
+    if (/^3[CDHS]$/.test(r) && !rm.art && !BID_OFF('hum')) { // a natural three-level suit (a human's): game forcing in a major, invitational in a minor
+      const s = r[1];
+      if (MAJ(s) && rm.f) return [T_('4' + s, h => h.L[s] >= 3, MM(lo, hi, { mn: { [s]: 3 }, agree: s })), T_('3N', () => true, MM(lo, hi, { mx: { [s]: 2 } }))];
+      if (MIN(s) && rm.inv) return [T_('3N', h => h.H >= lo + 1 || (h.L[s] >= 2 && hon(h, s) >= 1 && h.H >= lo), MM(lo, hi)), T_('P', () => true, MM(lo, hi))];
+    }
     return [T_('P', () => true, ANY())];
   }
   const o2 = c(2);
@@ -973,7 +1029,7 @@ function advanceOvc(ctx) { // partner overcalled (or made a two-suited bid); my 
     T.push(T_('P', () => true, ANY()));
     return T;
   }
-  if (pm.tag === 'nt') return null;
+  if (pm.tag === 'nt' || pm.art) return null; // e.g. partner's cue bid: natural (it is forcing)
   if (pc === 'X' || bidValue(pc) < 0) return null;
   const s = pc[1];
   if (s === 'N') return null;
@@ -1097,6 +1153,7 @@ function afterReopen(ctx) { // partner's reopening double: pass with their suit,
 }
 function afterJordan(ctx) {
   const t = ctx.seq[0][1];
+  if (MIN(t)) return [T_('3N', h => h.H >= 14 && h.semi, MM(14, 21, { nt: true })), T_('5' + t, h => h.H + h.lp >= 17 && !h.semi, MM(15, 21)), T_('3' + t, () => true, MM(11, 14))];
   return [T_('4' + t, h => h.H >= 14 || h.H + h.lp >= 15, MM(14, 21)), T_('3' + t, () => true, MM(11, 13))];
 }
 function afterCueRaise(ctx) { // partner showed a limit raise or better by cue bid
@@ -1435,6 +1492,7 @@ function agreedMajor(ctx) {
 }
 function ctlBidMeaning(ctx, call) {
   if (BID_OFF('ctl2') || !ctx.quiet || !ctx.weOpened || !ctx.pards.length || !ctx.mine.length || bidValue(call) < 0) return null;
+  if (humanMean(ctx, call)) return null; // e.g. a help-suit game try after 1M-2M
   const tr = agreedMajor(ctx), st = call[1], lb = ctx.lb;
   if (!tr || st === tr || st === 'N' || !lb || !sameSide(lb.by, ctx.seat) || bidValue(call) >= bidValue('4' + tr) || +call[0] < 3) return null;
   if (ctx.ours.some(x => bidValue(x.call) >= 0 && x.call[1] === st && !(x.m && x.m.art))) return null;
@@ -1569,6 +1627,7 @@ function tablesFor(ctx) {
     }
     if (k === 3 && ctx.opener === ctx.p) {
       const c1 = seq[1], m0 = ctx.items[ctx.ours[1].i].m || ANY();
+      if (/^1[HS]$/.test(c0) && pl.m && pl.m.tag === 'hsgt') return gameTryAnswer(ctx);
       if (/^1[HS]$/.test(c0) && c1 === '1N') return resp1M1N(ctx);
       if (/^1[HS]$/.test(c0) && m0.tag === 'jacoby') return respJ2N2(ctx);
       if (/^1[HS]$/.test(c0) && m0.tag === 'splinter') return [T_('P', () => true, ANY())];
@@ -1777,6 +1836,13 @@ function chooseCall(hand, seat, auction, vul) {
   }
   if (!call) call = natural(ctx, h, new Set(T ? T.filter(d => d.c).map(d => d.c) : []));
   call = slamAsk(ctx, h, T, call) || slamCtl(ctx, h, T, call) || natRescue(ctx, h, T, call) || call;
+  if (call === 'P' && !BID_OFF('nopassf')) { // never pass partner's forcing call (a human's, read by its natural meaning) below game
+    const pl = ctx.pLast;
+    if (pl && pl === ctx.lb && ctx.rhoCall === 'P' && pl.m && pl.m.f >= 1 && !ourGame(ctx) && !ctx.items.some(x => x.by === ctx.seat && x.i > pl.i)) {
+      let fit = null; for (const s of ['S', 'H', 'D', 'C']) if (!fit && ctx.P.mn[s] >= 3 && h.L[s] + ctx.P.mn[s] >= 8) fit = s;
+      call = forcedBid(ctx, h, ctx.ok, fit);
+    }
+  }
   return { call, alert: explainCall(auction, seat, call, metas, vul).alert };
 }
 // vul ('None', 'NS', 'EW', 'Both') is optional: without it the robots bid as if nobody were vulnerable.
