@@ -559,3 +559,5 @@ table.daily-lb tr.you td { font-weight: 600; }
 
 /* feature: share */
 @media (max-width: 700px) { #shText { font-size: 16px !important; } }
+/* feature: a11y: the statistics labels are row headers but keep the plain look */
+.reslist.stats th { font-weight: normal; font-size: inherit; color: inherit; }

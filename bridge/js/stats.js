@@ -86,13 +86,13 @@ function statsSummaryHTML(rs) {
   const dbl = rs.filter(r => r.h.contract && r.h.contract.doubled && r.role !== 'passed');
   const dblMine = dbl.filter(r => r.role !== 'defender'), dblTheirs = dbl.filter(r => r.role === 'defender');
   const dblText = dbl.length ? `${dblMine.length ? `your side declared ${dblMine.length} (${dblMine.filter(r => statsMadeIt(r.h)).length} made)` : ''}${dblMine.length && dblTheirs.length ? ', ' : ''}${dblTheirs.length ? `you defended ${dblTheirs.length} (${dblTheirs.filter(r => !statsMadeIt(r.h)).length} set)` : ''}` : '–';
-  return `<table class="reslist stats"><tr><td>Boards played</td><td>${rs.length}</td></tr>
-    <tr><td>Average IMPs against par</td><td>${avg('parImps')}</td></tr>
-    <tr><td>Average IMPs against the robot table</td><td>${avg('robotImps')}</td></tr>
-    <tr><td>Contracts made as declarer</td><td>${pct(decl.filter(r => statsMadeIt(r.h)).length, decl.length)}</td></tr>
-    <tr><td>Contracts set on defence</td><td>${pct(def.filter(r => !statsMadeIt(r.h)).length, def.length)}</td></tr>
-    <tr><td>Made by level, as declarer</td><td>${levels || '–'}</td></tr>
-    <tr><td>Doubled contracts</td><td>${dblText}</td></tr></table>${statsTrendSVG(rs)}`;
+  return `<table class="reslist stats"><tr><th scope="row">Boards played</th><td>${rs.length}</td></tr>
+    <tr><th scope="row">Average IMPs against par</th><td>${avg('parImps')}</td></tr>
+    <tr><th scope="row">Average IMPs against the robot table</th><td>${avg('robotImps')}</td></tr>
+    <tr><th scope="row">Contracts made as declarer</th><td>${pct(decl.filter(r => statsMadeIt(r.h)).length, decl.length)}</td></tr>
+    <tr><th scope="row">Contracts set on defence</th><td>${pct(def.filter(r => !statsMadeIt(r.h)).length, def.length)}</td></tr>
+    <tr><th scope="row">Made by level, as declarer</th><td>${levels || '–'}</td></tr>
+    <tr><th scope="row">Doubled contracts</th><td>${dblText}</td></tr></table>${statsTrendSVG(rs)}`;
 }
 // a running total of IMPs over the last 50 boards (against the robot table, else par), drawn as one thin line
 function statsTrendSVG(rs) {
@@ -126,7 +126,7 @@ Stats.show = async function () {
     ${Stats.list.length ? redSym(statsSummaryHTML(rs) + (rs.length ? statsRowsHTML(rs) : '<p class="empty">No boards match.</p>')) : '<p class="empty">Boards you finish appear here.</p>'}
     <p class="note">Kept in this browser only, newest ${Stats.MAX}. IMPs are against the robot table in practice, against par online.</p>
     <div class="row"><button class="btn small" id="histExport" ${Stats.list.length ? '' : 'disabled'}>Export</button><button class="btn small" id="histClear" ${Stats.list.length ? '' : 'disabled'}>Clear all</button></div>`);
-  m.querySelectorAll('[data-histf]').forEach(s => s.addEventListener('change', () => { Stats.filter[s.dataset.histf] = s.value; Stats.show(); }));
+  m.querySelectorAll('[data-histf]').forEach(s => s.addEventListener('change', () => { Stats.filter[s.dataset.histf] = s.value; Stats.show().then(() => { const n = $('modalRoot').querySelector(`[data-histf="${s.dataset.histf}"]`); if (n) n.focus(); }); })); /* feature: a11y */
   $('histExport').addEventListener('click', () => downloadText(`bridge-history-${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(Stats.list), 'application/json'));
   $('histClear').addEventListener('click', e => {
     const b = e.target;

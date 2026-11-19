@@ -272,7 +272,7 @@ if (typeof document !== 'undefined') {
     const m = modal(`<h3>Import a deal</h3>
       <p class="note">Paste a PBN deal, a BBO LIN string or a BBO handviewer link, or open a .pbn or .lin file.</p>
       <textarea id="shText" rows="6" style="width:100%;box-sizing:border-box;font:13px ui-monospace,monospace" placeholder="[Deal &quot;N:…&quot;] or md|…| or https://www.bridgebase.com/tools/handviewer.html?lin=…"></textarea>
-      <div class="row" style="margin-top:8px"><label class="btn small" style="cursor:pointer">Open a file<input type="file" id="shFile" accept=".pbn,.lin,.txt,text/plain" hidden></label></div>
+      <div class="row" style="margin-top:8px"><button class="btn small" id="shFileBtn">Open a file</button><input type="file" id="shFile" accept=".pbn,.lin,.txt,text/plain" hidden></div>
       <label class="row note hidden" id="shPick" style="gap:6px;margin-top:8px">Board <select id="shBoard"></select></label>
       <p class="note hidden" id="shErr" role="status"></p>
       <div class="row" style="margin-top:8px"><button class="btn small primary" id="shDoPlay">Play it</button><button class="btn small" id="shDoView">View</button></div>`);
@@ -287,6 +287,7 @@ if (typeof document !== 'undefined') {
     };
     m.querySelector('#shText').addEventListener('input', () => { m.querySelector('#shErr').classList.add('hidden'); boards(); });
     m.querySelector('#shFile').addEventListener('change', async e => { const f = e.target.files[0]; if (f) { m.querySelector('#shText').value = await f.text(); boards(); } });
+    m.querySelector('#shFileBtn').addEventListener('click', () => m.querySelector('#shFile').click()); /* feature: a11y */
     m.querySelector('#shDoPlay').addEventListener('click', () => { const h = read(); if (h) { closeModal(); playSharedDeal(h); } });
     m.querySelector('#shDoView').addEventListener('click', () => { const h = read(); if (h) showSharedDeal(h); });
     m.querySelector('#shText').focus();

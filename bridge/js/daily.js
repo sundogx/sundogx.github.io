@@ -77,6 +77,7 @@ const Daily = {
       ${d.overall.slice(0, 20).concat(you && you.rank > 20 ? [you] : []).map(p => `<tr class="${p.you ? 'you' : ''}"><td>${p.rank}</td><td>${esc(p.name)}</td><td>${p.boards}</td><td>${p.pct}%</td></tr>`).join('')}
       </tbody></table>`);
     m.querySelectorAll('[data-daily-b]').forEach(x => x.addEventListener('click', () => { Daily.showLeaderboard(+x.dataset.dailyB); }));
+    { const p = m.querySelector('[data-daily-b][aria-pressed="true"]'); if (p) p.focus({ preventScroll: true }); } /* feature: a11y */
   },
   renderHome() {
     const s = Daily.saved(), btn = $('dailyBtn');

@@ -133,13 +133,13 @@ function showSystemCard() {
   const box = m;
   box.querySelector('.box').classList.add('sc-box');
   const specs = []; SYSCARD.forEach(([, items]) => items.forEach(it => specs.push(it[2])));
-  const run = (id) => {
+  const run = (id, refocus) => {
     const out = document.getElementById('scout' + id);
     out.classList.remove('hidden'); out.innerHTML = '<p class="note">Dealing…</p>';
     setTimeout(() => { // let "Dealing…" paint first
       let r = null; try { r = syscardExample(specs[id]); } catch (e) { r = null; }
       out.innerHTML = syscardExHTML(specs[id], r);
-      const again = out.querySelector('[data-scagain]'); if (again) again.addEventListener('click', () => run(id));
+      const again = out.querySelector('[data-scagain]'); if (again) { again.addEventListener('click', () => run(id, true)); if (refocus) again.focus({ preventScroll: true }); }
     }, 20);
   };
   box.querySelectorAll('[data-scex]').forEach(b => b.addEventListener('click', () => {

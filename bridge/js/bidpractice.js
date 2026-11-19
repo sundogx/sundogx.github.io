@@ -41,10 +41,12 @@ function startBidPractice() {
   bpEl('bpUnc').checked = BP.uncontested;
   clearInterval(lobbyTimer);
   bpNext();
+  bpFocusBox(); /* feature: a11y */
 }
 function leaveBidPractice() {
   BP.on = false; clearTimeout(BP.timer); clearInterval(BP.poll);
   bpEl('bidPractice').classList.add('hidden'); bpEl('home').classList.remove('hidden');
+  { const b = bpEl('bidPracticeBtn'); if (b) b.focus({ preventScroll: true }); } /* feature: a11y */
   if (typeof loadLobby === 'function') { loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000); }
 }
 function bpNext() {
@@ -97,6 +99,7 @@ function bpRender() {
   if (!BP.done) bpEl('bpResult').innerHTML = '';
   else bpRenderResult();
 }
+function bpFocusBox(part) { /* feature: a11y */ const b = bpEl('bpBox') && bpEl('bpBox').querySelector(`${part || ''} button:not(:disabled)`); if (b) b.focus({ preventScroll: true }); }
 function bpHandHTML(cards) {
   return UI_SUITS.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
@@ -147,9 +150,9 @@ function bpClick(e) {
   const b = e.target.closest('button, [data-alert]'); if (!b) return;
   const d = b.dataset;
   if (b.id === 'bpLeave') leaveBidPractice();
-  else if (d.bplevel) { BP.level = +d.bplevel; bpEl('bpBox').innerHTML = bpBoxHTML(); }
-  else if (d.bpcall) bpCall(d.bpcall);
-  else if (d.bpnext) bpNext();
+  else if (d.bplevel) { BP.level = +d.bplevel; bpEl('bpBox').innerHTML = bpBoxHTML(); bpFocusBox('.st'); }
+  else if (d.bpcall) { bpCall(d.bpcall); bpFocusBox(); }
+  else if (d.bpnext) { bpNext(); bpFocusBox(); }
   else if (d.alert) { if (bpEl('explainPop')) hideExplain(); else showExplain(b, d.alert); }
   else return;
   e.stopPropagation();
