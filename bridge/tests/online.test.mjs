@@ -103,7 +103,7 @@ cl.forEach(c => c.ws.close());
 {
   const { code: pc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'public', priv: false })).json();
   const a = await client(pc, 'Alice'); await sleep(400);
-  a.act('settings', { friends: true }); await sleep(400);
+  a.act('settings', { friends: true }); for (let w = 0; w < 30 && !a.errs.some(e => /private/.test(e)); w++) await sleep(100); // replies can take a while over the internet
   check(a.t().friends !== true && a.errs.some(e => /private/.test(e)), 'the host cannot turn on friends mode at a public table');
   a.ws.close();
 }
