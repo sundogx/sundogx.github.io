@@ -30,7 +30,10 @@ const Notify = {
     if (this.iconHref === null) this.iconHref = link.getAttribute('href');
     if (!turn) { if (link.getAttribute('href') !== this.iconHref) link.setAttribute('href', this.iconHref); return; }
     if (this.iconTurn) { if (link.getAttribute('href') !== this.iconTurn) link.setAttribute('href', this.iconTurn); return; }
+    if (this.iconLoading || !this.iconHref) return; // one load at a time, not one per render
+    this.iconLoading = true;
     const img = new Image();
+    img.onerror = () => { this.iconLoading = false; this.iconTurn = this.iconHref; };
     img.onload = () => {
       try {
         const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -39,6 +42,7 @@ const Notify = {
         x.lineWidth = 3; x.strokeStyle = '#fff'; x.stroke();
         this.iconTurn = c.toDataURL('image/png');
       } catch (e) { this.iconTurn = this.iconHref; }
+      this.iconLoading = false;
       this.title();
     };
     img.src = this.iconHref;
