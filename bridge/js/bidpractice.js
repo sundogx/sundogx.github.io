@@ -159,6 +159,6 @@ function bpClick(e) {
 }
 document.addEventListener('keydown', e => { // N for the next deal once the auction is over
   if (!BP.on || !BP.done || e.ctrlKey || e.metaKey || e.altKey || /input|textarea|select/i.test(e.target.tagName || '')) return;
-  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); bpNext(); }
+  if (e.key === 'n' || e.key === 'N') { e.preventDefault(); bpNext(); bpFocusBox(); }
 });
 { const b = bpEl('bidPracticeBtn'); if (b) b.addEventListener('click', () => startBidPractice()); }
