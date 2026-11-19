@@ -13,6 +13,10 @@ const THINK_MS = 2500;                   // friends mode: how long a robot waits
 const MAX_BOARDS = 100;                  // finished boards kept per table (keeps the stored record far below the size limit)
 const HOST_AWAY_MS = 120e3;              // a host away this long hands the host's job to a seated player who is here
 const HELLO_WAIT_MS = 20e3;              // a connection that hasn't said hello by then makes way when the table is full
+const AWAY_SUB_MS = 60e3;                // a player away this long, when the table is waiting for them, gets a robot stand-in
+const IDLE_UNSTARTED_MS = 24 * 3600e3;   // a public table where no board was ever dealt is deleted after a day
+const LOBBY_EMPTY_MS = 30 * 60e3;        // the lobby hides a table with nobody at it once it has been idle this long
+const STALE_SOCKET_MS = 150e3;           // a connection with no ping (every 25 s) for this long is probably dead: no think requests
 const histSig = h => h.length + ':' + (h.length ? h[h.length - 1].board : 0);
 
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
@@ -166,6 +170,7 @@ const hex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toStr
 const TIME_UP = "Time's up for this board, so the robots are finishing it.";
 // TEST_TIME_SCALE (only set for automated tests) shortens the time limits and the host's away time, e.g. 0.0167 makes a minute one second.
 let timeScale = 1;
+const idleLimit = t => !t.private && !t.board ? IDLE_UNSTARTED_MS : IDLE_DELETE_MS;
 const deadline = t => (t.boardLimit && t.boardStart && live(t) && !t.timeUp) ? t.boardStart + t.boardLimit * 60e3 * timeScale : null;
 const ACTIONS = {
   sit: (t, u, seat) => {
@@ -202,7 +207,11 @@ const ACTIONS = {
   kick: (t, u, seat) => {
     if (!SEATS.includes(seat)) return false;
     const o = t.seats[seat], r = A.kick(t, seat);
-    if (r !== false && o && o.kind === 'human') markLeft(t, o.id, seat);
+    if (r !== false && o && o.kind === 'human') {
+      markLeft(t, o.id, seat);
+      // mid-board a robot takes over the seat: nobody new could sit there before the board ends (onlookers may have seen every hand)
+      if (live(t)) { t.seats[seat] = { kind: 'robot' }; G.sysMsg(t, `A robot takes ${G.SEAT_NAME[seat]}`); }
+    }
     return r;
   },
   settings: (t, u, patch) => {
@@ -250,9 +259,31 @@ const ACTIONS = {
       if (t.host !== u.uid) return G.fail('Only the host can deal a board again');
       if (t.seed) return G.fail('A team match plays its own fixed deals');
       const rec = t.history.find(h => h.board === opt.replay);
+      if (!SEATS.every(s => t.seats[s])) return G.fail('Fill the empty seat first (a player or a robot)');
       return rec ? A.next(t, rec) : G.fail('That board is no longer in the record');
     }
+    // a board with an empty seat could never finish: a newcomer can't sit down mid-board when onlookers see every hand
+    if (t.phase === 'done' && !SEATS.every(s => t.seats[s])) return G.fail('Fill the empty seat first (a player or a robot)');
     return A.next(t);
+  },
+  // Between boards the host can swap two seats (people or robots, or a seat and an empty one), or move
+  // everyone one seat clockwise (swap('rotate')), e.g. to play a deal again from the other side.
+  swap: (t, u, a, b) => {
+    if (t.host !== u.uid) return G.fail('Only the host can move players');
+    if (live(t)) return G.fail('Players can change seats when this board ends');
+    let to; // new seat -> old seat
+    if (a === 'rotate') to = Object.fromEntries(SEATS.map((s, i) => [SEATS[(i + 1) % 4], s]));
+    else if (SEATS.includes(a) && SEATS.includes(b) && a !== b && (t.seats[a] || t.seats[b])) to = Object.fromEntries(SEATS.map(s => [s, s === a ? b : s === b ? a : s]));
+    else return false;
+    const seats = t.seats, away = t.away || {}, subs = t.subs || {};
+    t.seats = {}; t.away = {}; t.subs = {};
+    for (const s of SEATS) {
+      const f = to[s]; t.seats[s] = seats[f];
+      if (away[f]) t.away[s] = away[f];
+      if (subs[f]) t.subs[s] = subs[f];
+    }
+    G.sysMsg(t, a === 'rotate' ? 'The host moved everyone one seat clockwise' : `The host swapped ${G.SEAT_NAME[a]} and ${G.SEAT_NAME[b]}`);
+    if (SEATS.every(s => t.seats[s]) && t.board === 0) G.startBoard(t);
   },
   // The host hands the job to another seated player.
   makeHost: (t, u, seat) => {
@@ -367,6 +398,25 @@ function passHost(t, here) {
   G.sysMsg(t, `${t.seats[to].name} is now the host, as the host ${hs ? 'is away' : 'isn\'t at the table'}`);
 }
 
+// The away player the table is waiting for (their turn, or a claim or undo request that needs their answer) and
+// when a robot should stand in for them (AWAY_SUB_MS after they left), or null. A stranger who closed the page
+// mid-board would otherwise hold up the other three until someone thought of the 'sub' action.
+function awayBlocking(t) {
+  if (!live(t) || t.timeUp || !t.away) return null;
+  let need;
+  if (t.claim) need = t.claim.need.filter(s => !t.claim.acc[s]).map(s => sameSideSeat(s, t.claim.by) ? s : G.controllerOf(t, s));
+  else if (t.undoReq) need = t.undoReq.need;
+  else { const ts = G.turnSeat(t); need = ts ? [G.controllerOf(t, ts)] : []; }
+  let best = null;
+  for (const s of need) {
+    const o = t.seats[s];
+    if (!o || o.kind !== 'human' || !t.away[s] || (t.subs && t.subs[s])) continue;
+    const at = t.away[s] + AWAY_SUB_MS * timeScale;
+    if (!best || at < best.at) best = { seat: s, id: o.id, at };
+  }
+  return best;
+}
+
 export class TableRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -392,7 +442,7 @@ export class TableRoom extends DurableObject {
     this.t = t;
     await this.save();
     this.reportLobby();
-    await this.setAlarm(Date.now() + IDLE_DELETE_MS);
+    await this.setAlarm(Date.now() + idleLimit(t));
     return true;
   }
 
@@ -401,6 +451,13 @@ export class TableRoom extends DurableObject {
   async setOther(history) {
     await this.gotOther(history);
     return this.t ? this.t.history : null;
+  }
+  // The other room's boards, for a room that may have missed an update (asked when someone connects, at most twice a minute).
+  async getHistory() { return this.t ? this.t.history : null; }
+  pullOther() {
+    const t = this.t; if (!t || !t.match || Date.now() - (this.pulledAt || 0) < 30e3) return;
+    this.pulledAt = Date.now();
+    tableStub(this.env, t.match.otherCode).getHistory().then(h => this.gotOther(h)).catch(e => console.error(e));
   }
   async gotOther(history) {
     if (!this.t || !Array.isArray(history) || histSig(history) === histSig(this.other)) return;
@@ -485,17 +542,23 @@ export class TableRoom extends DurableObject {
         });
         return;
       }
+      // a seated player whose connection went without a close (see apply) gets marked away now
+      if (SEATS.some(s => { const o = this.t.seats[s]; return o && o.kind === 'human' && !(this.t.away && this.t.away[s]) && !this.here().has(o.id); })) { await this.apply(att, () => { }); return; }
       this.broadcast(); // new viewer gets the table; everyone gets the new watcher count
       this.reportLobby();
+      this.pullOther();
+      if (!this.robotPending()) await this.planAlarm(); // someone to play on with an away player: their stand-in may be due
       return;
     }
 
-    const u = ws.deserializeAttachment() || {};
+    let u = ws.deserializeAttachment() || {};
+    if (u.uid && Date.now() - (u.seen || 0) > 20e3) { u = { ...u, seen: Date.now() }; ws.serializeAttachment(u); } // (see stale)
     if (u.uid && m.type === 'thought') { this.thought(m, u, ws); return; }
     if (!u.uid || m.type !== 'act') return;
     // rate limits per person and per connection (a new identity on the same connection gets no fresh allowance)
     const isChat = m.name === 'chat';
-    if (!this.allow('u:' + u.uid, isChat) || (u.sid && !this.allow('s:' + u.sid, isChat))) { this.sendTo(ws, { type: 'error', msg: 'Slow down a little, then try again.' }); return; }
+    // (and per address, more loosely, as friends at home share one: new identities are free to make)
+    if (!this.allow('u:' + u.uid, isChat) || (u.sid && !this.allow('s:' + u.sid, isChat)) || (u.ip && !this.allow('i:' + u.ip, isChat, 3))) { this.sendTo(ws, { type: 'error', msg: 'Slow down a little, then try again.' }); return; }
     if (m.name === 'close') { await this.closeTable(u.uid, ws); return; }
     const fn = typeof m.name === 'string' && Object.hasOwn(ACTIONS, m.name) ? ACTIONS[m.name] : null;
     if (!fn) return;
@@ -538,7 +601,12 @@ export class TableRoom extends DurableObject {
     if (r === 'requested' && ws) this.sendTo(ws, { type: 'error', msg: 'The seats are locked, so the host has been asked to seat you.' });
     if (r === false) { if (err && ws) this.sendTo(ws, { type: 'error', msg: err }); return false; }
     tidyPresence(t);
-    passHost(t, this.here());
+    const here = this.here();
+    // A seated player with no open connection is away, even if their close was never reported (a server restart
+    // drops connections without telling the table), so their stand-in can come in time.
+    t.away = t.away || {};
+    for (const s of SEATS) { const o = t.seats[s]; if (o && o.kind === 'human' && !here.has(o.id) && !t.away[s] && o.id !== u.uid) t.away[s] = Date.now(); }
+    passHost(t, here);
     // number chat lines so each connection only receives the new ones
     t.chatN = t.chatN || 0;
     for (const m of t.chat) if (!m.n) m.n = ++t.chatN;
@@ -570,15 +638,16 @@ export class TableRoom extends DurableObject {
   }
 
   // Simple flood protection: about 10 actions a second, and 5 chat messages per 10 seconds, per person and per connection.
-  allow(key, isChat) {
+  // k scales the allowance (per address).
+  allow(key, isChat, k = 1) {
     this.rate = this.rate || new Map();
     const now = Date.now();
     let b = this.rate.get(key);
-    if (!b) { b = { tokens: 20, at: now, chat: [] }; this.rate.set(key, b); }
-    b.tokens = Math.min(20, b.tokens + (now - b.at) / 100); b.at = now;
+    if (!b) { b = { tokens: 20 * k, at: now, chat: [] }; this.rate.set(key, b); }
+    b.tokens = Math.min(20 * k, b.tokens + k * (now - b.at) / 100); b.at = now;
     if (b.tokens < 1) return false;
     b.tokens -= 1;
-    if (isChat) { b.chat = b.chat.filter(x => now - x < 10000); if (b.chat.length >= 5) return false; b.chat.push(now); }
+    if (isChat) { b.chat = b.chat.filter(x => now - x < 10000); if (b.chat.length >= 5 * k) return false; b.chat.push(now); }
     if (this.rate.size > 400) for (const [k, x] of this.rate) if (now - x.at > 10000) this.rate.delete(k); // forget idle ones only
     if (this.rate.size > 1000) for (const k of [...this.rate.keys()].slice(0, 500)) this.rate.delete(k);
     return true;
@@ -618,13 +687,25 @@ export class TableRoom extends DurableObject {
       await this.setAlarm(due);
     } else {
       this.robotDue = null;
-      const d = deadline(this.t); // wake up when the board's time runs out
-      if (d) { const at = Math.max(Date.now() + 1000, d); if (this.alarmAt !== at) await this.setAlarm(at); return; }
-      // The idle check needs no new write with every move: any alarm already set will do, as alarm()
-      // works out how long the table has really been idle and sets the next one.
-      if (this.alarmAt === undefined) this.alarmAt = await this.ctx.storage.getAlarm(); // (not known after waking up)
-      if (this.alarmAt == null || this.alarmAt > Date.now() + IDLE_DELETE_MS) await this.setAlarm(Date.now() + IDLE_DELETE_MS);
+      await this.planAlarm();
     }
+  }
+  // No robot to move: wake up when the board's time runs out, when a robot should stand in for an away player
+  // the table is waiting for (only if someone else is here to play on), or to delete the table once it is idle.
+  async planAlarm() {
+    const t = this.t, now = Date.now();
+    let at = deadline(t);
+    const ab = awayBlocking(t);
+    if (ab && this.othersHere(ab.id)) at = at == null ? ab.at : Math.min(at, ab.at);
+    if (at != null) { at = Math.max(now + 1000, at); if (this.alarmAt !== at) await this.setAlarm(at); return; }
+    // The idle check needs no new write with every move: any alarm already set before the idle time will do,
+    // as alarm() works out how long the table has really been idle and sets the next one.
+    if (this.alarmAt === undefined) this.alarmAt = await this.ctx.storage.getAlarm(); // (not known after waking up)
+    const idleAt = Math.max(now + 1000, (t.updatedAt || now) + idleLimit(t));
+    if (this.alarmAt == null || this.alarmAt > idleAt) await this.setAlarm(idleAt);
+  }
+  othersHere(uid) {
+    return this.ctx.getWebSockets().some(w => { const a = w.deserializeAttachment(); return a && a.uid && a.uid !== uid && w.readyState === 1; });
   }
   async setAlarm(at) { await this.ctx.storage.setAlarm(at); this.alarmAt = at; }
 
@@ -649,6 +730,8 @@ export class TableRoom extends DurableObject {
     // a browser that let two requests in a row run out (a phone asleep, a slow device) is asked again only now and then,
     // so the robots don't wait THINK_MS for it on every card
     this.thinkN = (this.thinkN || 0) + 1;
+    // (and never a connection that has stopped pinging: a dead one the runtime hasn't noticed yet)
+    pool = pool.filter(w => w.readyState === 1 && !this.stale(w));
     const keen = pool.filter(w => ((w.deserializeAttachment() || {}).miss || 0) < 2);
     if (keen.length || this.thinkN % 8) pool = keen;
     if (!pool.length) return;
@@ -660,6 +743,14 @@ export class TableRoom extends DurableObject {
     // The request is also kept on that connection (free, unlike storage), so it survives the object hibernating.
     try { ws.serializeAttachment({ ...a, th: { key, nonce: this.think.nonce, at: this.think.at, due } }); } catch (e) { }
     this.sendTo(ws, { type: 'think', key: key + '#' + this.think.nonce, view, prefer });
+  }
+  // A connection that hasn't pinged (js/net.js pings every 25 s; the reply doesn't wake the table) or said
+  // anything for STALE_SOCKET_MS. Background tabs ping less often, so this is generous.
+  stale(ws) {
+    const a = ws.deserializeAttachment() || {};
+    let last = Math.max(a.at || 0, a.helloAt || 0, a.seen || 0);
+    try { const p = this.ctx.getWebSocketAutoResponseTimestamp(ws); if (p) last = Math.max(last, +p); } catch (e) { }
+    return Date.now() - last > STALE_SOCKET_MS;
   }
   // No answer in time: count it against the connection that was asked (see askThink).
   thinkMissed(th) {
@@ -697,6 +788,14 @@ export class TableRoom extends DurableObject {
       });
       return;
     }
+    const ab = awayBlocking(this.t);
+    if (ab && Date.now() >= ab.at && this.othersHere(ab.id)) {
+      await this.apply({}, t => {
+        t.subs = { ...(t.subs || {}), [ab.seat]: true };
+        G.sysMsg(t, `A robot is playing for ${G.SEAT_NAME[ab.seat]} while ${t.seats[ab.seat].name} is away`);
+      });
+      return;
+    }
     if (this.robotPending()) {
       const th = this.getThink(), key = this.t.phase === 'play' ? G.playKey(this.t) : null;
       if (th && key && th.key === key && !th.done && Date.now() < th.at + THINK_MS) { await this.setAlarm(th.at + THINK_MS); return; } // still thinking
@@ -715,13 +814,13 @@ export class TableRoom extends DurableObject {
       return;
     }
     const idle = Date.now() - (this.t.updatedAt || 0);
-    if (idle >= IDLE_DELETE_MS) {
+    if (idle >= idleLimit(this.t)) {
       // someone still has it open: look again in an hour (not every minute, which would wake the table all day)
       if (this.ctx.getWebSockets().length) { await this.setAlarm(Date.now() + 3600e3); return; }
-      await this.shutdown('This table was closed after three days without play.');
+      await this.shutdown(this.t.board ? 'This table was closed after three days without play.' : 'This table was closed as nobody started playing.');
       return;
     }
-    await this.setAlarm(Date.now() + Math.max(60e3, IDLE_DELETE_MS - idle));
+    await this.planAlarm(); // (a deadline or a stand-in still to come, or the idle check)
   }
 
   // ----- what each person may see -----
@@ -830,17 +929,27 @@ export class TableRoom extends DurableObject {
 
 // ---------------- list of public tables ----------------
 export class Lobby extends DurableObject {
-  // At most 20 new tables an hour from one address.
-  allowCreate(ip) {
-    this.made = this.made || new Map();
-    const now = Date.now();
-    const recent = (this.made.get(ip) || []).filter(x => now - x < 3600e3);
-    if (recent.length >= 20) { this.made.set(ip, recent); return false; }
-    recent.push(now); this.made.set(ip, recent);
-    if (this.made.size > 500) for (const [k, v] of this.made) if (!v.some(x => now - x < 3600e3)) this.made.delete(k);
+  // At most 20 new tables an hour from one address. Kept in storage (under a hash of the address): the lobby
+  // sleeps between requests, and a count kept only in memory would start again from zero each time.
+  async allowCreate(ip) {
+    if (ip === 'local' || ip === '127.0.0.1' || ip === '::1') return true; // local test server
+    const now = Date.now(), key = 'ip:' + (await idFromSecret('ip:' + ip));
+    const recent = ((await this.ctx.storage.get(key)) || []).filter(x => now - x < 3600e3);
+    if (recent.length >= 20) return false;
+    recent.push(now);
+    await this.ctx.storage.put(key, recent);
+    if (Math.random() < 0.05) { // now and then, forget addresses that made nothing in the last hour
+      const all = await this.ctx.storage.list({ prefix: 'ip:', limit: 500 });
+      const old = [...all].filter(([, v]) => !v.some(x => now - x < 3600e3)).map(([k]) => k).slice(0, 128);
+      if (old.length) await this.ctx.storage.delete(old);
+    }
     return true;
   }
-  async update(summary) { this.listCache = null; await this.ctx.storage.put('t:' + summary.code, summary); }
+  async update(summary) {
+    this.listCache = null;
+    if (summary.people === 0) { const old = await this.ctx.storage.get('t:' + summary.code); summary.emptyAt = old && old.people === 0 ? old.emptyAt || Date.now() : Date.now(); }
+    await this.ctx.storage.put('t:' + summary.code, summary);
+  }
   async remove(code) { this.listCache = null; await this.ctx.storage.delete('t:' + code); }
   async clear() { this.listCache = null; const all = await this.ctx.storage.list({ prefix: 't:' }); await this.ctx.storage.delete([...all.keys()]); }
   async list() {
@@ -852,7 +961,12 @@ export class Lobby extends DurableObject {
   async readList() {
     const all = await this.ctx.storage.list({ prefix: 't:' });
     const now = Date.now(), out = [], stale = [];
-    for (const v of all.values()) (now - v.updatedAt < LOBBY_MAX_AGE_MS ? out : stale).push(v);
+    const emptyMs = LOBBY_EMPTY_MS * (Number(this.env.TEST_TIME_SCALE) > 0 ? Number(this.env.TEST_TIME_SCALE) : 1);
+    for (const v of all.values()) {
+      if (now - v.updatedAt >= LOBBY_MAX_AGE_MS) stale.push(v);
+      // nobody there and nothing happening: not worth listing (it comes back as soon as someone opens it)
+      else if (!(v.people === 0 && now - Math.max(v.updatedAt, v.emptyAt || 0) >= emptyMs)) out.push(v);
+    }
     if (stale.length) await this.ctx.storage.delete(stale.map(v => 't:' + v.code).slice(0, 128));
     return out.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 40);
   }

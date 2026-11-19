@@ -59,7 +59,16 @@ function finishBoard(t, declTricks) {
   const c = t.contract;
   const sc = c ? scoreNS(c, declTricks, t.vul) : 0;
   const rec = { board: t.board, dealer: t.dealer, vul: t.vul, hands: t.hands, auction: t.auction, contract: c, tricks: t.play.tricks, declTricks: c ? declTricks : null, scoreNS: sc };
-  if (t.replayOf) rec.replayOf = t.replayOf; // the same deal as that earlier board
+  if (t.replayOf) { // the same deal as that earlier board; vs: N-S IMPs here against N-S there
+    rec.replayOf = t.replayOf;
+    const o = t.history.find(h => h.board === t.replayOf);
+    if (o) rec.vs = { board: o.board, imps: toImps(sc - o.scoreNS) };
+  }
+  // who played each seat (so totals can follow people who change seats); sub: a robot stood in for them at the end
+  if (!t.local) rec.players = Object.fromEntries(SEATS.map(s => {
+    const o = t.seats[s];
+    return [s, !o ? null : o.kind === 'robot' ? { kind: 'robot' } : { kind: 'human', id: o.id, name: o.name, ...(t.subs && t.subs[s] ? { sub: true } : {}) }];
+  }));
   if (t.local) { try { const o = simulateBoard(t.hands, t.dealer, t.vul); rec.other = { auction: o.auction, contract: o.contract, declTricks: o.declTricks, scoreNS: o.scoreNS }; } catch (e) { console.error(e); } }
   t.history.push(rec);
   t.phase = 'done'; t.claim = null;

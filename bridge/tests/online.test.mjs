@@ -197,7 +197,8 @@ spec.ws.close();
 function humanMove(hum) {
   const c0 = Object.values(hum)[0], t = c0.t();
   if (t.phase === 'auction') { const s = auctionTurn(t.dealer, t.auction); if (hum[s]) { hum[s].act('call', 'P'); return true; } return false; }
-  if (t.phase !== 'play' || t.claim || t.undoReq) return false;
+  if (t.claim) { const s = t.claim.need.find(x => hum[x] && !t.claim.acc[x]); if (s) { hum[s].act('respond', true); return true; } return false; } // a robot's claim: accept it
+  if (t.phase !== 'play' || t.undoReq) return false;
   const seat = playTurn(t.play, t.contract), dummy = order[(order.indexOf(t.contract.declarer) + 2) % 4];
   const who = hum[seat === dummy ? t.contract.declarer : seat];
   if (!who) return false;
