@@ -31,7 +31,7 @@ async function room(hands, dealer, vul, side, rand) { // side(seat) -> true for 
   while (!auctionOver(auction)) {
     const s = auctionTurn(dealer, auction);
     let call;
-    if (ben(s) && benBid) { const O = opt(ben(s)); call = (await B.bid(nn, dd, { hand: hands[s], seat: s, dealer, auction: auction.map(a => ({ call: a.call, by: a.by })), vul }, { ...O.x, ms: O.bidms, budget: O.bidms * 2.4, t0: B.now(), ...DETB })).call; }
+    if (ben(s) && benBid) { const O = opt(ben(s)); const br = (await B.bid(nn, dd, { hand: hands[s], seat: s, dealer, auction: auction.map(a => ({ call: a.call, by: a.by })), vul }, { ...O.x, ms: O.bidms, budget: O.bidms * 2.4, t0: B.now(), ...DETB })); call = br.call; if (br.info && br.info.rescue) console.error('rescue', s, br.info.rescue); }
     else call = R.botCall(hands[s], s, dealer, auction, vul).call;
     if (!isLegalCall(dealer, auction, call)) { call = 'P'; }
     auction.push({ call, by: s });

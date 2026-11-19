@@ -286,22 +286,34 @@ const BenCore = (() => {
     return aucs;
   }
 
-  // ---- bid (botbidder.bid with BBA off; JS: no rescue bids) ----
+  // ---- bid (botbidder.bid with BBA off; rescue bids only with o.rescue) ----
   async function bid(nn, dd, m, o = {}) {
     const hix = SEATS4.indexOf(m.seat), auc = padded(m.auction.map(a => a.call || a), m.dealer), vul = vulArr(m.vul), my = h24(m.hand);
     const rand = o.rand || seededRand('ben-bid ' + m.hand.join('') + auc.length);
-    const { cs, passout } = await candidates(nn, auc, hix, my, vul);
+    const { cs, passout, myNo } = await candidates(nn, auc, hix, my, vul);
     const info = { candidates: cs, samples: 0 };
-    if (cs.length < 2) return { call: cs[0].call, info };
+    const resc = o.rescue === true && nBids(auc) > 4; // off: no change in 300 robot-match boards, and it samples even when the network is sure
+    if (cs.length < 2 && !(resc && cs[0].call === 'P')) return { call: cs[0].call, info };
     const S = await sampleAuction(nn, auc, hix, my, vul, rand, o);
     info.samples = S.hands.length; info.quality = S.quality;
     const opening = !auc.some(isBid);
     if (!S.hands.length) return { call: cs[0].call, info };
     const real = S.hands.map(H => realHands(m.hand, H, rand));
     const abs = real.map(R => { const a = []; a[hix] = m.hand; for (let p = 1; p < 4; p++) a[(hix + p) % 4] = R[p - 1]; return a; });
+    const rescueOr = async pass => {
+      const r = resc && await rescue(nn, dd, auc, hix, my, vul, S, abs, cs, pass, myNo, passout, rand);
+      if (r) info.rescue = r;
+      return { call: r || pass.call, info };
+    };
+    if (cs.length < 2) { // the score of passing: the current contract on the samples
+      const ct = contractOf(auc); let ev = 0, tr = 0;
+      if (ct) abs.forEach(A => { const t = declTricks(dd, A, ct.strain, ct.declarer); ev += scoreFor(hix, ct, t, vul); tr += t; });
+      return rescueOr({ call: 'P', ev: ev / abs.length, tricks: tr / abs.length });
+    }
     // JS: rollouts in chunks of layouts over all candidates, so a time budget (o.budget ms) ends on whole chunks
     const cache = new Map(), ev = {}, t0 = o.t0 || now(), budget = o.budget || Infinity, chunk = o.chunk || 10;
-    cs.forEach(c => { ev[c.call] = []; });
+    const trs = {};
+    cs.forEach(c => { ev[c.call] = []; trs[c.call] = []; });
     for (let s0 = 0; s0 < S.hands.length; s0 += chunk) {
       if (s0 >= (o.minRoll || 8) && now() - t0 > budget) break;
       const H = S.hands.slice(s0, s0 + chunk);
@@ -309,9 +321,10 @@ const BenCore = (() => {
         const aucs = await rollout(nn, auc, c.call, hix, my, H, vul);
         aucs.forEach((a, j) => {
           const k = s0 + j, ct = contractOf(a);
-          if (!ct) { ev[c.call].push(0); return; }
+          if (!ct) { ev[c.call].push(0); trs[c.call].push(0); return; }
           const key = k + ct.strain + ct.declarer;
           if (!cache.has(key)) cache.set(key, declTricks(dd, abs[k], ct.strain, ct.declarer));
+          trs[c.call].push(cache.get(key));
           ev[c.call].push(scoreFor(hix, ct, cache.get(key), vul));
         });
       }
@@ -339,7 +352,57 @@ const BenCore = (() => {
       ? (b.imp + b.adjust) - (a.imp + a.adjust) || r2(b.insta) - r2(a.insta)
       : b.insta - a.insta || (b.imp + b.adjust) - (a.imp + a.adjust));
     info.trust = trust;
+    if (sorted[0].call === 'P') { const t = trs.P; return rescueOr({ call: 'P', ev: sorted[0].ev, tricks: t.reduce((x, y) => x + y, 0) / t.length }); }
     return { call: sorted[0].call, info };
+  }
+
+  // ---- rescue bid (botbidder.evaluate_rescue_bid and its check_final_contract block): instead of passing in a
+  // contract the samples score badly, bid the contract the contract network picks for most of them ----
+  async function rescue(nn, dd, auc, hix, my, vul, S, abs, cs, pass, myNo, passout, rand) {
+    if (S.hands.length < 15 || nBids(auc) < 4 || !(S.quality > 0.40)) return null;
+    if (!passout && (myNo < 2 || (myNo < 3 && callId(auc[auc.length - 1]) < 14))) return null;
+    if (!(pass.ev < 1430)) return null;
+    const idx = S.hands.map((_, i) => i).filter(i => S.scores[i] >= 0.55);
+    if (idx.length < 15) return null;
+    for (let i = idx.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [idx[i], idx[j]] = [idx[j], idx[i]]; }
+    const chk = idx.slice(0, 20), N = chk.length, X = new Float32Array(N * 50), XT = new Float32Array(N * 5 * 55);
+    chk.forEach((i, n) => {
+      X[n * 50] = vul[hix % 2] ? 1 : 0; X[n * 50 + 1] = vul[(hix + 1) % 2] ? 1 : 0;
+      X.set(my, n * 50 + 2); X.set(S.hands[i][1], n * 50 + 26);
+      for (let st = 0; st < 5; st++) { XT.set(X.subarray(n * 50, n * 50 + 50), (n * 5 + st) * 55); XT[(n * 5 + st) * 55 + 50 + st] = 1; }
+    });
+    const con = (await nn.run('contract', { x: { data: X, dims: [N, 50] } })).contract;
+    const tk = (await nn.run('trick', { x: { data: XT, dims: [N * 5, 55] } })).tricks;
+    const c0 = contractOf(auc), cur = c0 ? c0.level + c0.strain : '', alt = new Map();
+    for (let n = 0; n < N; n++) {
+      let best = 0, cid = -1, tricks = 0, any = false;
+      for (let i = 5; i < 40; i++) {
+        if (!(con[n * 40 + i] > 0.2)) continue;
+        const st = 'NSHDC'.indexOf(idCall(i)[1]);
+        let mt = -1, ts = 0;
+        for (let j = 0; j < 14; j++) { const q = tk[(n * 5 + st) * 14 + j]; if (q > 0.1) { any = true; if (q > ts) { ts = q; mt = j; } } }
+        if (con[n * 40 + i] > best && mt >= 0) { best = con[n * 40 + i]; cid = i; tricks = mt; }
+      }
+      if (!any || cid < 0) break;
+      let c = idCall(cid);
+      while (!canBid(c, auc) && cid < 35) c = idCall(cid += 5);
+      if ((cur === '4H' && c === '5H') || (cur === '4S' && c === '5S') || (cur === '3N' && /^[456]N/.test(c)) || (cur === '6N' && c === '7N') || cur === c) return null;
+      if (cs.some(x => x.call === c)) return null;
+      if (!canBid(c, auc)) continue;
+      const lv = +c[0], sc = scoreFor(hix, { level: lv, strain: c[1], doubled: tricks < lv + 6 ? 1 : 0, declarer: hix }, tricks, vul);
+      if (!alt.has(c)) alt.set(c, []);
+      alt.get(c).push({ sc, tricks });
+    }
+    const tot = [...alt.values()].reduce((a, v) => a + v.length, 0);
+    if (!(tot > 0.75 * Math.min(S.hands.length, 20))) return null;
+    let top = null; for (const [c, v] of alt) if (!top || v.length > alt.get(top).length) top = c;
+    const v = alt.get(top), avgS = Math.round(v.reduce((a, x) => a + x.sc, 0) / v.length), avgT = v.reduce((a, x) => a + x.tricks, 0) / v.length;
+    if (!(avgS > pass.ev + 500 || avgT - pass.tricks > 4)) return null;
+    const ct = contractOf([...auc, top, 'P', 'P', 'P']), A = abs.slice(0, 20);
+    let ev = 0, evd = 0, et = 0;
+    for (const h of A) { const t = declTricks(dd, h, ct.strain, ct.declarer); ev += scoreFor(hix, ct, t, vul); evd += scoreFor(hix, { ...ct, doubled: 1 }, t, vul); et += t; }
+    const es = Math.min(ev, evd) / A.length;
+    return es > pass.ev + 500 || avgT - et / A.length > 4 ? top : null;
   }
 
   // ======================= opening lead (botopeninglead.BotLead.find_opening_lead) =======================
