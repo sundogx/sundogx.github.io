@@ -83,7 +83,17 @@ function ddView(t, seat, opts = {}) {
     known, limits,
   };
   if (!play.tricks.length && typeof leadView === 'function') leadView(view, t, opts); // opening lead: js/leads.js
+  if (opts.xpen != null) ddXpenLimit(view, opts.xpen);
   return view;
+}
+// opts.xpen (test knob, off): the trump minimum read from a penalty double of the final contract. shown() reads one
+// as 3+ trumps, but the robots' judgement doubles (bidding.js judgeX) count defensive tricks: in robot auctions with
+// an odd bidder, 24% of the doublers held 0-2 trumps (scratch xpen.js, 584 doubled suit contracts).
+function ddXpenLimit(view, n) {
+  const c = view.contract, st = c.strain; if (!c.doubled || st === 'N') return;
+  const x = [...view.auction].reverse().find(a => a.call === 'X');
+  const lim = x && !sameSide(x.by, c.declarer) && view.limits[x.by];
+  if (lim && lim.lenMin[st] > n) lim.lenMin[st] = n;
 }
 
 function ddLegal(view) {

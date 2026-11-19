@@ -5,6 +5,8 @@
 // (from the score of the contract). Paired per decision, so the difference has a small error.
 // Usage: NEW='{"relax":0.05}' node tests/ddacc.js [boards=200] [workers=cores-2] [seed=ddacc] [every=3]
 //   ODD=1 / DBL=1 as in tests/playsim.js (a player bids as if holding another hand; every contract doubled).
+//   XONLY=1: only boards whose auction ended doubled (with ODD=1, the robots' penalty doubles of odd bids).
+//   FROM=n: skip the first n cards (FROM=1 leaves the opening lead out, for options that can't change it).
 //   SIDE=decl|def: only the declaring side's or the defenders' decisions (default both, reported apart).
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
@@ -52,13 +54,13 @@ if (isMainThread) {
     const liar = process.env.ODD ? SEATS[g % 4] : null, fake = liar ? deal(seededRand(seed + ':fake:' + g))[SEATS[(g + 1) % 4]] : null;
     while (!auctionOver(auction)) { const s = auctionTurn(dealer, auction); const r = B.botCall(s === liar ? fake : hands[s], s, dealer, auction, vul); auction.push({ call: r.call, by: s }); }
     const ct = finalContract(auction), res = [];
-    if (ct) {
+    if (ct && !(process.env.XONLY && !ct.doubled)) {
       if (process.env.DBL && !ct.doubled) ct.doubled = +process.env.DBL;
       const t = { hands, auction, contract: ct, vul, play: { tricks: [] } };
       for (let i = 0; i < 52; i++) {
         const s = playTurn(t.play, ct), prefer = B.botPlay(t, s);
         const side = sameSide(s, ct.declarer) ? 'decl' : 'def';
-        if (i % every === 0 && (!process.env.SIDE || process.env.SIDE === side)) {
+        if (i % every === 0 && i >= (+process.env.FROM || 0) && (!process.env.SIDE || process.env.SIDE === side)) {
           const v0 = D.ddView(t, s, CUR);
           if (D.ddWorthIt(v0)) {
             const o0 = { ...CUR, prefer, rand: seededRand(seed + ':c:' + g + ':' + i) }, o1 = { ...merge(CUR, NEW), prefer, rand: seededRand(seed + ':c:' + g + ':' + i) };
