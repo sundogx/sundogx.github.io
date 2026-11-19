@@ -19,7 +19,7 @@ const MODEL_CACHE = 'ben-models-v1';
 // fetch(url) through MODEL_CACHE, reporting bytes as they arrive: onBytes(n) is called with each chunk's size.
 async function cachedFetch(url, onBytes) {
   const cache = typeof caches !== 'undefined' ? await caches.open(MODEL_CACHE).catch(() => null) : null;
-  const hit = cache && await cache.match(url);
+  const hit = cache && await cache.match(url).catch(() => null);
   if (hit) { const b = await hit.arrayBuffer(); if (onBytes) onBytes(b.byteLength); return b; }
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);

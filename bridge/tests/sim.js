@@ -12,4 +12,5 @@ for(let g=0;g<3000;g++){
  const tw=tricksWon(t.play,ct);if(tw.decl+tw.def!==13)stats.errors++;if(tw.decl>=ct.level+6)stats.made++;
  if(samples.length<6)samples.push(auction.map(a=>a.call).join(' ')+' => '+contractText(ct)+' '+resultText(ct,tw.decl)+' NS '+(hcp(hands.N)+hcp(hands.S)));
 }
-console.log(JSON.stringify(stats));console.log(samples.join('\n'));
+console.log(samples.join('\n'));console.log(JSON.stringify(stats)); // stats last: npm test shows it via tail -1
+if(stats.errors)process.exitCode=1;

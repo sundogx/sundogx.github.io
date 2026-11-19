@@ -92,7 +92,7 @@ const BenBridge = (() => {
           S.wait.delete(id); end(null);
           if (++S.misses >= 2) fail(`no answer to ${msg.type} in ${ms} ms`);
         }, Math.max(800, deadline - Date.now()));
-        S.wait.set(id, r => { clearTimeout(timer); if (r) S.misses = 0; end(r); });
+        S.wait.set(id, r => { clearTimeout(timer); S.misses = 0; end(r); }); // any answer in time (even an error) breaks a run of late ones
         try { S.w.postMessage({ ...msg, id }); } catch (e) { S.wait.delete(id); clearTimeout(timer); fail(String(e && e.message || e)); end(null); }
       }).catch(e => { console.error(e); end(null); });
     });
