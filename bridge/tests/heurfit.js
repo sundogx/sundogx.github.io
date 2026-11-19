@@ -4,7 +4,8 @@
 // (botFeatures in js/bots.js) and the tricks its card takes are recorded; a ridge regression on the
 // differences between the suits of the same decision gives the weights.
 // Usage: node tests/heurfit.js [boards=1500] [kind=switch] [seed=heurfit] [workers=cores-2]
-//   kind switch: a defender on lead after the opening lead; discard: a discard (either side).
+//   kind switch: a defender on lead after the opening lead; discard: a discard (either side); lead: the declaring
+//   side on lead (which suit); follow: the card when following suit (botPlay's candidates; groups by side, seat, strain).
 // Y=dd (default) scores each candidate by double dummy; Y=roll by playing the rest out with the heuristic robot in all
 // four seats (the opponents it meets at the table); Y=mix averages the two.
 // Prints the weights for notrump and for suit contracts, ready to paste into js/bots.js, and how often the
