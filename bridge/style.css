@@ -205,7 +205,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .tslot .card { cursor: default; width: calc(var(--tw) * var(--tk)); height: calc(var(--th) * var(--tk)); pointer-events: none; }
 .tslot .card .cr, .tslot .card .cs { font-size: calc(var(--tf) * var(--tk)); left: calc(6px * var(--tk)); }
 .tslot .card .cr { top: calc(4px * var(--tk)); } .tslot .card .cs { top: calc(var(--th) * var(--tk) * .3); }
-.tslot .card.win { box-shadow: 0 0 0 2.5px #e0b000; }
+.tslot .card.win, .modal .card.win { box-shadow: 0 0 0 2.5px #e0b000; } /* the trick's winner, on the table, in Last trick and in the replay */
 
 /* four-colour deck option */
 html[data-deck="4"] .s-D { color: #e06500 !important; }
@@ -261,7 +261,7 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .agrid .c.cxx { color: #1f5fae; }
 .agrid .c.cp { color: #2e7d4f; }
 .agrid .c.alert { box-shadow: inset 0 0 0 2px #d32f2f; cursor: help; }
-.agrid .c.expl { box-shadow: inset 0 0 0 2px var(--brass); cursor: help; }
+.agrid .c.expl { box-shadow: inset 0 0 0 1px var(--brass); cursor: help; } /* thin: most robot calls carry one */
 .agrid .c[data-alert]:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .explain .rs { color: #ff7a70; } /* red suits stay red on the dark bubble */
 .explain { position: absolute; z-index: 40; max-width: min(280px, calc(100vw - 16px)); background: #1b1b1b; color: #fff; font-size: 13px; line-height: 1.35; padding: 7px 10px; border-radius: 6px; box-shadow: 0 3px 10px #0006; pointer-events: none; }
@@ -297,9 +297,11 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .banner .row { justify-content: center; margin-top: 10px; }
 .banner.result h3 .res { margin-left: 3px; white-space: nowrap; }
 .banner.result { padding: 10px 8px; }
-.banner.result .row.sub { margin-top: 6px; gap: 6px; flex-wrap: nowrap; }
+.banner.result .row { flex-wrap: nowrap; } /* Next board and Seats share a row, on phones too */
+.banner.result .row.sub { margin-top: 6px; gap: 6px; }
 .banner.result .row.sub .btn { white-space: nowrap; }
-@media (max-width: 560px) { .banner.result .row.sub { gap: 4px; } .banner.result .row.sub .btn { padding: 3px 5px; font-size: 12px; } }
+@media (max-width: 560px) { .banner.result .row.sub { gap: 4px; } .banner.result .row.sub .btn, .banner.result .row [data-seats] { padding: 3px 5px; font-size: 12px; } }
+.modal .rphead { margin: -4px 0 6px; text-align: center; }
 /* phones: contract and trick count under your hand (see renderPlayInfo) */
 #playInfo:empty { display: none; }
 .pinfo .pc { margin: 10px 0 0; }
@@ -335,7 +337,10 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 @media (hover: none) and (pointer: coarse) { .kbdhelp { display: none; } } /* no keyboard on a phone */
 #joinState { margin: -2px 0 8px; }
 .reslist { width: 100%; border-collapse: collapse; font-size: 14px; }
-.reslist td, .reslist th { padding: 5px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+.reslist td, .reslist th { padding: 5px 2px; border-bottom: 1px solid var(--line); text-align: left; }
+.reslist .num { white-space: nowrap; }
+.reslist { font-variant-numeric: tabular-nums; } .side .reslist { font-size: 13px; } /* six columns fit the sidebar */
+.reslist .again { margin-left: 2px; font-size: 11px; color: var(--ink-soft); }
 .reslist th { font-weight: 600; font-size: 12px; color: var(--ink-soft); }
 .reslist tr.click { cursor: pointer; }
 .reslist tr.click:hover td, .reslist tr.click:focus-visible td { background: var(--panel-2); }
@@ -383,6 +388,10 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 .replay .card { width: 36px; height: 52px; }
 .replay .card .cr, .replay .card .cs { font-size: 14px; left: 3px; } .replay .card .cs { top: 16px; } .replay .card .cb { font-size: 16px; right: 3px; }
 .replay .ctl { justify-content: center; }
+.replay .tr.cmp { display: block; position: relative; width: 108px; height: 96px; }
+.replay .tr.cmp > div { position: absolute; }
+.replay .at-N { left: 36px; top: 0; } .replay .at-S { left: 36px; bottom: 0; } .replay .at-W { left: 0; top: 22px; } .replay .at-E { right: 0; top: 22px; }
+@media (max-width: 560px) { .replay .ctl { gap: 4px; } .replay .ctl .btn { padding: 4px 7px; } }
 #seatReqs { background: var(--panel); border: var(--bw) solid var(--line); border-radius: 8px; padding: 8px 12px; margin-bottom: 8px; }
 #seatReqs .row { justify-content: space-between; padding: 3px 0; }
 .plate .away { font-size: 11px; background: #ffffff26; border-radius: 3px; padding: 0 4px; }
@@ -423,7 +432,7 @@ ul.costs li { margin: 1px 0; }
   :root { --cw: 52px; --ch: 76px; }
   .felt .agrid { font-size: 15px; gap: 2px; padding: 4px; } .felt .agrid .h { font-size: 12px; }
   .myhand { height: 112px; }
-  .rows { font-size: 14px; min-width: 0; padding: 4px 5px; }
+  .rows { font-size: 14px; min-width: 0; padding: 4px; }
   .plate .nm { min-width: 0; }
   .pos-left, .pos-right { min-width: 0; max-width: 100%; }
   .pos-left .seat, .pos-right .seat { max-width: 100%; }
@@ -431,8 +440,9 @@ ul.costs li { margin: 1px 0; }
   .plate { height: auto; min-height: 30px; }
   .corner.tl { transform: scale(.6); transform-origin: top left; } /* board box and trick count fit the narrow corner */
   .felt > .corner.tl { top: 6px; left: 6px; }
-  .rows .rk { padding: 1px 1px; }
+  .rows .rk { padding: 1px 0.5px; }
   .rows .rr { gap: 0 1px; } .rows .s { width: 14px; } /* a 4-card suit fits one line in the narrow side column */
+  .rows .rk.ten { letter-spacing: -1.5px; } /* a narrower 10, so a 5-card suit with the 10 fits too */
   .corner { font-size: 11px; } .corner b { font-size: 13px; }
   .bcard { font-size: 16px; padding: 8px 0; }
 }

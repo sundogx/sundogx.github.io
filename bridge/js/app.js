@@ -92,7 +92,7 @@ function scheduleRobot() {
   const o = occupant(T, controllerOf(T, ts));
   if (!o || o.kind !== 'robot' || !amDriver(T)) return;
   const tr = T.play && T.play.tricks[T.play.tricks.length - 1];
-  const m = speedMult(), pause = T.phase === 'auction' ? 650 * m : (tr && tr.cards.length === 4 ? trickHoldMs() + 500 * m : 700 * m);
+  const m = speedMult() * (dummyIdle(T) ? 0.5 : 1), pause = T.phase === 'auction' ? 500 * m : (tr && tr.cards.length === 4 ? trickHoldMs() + 300 * m : 550 * m);
   // card play: the solver thinks (in a worker, at most ~1.5 s) while the robot's usual pause runs
   const key = T.phase === 'play' ? playKey(T) : null;
   const hint = key ? robotDDCard(T, ts).then(card => card && { key, card }) : null;
@@ -131,8 +131,8 @@ function rowsHTML(cards, legal = [], seat = '') {
   return `<div class="rows">${UI_SUITS.map(s => {
     const cs = cards.filter(c => suitOf(c) === s).sort((a, b) => rankOf(b) - rankOf(a));
     const ranks = cs.length ? cs.map(c => legal.includes(c)
-      ? `<button class="rk play ${c === selCard ? 'sel' : ''} ${isHint(c) ? 'hint' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
-      : `<button class="rk" disabled>${rankLabel(c[1])}</button>`).join('') : '<span class="void">–</span>';
+      ? `<button class="rk play ${c === selCard ? 'sel' : ''} ${isHint(c) ? 'hint' : ''}${c[1] === 'T' ? ' ten' : ''}" data-play="${c}" data-seat="${seat}">${rankLabel(c[1])}</button>`
+      : `<button class="rk${c[1] === 'T' ? ' ten' : ''}" disabled>${rankLabel(c[1])}</button>`).join('') : '<span class="void">–</span>';
     return `<div class="r"><span class="s ${isRed(s) ? 'red' : ''} s-${s}">${SYM[s]}</span><span class="rr">${ranks}</span></div>`;
   }).join('')}</div>`;
 }
@@ -311,7 +311,7 @@ const redSym = html => html.replace(/(^|>)([^<]+)/g, (m, a, b) => a + b.replace(
 const contractWords = c => c ? `${c.level} ${STRAIN_WORD[c.strain]}${c.doubled === 2 ? ' redoubled' : c.doubled ? ' doubled' : ''} by ${SEAT_NAME[c.declarer]}` : 'Passed out'; // for screen readers
 const dblHTML = d => d ? `<span class="xd${d === 2 ? ' xx' : ''}" title="${d === 2 ? 'Redoubled' : 'Doubled'}">${d === 2 ? 'XX' : 'X'}</span>` : '';
 const contractHTML = (c, short) => !c ? (short ? 'Pass' : 'Passed out')
-  : `<span class="ct">${c.level}${c.strain === 'N' ? 'NT' : `<span class="${isRed(c.strain) ? 'rs ' : ''}s-${c.strain}">${SYM[c.strain]}</span>`}${dblHTML(c.doubled)}</span> ${short ? c.declarer : 'by ' + SEAT_NAME[c.declarer]}`;
+  : `<span class="ct">${c.level}${c.strain === 'N' ? 'NT' : `<span class="${isRed(c.strain) ? 'rs ' : ''}s-${c.strain}">${SYM[c.strain]}</span>`}${dblHTML(c.doubled)}</span>${short ? '&nbsp;' + c.declarer : ' by ' + SEAT_NAME[c.declarer]}`; // short: "3NT E" never splits
 // Board indicator: one edge per seat as seen at this table (red = that side vulnerable), D on the dealer's edge, board number inside.
 function boardBoxHTML(t, o) {
   const edge = { [o.top]: 'top', [o.right]: 'right', [o.bottom]: 'bottom', [o.left]: 'left' };
@@ -405,7 +405,9 @@ function fitTrick() {
 }
 const TRICK_HOLD_MS = 1200;
 const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1;
-const trickHoldMs = () => T && T.local ? Math.round(TRICK_HOLD_MS * speedMult()) : TRICK_HOLD_MS;
+// practice while you are dummy: nothing to decide until the next board, so the robots play faster
+const dummyIdle = t => !!(t && t.local && t.phase === 'play' && t.contract && mySeat(t) === partnerOf(t.contract.declarer));
+const trickHoldMs = () => T && T.local ? Math.round(TRICK_HOLD_MS * speedMult() * (dummyIdle(T) ? 0.6 : 1)) : TRICK_HOLD_MS;
 const trickHold = { key: null, until: 0, timer: null };
 // Tricks as on a real table: a trick your side won is an upright card, one the other side won lies sideways.
 // Seated players count for their own side, spectators for the declaring side. No target is shown.
@@ -549,7 +551,7 @@ function renderResultsPane(t) {
     rowsR = t.history.map((h, i) => {
       const o = h.other; const im = o ? toImps(h.scoreNS - o.scoreNS) : null;
       if (im !== null) { imps += im; impN++; }
-      return `<tr class="click" data-record="${i}" tabindex="0" aria-label="Board ${h.board}: hand record"><td>${h.board}</td><td>${res(h)}</td><td class="num">${h.scoreNS}</td><td>${o ? res(o) : ''}</td><td class="num">${o ? o.scoreNS : ''}</td><td class="num"><b>${im === null ? '' : im ? sgn(im) : '0'}</b></td></tr>`;
+      return `<tr class="click" data-record="${i}" tabindex="0" aria-label="Board ${h.board}${h.replayOf ? `, board ${h.replayOf} dealt again` : ''}: hand record"><td>${h.board}${againMark(h)}</td><td>${res(h)}</td><td class="num">${h.scoreNS}</td><td>${o ? res(o) : ''}</td><td class="num">${o ? o.scoreNS : ''}</td><td class="num"><b>${im === null ? '' : im ? sgn(im) : '0'}</b></td></tr>`;
     }).reverse().join('');
     note = 'IMPs against four robots playing the same deals. Tap a board to see its hand record.';
   } else if (t.match) {
@@ -574,7 +576,7 @@ function renderResultsPane(t) {
       const par = parFor(h);
       const im = par ? toImps(h.scoreNS - par.scoreNS) : null;
       if (im !== null) { imps += im; impN++; }
-      return `<tr class="click" data-record="${i}" tabindex="0"><td>${h.board}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td class="num">${par ? par.scoreNS : DD.failed ? '–' : '…'}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
+      return `<tr class="click" data-record="${i}" tabindex="0"><td>${h.board}${againMark(h)}</td><td>${cShort(h.contract)}</td><td>${h.contract ? resultText(h.contract, h.declTricks) : ''}</td><td class="num">${h.scoreNS}</td><td class="num">${par ? par.scoreNS : DD.failed ? '–' : '…'}</td><td class="num">${im === null ? '' : sgn(im)}</td></tr>`;
     }).reverse().join('');
     if (impN) summary = `<p class="note" style="margin:-4px 0 8px">N-S ${sgn(imps)} IMPs against par over ${impN} board${impN === 1 ? '' : 's'}.</p>`;
     // each person over the boards they played (people may change seats between boards); E-W's sign is flipped
@@ -599,6 +601,8 @@ function renderResultsPane(t) {
   const pa = $('pbnAll'); if (pa) pa.addEventListener('click', () => downloadText(`bridge-${t.id}.pbn`, t.history.map(h => pbnBoard(h, t)).join('\n\n') + '\n'));
 }
 const cShort = c => contractHTML(c, true);
+// a deal played again: a small "=3" after the board number, the board it repeats
+const againMark = h => h.replayOf ? `<span class="again" title="Board ${h.replayOf} dealt again">=${h.replayOf}</span>` : '';
 function renderTop() {
   const t = T, mine = mySeat(t);
   $('tName').textContent = t.name;
@@ -677,20 +681,22 @@ function showLastTrick() {
   const cell = pos => { const pc = tr.cards.find(x => x.seat === o[pos]); return pc ? `<div>${cardHTML(pc.card, pc.seat === win ? 'win' : '', 'tabindex="-1"')}<div class="lbl">${SEAT_NAME[pc.seat]}${pc.seat === tr.leader ? ', led' : ''}</div></div>` : ''; };
   modal(`<h3>Trick ${done.length}</h3><div class="diagram"><div></div>${cell('top')}<div></div>${cell('left')}<div></div>${cell('right')}<div></div>${cell('bottom')}<div></div></div><p class="note">Won by ${SEAT_NAME[win]}.</p>`);
 }
-function showRecord(i) {
+function showRecord(i, review) { // review: the card-by-card replay takes the diagram's place at the top
   const h = T.history[i]; if (!h) return;
+  review = review && h.tricks && h.tricks.length;
   const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s])}</div>`;
   const tt = h.tricks && h.tricks.length ? `<h3 style="font-size:16px;margin-top:12px">Play</h3><div id="playBox">${playTableHTML(h)}</div>` : '';
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
-    <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
+    ${review ? `<p class="rphead">${contractHTML(h.contract)} ${resultText(h.contract, h.declTricks)}, N-S ${h.scoreNS}</p><div id="replayBox"></div>` : `<div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>`}
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
     ${otherLine(h)}${h.vs ? `<p>${vsText(h)}.</p>` : ''}
     <h3 style="font-size:16px;margin-top:12px">Double-dummy analysis</h3><div id="ddBox">${ddHTML(h)}</div>${tt}
-    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div><div id="replayBox"></div>`);
+    <div class="row" style="margin-top:10px"><span class="note">Save this board:</span><button class="btn small" data-export="pdf">PDF</button><button class="btn small" data-export="doc">Word (.doc)</button><button class="btn small" data-export="pbn">PBN file</button><button class="btn small" id="pbnOne">Copy PBN</button>${h.tricks && h.tricks.length && !review ? '<button class="btn small" id="replayBtn">Replay the play</button>' : ''}${T.phase === 'done' && !T.match && (T.local || isHost(T)) ? '<button class="btn small" id="playAgain">Play this deal again</button>' : ''}</div>${review ? '' : '<div id="replayBox"></div>'}`);
   openRecord = i;
   $('pbnOne').addEventListener('click', () => copyText(pbnBoard(h, T)));
   $('modalRoot').querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => exportRecord(h, b.dataset.export)));
-  if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h));
+  if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h, true));
+  if (review) startReplay(h);
   if ($('playAgain')) $('playAgain').addEventListener('click', () => { closeModal(); if (T.local) act(s => A.next(s, s.history.find(x => x.board === h.board))); else doAct('next', { replay: h.board }); });
 }
 // the cards that kept the double-dummy result: "any ♣" for a whole suit of the legal cards, else the cards themselves
@@ -725,7 +731,7 @@ function playTableHTML(h) {
       review = `<p class="note" style="margin-bottom:2px">Double dummy, ${[side.d ? 'declarer gave away ' + tr(side.d) : '', side.o ? 'the defence gave away ' + tr(side.o) : ''].filter(Boolean).join(' and ')}:</p><ul class="costs">${bad.map(x => `<li>Trick ${x.pc.trick + 1}, ${SEAT_NAME[x.pc.seat]}${x.pc.seat === dummy ? ' (dummy)' : ''} played ${cardText(x.pc.card)} <span class="cost">−${x.r.loss}</span>${x.r.best.length ? `. Better: ${betterText(x.r)}` : ''}</li>`).join('')}</ul>`;
     }
   }
-  return table + review + '<p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>';
+  return table + review + '<p class="note">The underlined card won each trick.</p>';
 }
 // called by js/analysis.js as the review of the open hand record comes in
 function redrawReview() {
@@ -969,7 +975,7 @@ function undoBanner(t) {
 
 // ----- replay a finished board card by card -----
 let replayDraw = null; // updates the open replay's note when the play review comes in
-function startReplay(h) {
+function startReplay(h, scroll) {
   const flat = [];
   h.tricks.forEach((tr, k) => tr.cards.forEach((pc, j) => flat.push({ ...pc, trick: k, pos: j })));
   let step = flat.length; // number of cards shown as played
@@ -995,10 +1001,11 @@ function startReplay(h) {
     const shown = inTrick; // a finished trick stays visible until the next lead
     const winner = shown.length === 4 ? trickWinner({ cards: shown }, h.contract.strain) : null;
     const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s].filter(c => !played.has(c)))}</div>`;
-    const centre = `<div class="tr">${shown.map(x => `<div style="text-align:center">${cardHTML(x.card, x.seat === winner ? 'win' : '', 'tabindex="-1"')}<div class="lbl">${x.seat}</div></div>`).join('') || '<span class="lbl">Opening lead next</span>'}</div>`;
+    // the trick so far, each card on its player's side of the table (as on the felt), later cards on top
+    const centre = shown.length ? `<div class="tr cmp">${shown.map(x => `<div class="at-${x.seat}" title="${SEAT_NAME[x.seat]}">${cardHTML(x.card, x.seat === winner ? 'win' : '', 'tabindex="-1"')}</div>`).join('')}</div>` : '<div class="tr"><span class="lbl">Opening lead next</span></div>';
     box.innerHTML = `<div class="replay"><div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}${centre}${hand('E')}<div></div>${hand('S')}<div></div></div>
       <p class="note rpnote" style="text-align:center" aria-live="polite">${note()}</p>
-      <div class="row ctl"><button class="btn small" data-rp="start" aria-label="Back to the start">Start</button><button class="btn small" data-rp="trickback">Previous trick</button><button class="btn small" data-rp="back" aria-label="Previous card">Back</button><button class="btn small primary" data-rp="fwd" aria-label="Next card">Next</button><button class="btn small" data-rp="trickfwd">Next trick</button><button class="btn small" data-rp="end">End</button></div></div>`;
+      <div class="row ctl"><button class="btn small" data-rp="start" aria-label="Back to the start">Start</button><button class="btn small" data-rp="trickback" aria-label="Previous trick">‹ Trick</button><button class="btn small" data-rp="back" aria-label="Previous card">Back</button><button class="btn small primary" data-rp="fwd" aria-label="Next card">Next</button><button class="btn small" data-rp="trickfwd" aria-label="Next trick">Trick ›</button><button class="btn small" data-rp="end">End</button></div></div>`;
     box.querySelectorAll('[data-rp]').forEach(b => b.addEventListener('click', () => {
       const a = b.dataset.rp;
       if (a === 'start') step = 0; else if (a === 'end') step = flat.length;
@@ -1009,7 +1016,7 @@ function startReplay(h) {
     }));
   };
   step = 0; draw();
-  box.scrollIntoView({ block: 'nearest' });
+  if (scroll) box.scrollIntoView({ block: 'nearest' });
 }
 // where the game stands: a queued move is only sent if nobody has bid or played since
 function playMark(t) { return [t.board, t.phase, t.auction.length, t.play.tricks.reduce((n, tr) => n + tr.cards.length, 0), !!t.claim].join(':'); }
@@ -1246,7 +1253,7 @@ document.addEventListener('click', e => {
   else if (d.claim === 'no') doAct('respond', false);
   else if (d.claim === 'cancel') doAct('cancelClaim');
   else if (d.next) doAct('next');
-  else if (d.review !== undefined) { const h = T.history[+d.review]; showRecord(+d.review); if (h && h.tricks && h.tricks.length) startReplay(h); }
+  else if (d.review !== undefined) showRecord(+d.review, true);
   else if (d.record !== undefined) showRecord(+d.record);
   else if (d.alert) showExplain(b, d.alert);
   else if (d.sub) doAct('sub', d.sub);
