@@ -71,6 +71,9 @@ Team matches on the same deals (`tools/benvs.mjs`, 300 boards each, IMPs per boa
 - BEN play with 4000 ms, k 60, pool 200 against the defaults: +0.18 ± 0.15 (not enough to justify the slower play).
 - BEN bidding with and without rescue bids (`o.rescue`, BEN's `evaluate_rescue_bid`; `OPP=ben DET=1 DDSCORE=1 BENPLAY=0
   NEW='{"rescue":false}'`): no rescue bid made and no board changed, so it is off (it costs a sampling pass on lone passes).
+- BEN play with and without BEN's `validate_logical_play` and `check_discards` weights (`o.logic`; `OPP=ben BENBID=0 DET=1
+  NEW='{"logic":false}'`): +0.06 ± 0.05 for the side without them (11 boards changed), so they are off, although they
+  bring the vector plays to 1012 of 1130.
 
 Knobs for the tools: `bencheck` `POOL`, `K`, `MAXPOOL`, `PLIM=none|min`, `DEAL=n`, `V=1` (mismatch details);
 `benvs` `DET=1` (no time limits, reproducible), `DDSCORE=1`, `BENBID=0`, `BENPLAY=0`, `OPP=ben`, `NEW='{...}'`,

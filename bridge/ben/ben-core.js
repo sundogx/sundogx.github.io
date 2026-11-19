@@ -607,7 +607,7 @@ const BenCore = (() => {
     const vul = vulArr(view.vul), aucCalls = view.auction.map(a => a.call), dealer = view.auction.length ? view.auction[0].by : 'N';
     const auc = padded(aucCalls, dealer);
     const weigh = async pool => {
-    const w = pool.map(() => ({ bid: 1, lead: 1, play: 1 }));
+    const w = pool.map(() => ({ bid: 1, lead: 1, play: 1, logic: 1, disc: 1 }));
     for (const s of hidden) { // bidding: min over its calls of the bidder's probability of the call made
       const hix = SEATS4.indexOf(s), idx = [];
       for (let j = hix; j < auc.length; j += 4) if (auc[j] !== 'PAD_START') idx.push(j);
@@ -633,6 +633,23 @@ const BenCore = (() => {
       pool.forEach((h, n) => encodePlay(A, n * Tp * PF, r, fullOf(h, s), view.known[pubS] ? [...view.known[pubS], ...playedBy[pubS]] : fullOf(h, pubS), tr, Tp, ct.level, strain));
       const op = (await nn.run(playModel(r, strain), { x: { data: A, dims: [N, Tp, PF] } })).card;
       pool.forEach((h, n) => { let mn = 1; for (const [ti, c] of mine) mn = Math.min(mn, red24(op, (n * Tp + ti) * 32, c32(c))); w[n].play = Math.min(w[n].play, mn); });
+      if (o.logic !== true) continue; // off: 1012 vs 1010 of 1130 vector plays, but -0.06 +- 0.05 IMPs/board over 300 boards
+      // BEN's validate_logical_play (from trick 5): an honour still held that the network would surely have played earlier
+      const doneT = tr.filter(t => t.cards.length === 4).length;
+      if (doneT >= 5) pool.forEach((h, n) => {
+        for (const c of h[s]) { const j = c32(c); if (j % 8 > 4) continue;
+          for (let t = 0; t < Math.min(doneT, Tp); t++) { const q = op[(n * Tp + t) * 32 + j], top = j % 8 === 0;
+            if (q > 0.95) w[n].logic *= top ? 0.2 : 0.4; else if (q > 0.9) w[n].logic *= top ? 0.3 : 0.6; else if (q > 0.8) w[n].logic *= top ? 0.4 : 0.8; } }
+      });
+      // BEN's check_discards (suit contracts): a discard where the network would have ruffed
+      const ti0 = 'SHDC'.indexOf(strain);
+      if (ti0 >= 0) for (const [ti, c] of mine) {
+        const led = tr[ti].cards[0].card[0];
+        if (c[0] === led || c[0] === strain) continue;
+        const cj = c32(c);
+        pool.forEach((h, n) => { let b = 0; const o0 = (n * Tp + ti) * 32; for (let j = 1; j < 32; j++) if (op[o0 + j] > op[o0 + b]) b = j;
+          if (b !== cj && (b / 8 | 0) === ti0) w[n].disc = 1 - op[o0 + b]; });
+      }
     }
     return w; };
     const w = await weigh(pool);
@@ -663,7 +680,7 @@ const BenCore = (() => {
       if (res.length >= minK && now() - t0 > ms) break;
       const r = await solve(ddJob(view, pool[i]));
       if (!r) continue;
-      res.push(r); prob.push((quality > 0.5 ? Math.max(w[i].bid, 1e-4) : 1) * cnt.get(keys[i]));
+      res.push(r); prob.push((quality > 0.5 ? Math.max(w[i].bid, 1e-4) : 1) * Math.max(cnt.get(keys[i]) * w[i].logic * w[i].disc, 1e-6));
     }
     if (res.length < Math.min(4, ids.length)) return { card: nnTop(), info: { ...info, why: 'dd budget' } };
     const ps = prob.reduce((a, b) => a + b, 0), pk = prob.map(x => x / ps);
