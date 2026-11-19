@@ -1096,7 +1096,10 @@ async function dailyRoute(req, env, path) {
   // the score is worked out here, from the contract and tricks, never taken from the page
   const score = contract ? G.scoreNS(contract, tricks, G.boardVul(board)) : 0;
   let ip = req.headers.get('cf-connecting-ip') || 'local';
-  if (ip.includes(':')) ip = ip.split(':').slice(0, 4).join(':'); // IPv6: one limit per /64 (one user often holds a whole /64)
+  if (ip.includes(':')) { // expand a '::' first, or a compressed address (e.g. 2001:db8::1) would not group by its /64
+    const [h, tl] = ip.toLowerCase().split('::'), hs = h ? h.split(':') : [], ts = tl ? tl.split(':') : [];
+    ip = (tl === undefined ? hs : [...hs, ...Array(Math.max(0, 8 - hs.length - ts.length)).fill('0'), ...ts]).slice(0, 4).join(':');
+  } // IPv6: one limit per /64 (one user often holds a whole /64)
   const r = await dailyStub(env, date).dailyPost({ uid: await idFromSecret(secret), name, board, contract, declTricks: tricks, score }, await idFromSecret('ip:' + ip));
   return json(r.error ? { error: r.error } : r, r.status || 200);
 }
