@@ -892,7 +892,7 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
     if (left === 1) { // the last trick: one card each
       let w = -1, ws = 0, wr = 0;
       for (let i = 0; i < 4; i++) {
-        const s = (leader + i) & 3; let su = 0; while (!h[s * 4 + su]) su++;
+        const s = (leader + i) & 3; let su = 0; while (su < 3 && !h[s * 4 + su]) su++; // (never past this seat's suits)
         const r = clTop(h[s * 4 + su]);
         if (w < 0 || (su === ws ? r > wr : su === trump)) { w = s; ws = su; wr = r; }
       }

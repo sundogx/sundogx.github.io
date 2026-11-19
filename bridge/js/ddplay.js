@@ -141,6 +141,7 @@ function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null, opts =
   const playedBy = {}, voids = {};
   for (const s of SEATS) { playedBy[s] = []; voids[s] = new Set(); }
   for (const tr of view.tricks) {
+    if (!tr.cards.length) continue; // a trick not yet started
     const led = suitOf(tr.cards[0].card);
     for (const pc of tr.cards) { playedBy[pc.seat].push(pc.card); if (suitOf(pc.card) !== led) voids[pc.seat].add(led); }
   }
@@ -363,6 +364,7 @@ function ddPick(view, legal, results, prefer, opts = {}) {
     });
     stats.forEach((a, i) => { a.score = imp[i]; });
   }
+  if (!stats.length) return null; // no candidate cards
   const best = Math.max(...stats.map(s => s.score));
   const tol = opts.tol != null ? opts.tol : 0.5;
   const near = stats.filter(s => s.score >= best - tol);
@@ -479,6 +481,7 @@ function ddDecide(view, results, weights, opts) {
   }
   if (weights) o = { ...o, weights };
   const r = ddPick(view, cands, results, opts.prefer, o);
+  if (!r) return null;
   r.samples = results.length;
   return r;
 }

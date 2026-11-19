@@ -153,7 +153,7 @@ function leadValues(view, cands, results, metric = LEAD_METRIC) {
   for (const x of cands) val[x] = 0;
   let n = 0;
   for (const r of results) {
-    if (!cands.every(x => x in r)) continue;
+    if (!r || !cands.every(x => x in r)) continue; // a failed solve
     const sc = cands.map(x => -scoreContract(c, 13 - r[x], view.vul));
     const mean = sc.reduce((a, b) => a + b, 0) / sc.length;
     cands.forEach((x, i) => { val[x] += metric === 'score' ? (sc[i] - mean) / 100 : metric === 'tricks' ? r[x] : toImps(Math.round(sc[i] - mean)); });
