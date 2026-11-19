@@ -365,6 +365,15 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .ttable { width: 100%; font-size: 14px; border-collapse: collapse; font-family: var(--serif); }
 .ttable td { padding: 2px 4px; border-bottom: 1px solid var(--line); text-align: center; }
 .ttable td.w { font-weight: 700; text-decoration: underline; }
+/* play review: a card that cost tricks double dummy */
+.cost { color: var(--ink-soft); font-family: var(--sans); font-size: 11px; font-weight: 600; margin-left: 1px; }
+.ttable sup.cost { vertical-align: super; line-height: 0; }
+ul.costs { margin: 2px 0 6px; padding-left: 18px; font-size: 14px; }
+ul.costs li { margin: 1px 0; }
+/* the hand record's hands: a long suit stays on one line (the ranks sit closer than on the table) */
+.modal .diagram { grid-template-columns: auto auto auto; justify-content: space-between; column-gap: 4px; }
+.modal .diagram .rows .rr { flex-wrap: nowrap; gap: 0; }
+.modal .diagram .rows .rk { padding: 1px 2px; }
 
 @media (max-width: 560px) {
   #tableView { --feltH: clamp(290px, calc(var(--vh) - 240px), 470px); }

@@ -603,7 +603,7 @@ function render() {
 let modalReturn = null;
 function setBackgroundInert(on) { for (const id of ['home', 'tableView']) { const el = $(id); if (el) el.inert = on; } }
 function closeModal() {
-  $('modalRoot').innerHTML = ''; openRecord = null; setBackgroundInert(false);
+  $('modalRoot').innerHTML = ''; openRecord = null; replayDraw = null; setBackgroundInert(false);
   const r = modalReturn; modalReturn = null;
   if (r && r.isConnected) r.focus({ preventScroll: true });
 }
@@ -622,7 +622,7 @@ function modal(html) {
     if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
     else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
   });
-  openRecord = null;
+  openRecord = null; replayDraw = null;
   const b = m.querySelector('button:not(.mclose):not(:disabled)') || m.querySelector('button'); if (b) b.focus({ preventScroll: true });
   return m;
 }
@@ -635,13 +635,7 @@ function showLastTrick() {
 function showRecord(i) {
   const h = T.history[i]; if (!h) return;
   const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s])}</div>`;
-  let tt = '';
-  if (h.tricks && h.tricks.length) {
-    tt = `<h3 style="font-size:16px;margin-top:12px">Play</h3><table class="ttable"><tr><td></td>${SEATS.map(s => `<td>${s}</td>`).join('')}</tr>${h.tricks.map((tr, k) => {
-      const w = tr.cards.length === 4 ? trickWinner(tr, h.contract.strain) : null;
-      return `<tr><td>${k + 1}</td>${SEATS.map(s => { const pc = tr.cards.find(x => x.seat === s); return `<td class="${s === w ? 'w' : ''} ${pc && isRed(suitOf(pc.card)) ? 'red' : ''} ${pc ? 's-' + suitOf(pc.card) : ''}">${pc ? SYM[suitOf(pc.card)] + rankLabel(pc.card[1]) : ''}</td>`; }).join('')}</tr>`;
-    }).join('')}</table><p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>`;
-  }
+  const tt = h.tricks && h.tricks.length ? `<h3 style="font-size:16px;margin-top:12px">Play</h3><div id="playBox">${playTableHTML(h)}</div>` : '';
   modal(`<h3>Board ${h.board}</h3><p class="note" style="margin-top:-6px">Dealer ${SEAT_NAME[h.dealer]}. ${vulText(h.vul)}.</p>
     <div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}<div class="lbl">${h.contract ? contractHTML(h.contract) + '<br>' + resultText(h.contract, h.declTricks) + ', N-S ' + h.scoreNS : 'Passed out'}</div>${hand('E')}<div></div>${hand('S')}<div></div></div>
     ${auctionGridHTML(T, h.auction, h.dealer, h.vul, null)}
@@ -653,12 +647,51 @@ function showRecord(i) {
   $('modalRoot').querySelectorAll('[data-export]').forEach(b => b.addEventListener('click', () => exportRecord(h, b.dataset.export)));
   if ($('replayBtn')) $('replayBtn').addEventListener('click', () => startReplay(h));
 }
+// the cards that kept the double-dummy result: "any ♣" for a whole suit of the legal cards, else the cards themselves
+function betterText(r) {
+  const out = [];
+  for (const su of UI_SUITS) {
+    const b = r.best.filter(c => suitOf(c) === su); if (!b.length) continue;
+    const all = (r.legal || []).filter(c => suitOf(c) === su).length === b.length && b.length > 1;
+    out.push(all ? `any <span class="${isRed(su) ? 'red' : ''} s-${su}">${SYM[su]}</span>` : sortForHand(b).map(cardText).join(', '));
+  }
+  return out.join(' or ');
+}
+const cardText = c => `<span class="${isRed(suitOf(c)) ? 'red' : ''} s-${suitOf(c)}">${SYM[suitOf(c)]}${rankLabel(c[1])}</span>`;
+// The play, trick by trick. Once the review (js/analysis.js playReview) has checked a card double dummy, a card
+// that cost tricks carries a small −1 (or −2...), and the list under the table says what would have kept them.
+function playTableHTML(h) {
+  const rv = playReview(h), flat = reviewFlat(h), loss = {};
+  if (rv) flat.forEach((pc, i) => { const r = rv.res[i]; if (r && r.loss > 0) loss[pc.trick + pc.seat] = r.loss; });
+  const table = `<table class="ttable"><tr><td></td>${SEATS.map(s => `<td>${s}</td>`).join('')}</tr>${h.tricks.map((tr, k) => {
+    const w = tr.cards.length === 4 ? trickWinner(tr, h.contract.strain) : null;
+    return `<tr><td>${k + 1}</td>${SEATS.map(s => { const pc = tr.cards.find(x => x.seat === s), l = loss[k + s]; return `<td class="${s === w ? 'w' : ''} ${pc && isRed(suitOf(pc.card)) ? 'red' : ''} ${pc ? 's-' + suitOf(pc.card) : ''}">${pc ? SYM[suitOf(pc.card)] + rankLabel(pc.card[1]) : ''}${l ? `<sup class="cost" title="Cost ${l} trick${l > 1 ? 's' : ''} double dummy">−${l}</sup>` : ''}</td>`; }).join('')}</tr>`;
+  }).join('')}</table>`;
+  let review = '';
+  if (rv && !rv.done) review = `<p class="note">Checking each card double dummy… ${rv.n} of ${rv.res.length}</p>`;
+  else if (rv) {
+    const bad = flat.map((pc, i) => ({ pc, r: rv.res[i] })).filter(x => x.r && x.r.loss > 0);
+    if (!bad.length) review = '<p class="note">Double dummy, no card played cost a trick.</p>';
+    else {
+      const by = {}; bad.forEach(x => { by[x.pc.seat] = (by[x.pc.seat] || 0) + x.r.loss; });
+      review = `<p class="note" style="margin-bottom:2px">Double dummy, tricks given away: ${SEATS.filter(s => by[s]).map(s => `${SEAT_NAME[s]} ${by[s]}`).join(', ')}.</p><ul class="costs">${bad.map(x => `<li>Trick ${x.pc.trick + 1}, ${SEAT_NAME[x.pc.seat]} played ${cardText(x.pc.card)} <span class="cost">−${x.r.loss}</span>${x.r.best.length ? `. Better: ${betterText(x.r)}` : ''}</li>`).join('')}</ul>`;
+    }
+  }
+  return table + review + '<p class="note">The underlined card won each trick. Use Replay the play to step through it card by card.</p>';
+}
+// called by js/analysis.js as the review of the open hand record comes in
+function redrawReview() {
+  if (!T || openRecord === null) return;
+  const h = T.history[openRecord], box = $('playBox');
+  if (h && box) box.innerHTML = playTableHTML(h);
+  if (replayDraw) replayDraw();
+}
 function otherLine(h) {
   let o = h.other, label = 'Robot table';
   if (!o && T.match && otherRoom) { o = otherRoom.history.find(x => x.board === h.board); label = T.match.room === 'Open' ? 'Closed room' : 'Open room'; }
   if (!o) return '';
   const im = T.match ? toImps((T.match.room === 'Open' ? h.scoreNS - o.scoreNS : o.scoreNS - h.scoreNS)) : toImps(h.scoreNS - o.scoreNS);
-  return `<p><b>${label}:</b> ${o.contract ? contractHTML(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMPs to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMPs to you` : 'No swing')}.</p>
+  return `<p><b>${label}:</b> ${o.contract ? contractHTML(o.contract) + ' ' + resultText(o.contract, o.declTricks) : 'Passed out'}, N-S ${o.scoreNS}. ${T.match ? (im ? `${Math.abs(im)} IMP${Math.abs(im) === 1 ? "" : "s"} to Team ${im > 0 ? 1 : 2}` : 'No swing') : (im ? `${im > 0 ? '+' : ''}${im} IMP${Math.abs(im) === 1 ? '' : 's'} to you` : 'No swing')}.</p>
     ${o.auction ? `<details><summary class="note">Their auction</summary>${auctionGridHTML(T, o.auction, h.dealer, h.vul, null)}</details>` : ''}`;
 }
 function showClaimDialog() {
@@ -884,11 +917,25 @@ function undoBanner(t) {
 }
 
 // ----- replay a finished board card by card -----
+let replayDraw = null; // updates the open replay's note when the play review comes in
 function startReplay(h) {
   const flat = [];
   h.tricks.forEach((tr, k) => tr.cards.forEach((pc, j) => flat.push({ ...pc, trick: k, pos: j })));
   let step = flat.length; // number of cards shown as played
   const box = $('replayBox');
+  // the line under the replay: the card just played, what it cost double dummy (once the review has it), the tricks so far
+  const note = () => {
+    const cur = step ? flat[step - 1] : null;
+    if (!cur) return 'Before the opening lead.';
+    const tw = { decl: 0, def: 0 };
+    h.tricks.slice(0, cur.pos === 3 ? cur.trick + 1 : cur.trick).forEach(tr => {
+      if (tr.cards.length === 4) (sameSide(trickWinner(tr, h.contract.strain), h.contract.declarer) ? tw.decl++ : tw.def++);
+    });
+    const rv = playReview(h), r = rv && rv.res[step - 1];
+    const cost = r && r.loss > 0 ? ` It cost ${r.loss} trick${r.loss > 1 ? 's' : ''} double dummy${r.best.length ? ` (better: ${betterText(r)})` : ''}.` : '';
+    return `Trick ${cur.trick + 1}, card ${cur.pos + 1}: ${SEAT_NAME[cur.seat]} played ${cardText(cur.card)}.${cost} Declarer ${tw.decl}, defence ${tw.def}.`;
+  };
+  replayDraw = () => { const el = box.querySelector('.rpnote'); if (el && box.isConnected) el.innerHTML = note(); };
   const draw = () => {
     const played = new Set(flat.slice(0, step).map(x => x.card));
     const cur = step ? flat[step - 1] : null;
@@ -897,13 +944,9 @@ function startReplay(h) {
     const shown = inTrick; // a finished trick stays visible until the next lead
     const winner = shown.length === 4 ? trickWinner({ cards: shown }, h.contract.strain) : null;
     const hand = s => `<div><div class="lbl">${SEAT_NAME[s]}</div>${rowsHTML(h.hands[s].filter(c => !played.has(c)))}</div>`;
-    const tw = { decl: 0, def: 0 };
-    h.tricks.slice(0, cur ? (cur.pos === 3 ? trickNo + 1 : trickNo) : 0).forEach(tr => {
-      if (tr.cards.length === 4) (sameSide(trickWinner(tr, h.contract.strain), h.contract.declarer) ? tw.decl++ : tw.def++);
-    });
     const centre = `<div class="tr">${shown.map(x => `<div style="text-align:center">${cardHTML(x.card, x.seat === winner ? 'win' : '', 'tabindex="-1"')}<div class="lbl">${x.seat}</div></div>`).join('') || '<span class="lbl">Opening lead next</span>'}</div>`;
     box.innerHTML = `<div class="replay"><div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}${centre}${hand('E')}<div></div>${hand('S')}<div></div></div>
-      <p class="note" style="text-align:center">${step ? `Trick ${trickNo + 1}, card ${cur.pos + 1}: ${SEAT_NAME[cur.seat]} played ${rankLabel(cur.card[1])}${SYM[cur.card[0]]}.` : 'Before the opening lead.'} Declarer ${tw.decl}, defence ${tw.def}.</p>
+      <p class="note rpnote" style="text-align:center" aria-live="polite">${note()}</p>
       <div class="row ctl"><button class="btn small" data-rp="start" aria-label="Back to the start">Start</button><button class="btn small" data-rp="trickback">Previous trick</button><button class="btn small" data-rp="back" aria-label="Previous card">Back</button><button class="btn small primary" data-rp="fwd" aria-label="Next card">Next</button><button class="btn small" data-rp="trickfwd">Next trick</button><button class="btn small" data-rp="end">End</button></div></div>`;
     box.querySelectorAll('[data-rp]').forEach(b => b.addEventListener('click', () => {
       const a = b.dataset.rp;

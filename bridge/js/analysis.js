@@ -116,9 +116,110 @@ function ddHTML(h) {
     const dt = en.table[h.contract.declarer][h.contract.strain];
     played = `<p class="note">Double dummy, ${contractText(h.contract)} takes ${dt} tricks (${resultText(h.contract, dt)}). At the table: ${h.declTricks}.</p>`;
   }
+  let parLine = '';
+  if (par) {
+    const sg = v => (v > 0 ? '+' : '') + v, im = toImps(h.scoreNS - par.scoreNS);
+    parLine = `<p><b>Par:</b> ${redSym(esc(par.text.replace(/(by \w+)([=+-])/, '$1 $2')))}, N-S ${sg(par.scoreNS)}. At the table N-S ${sg(h.scoreNS)}${im ? `, ${sg(im)} IMP${Math.abs(im) === 1 ? '' : 's'} against par` : ', the par score'}.</p>`;
+  }
   return `<table class="ddt"><tr><th></th>${cols.map(c => `<th class="${isRed(c) ? 'red' : ''}">${SYM[c]}</th>`).join('')}</tr>${rows}</table>
     <p class="note">Numbers are the level each declarer makes with perfect play by everyone; a dash means not even one level.${en.done ? '' : ' Still analysing…'}</p>
-    ${par ? `<p><b>Par:</b> ${par.text}, N-S ${par.scoreNS > 0 ? '+' : ''}${par.scoreNS}</p>` : ''}${played}`;
+    ${parLine}${played}`;
+}
+
+// ---------- Play review: which cards played cost a trick, double dummy ----------
+// Every card of a finished board is checked against the solver: the position just before it (the cards still
+// held, the trick so far) is solved for the player to move, and a card that takes fewer tricks for its side than
+// the best card there "cost" the difference. One worker of its own, made on first use, fed one position at a
+// time and paused while a robot is thinking. Results are cached by deal and play.
+const PlayDD = { w: null, cache: new Map(), queue: [], cur: null, failed: false };
+function reviewKey(h) { return handsKey(h.hands) + '#' + h.tricks.map(tr => tr.cards.map(pc => pc.card).join('')).join('|'); }
+function reviewFlat(h) { const f = []; h.tricks.forEach((tr, k) => tr.cards.forEach((pc, j) => f.push({ ...pc, trick: k, pos: j, leader: tr.leader }))); return f; }
+function reviewWorker() {
+  if (PlayDD.w) return PlayDD.w;
+  // a worker from a few lines here, with the solver scripts the robots use (engine.js, ddplay.js, wasm/compiled.js)
+  const u = p => JSON.stringify(new URL('js/' + p, location.href).href);
+  const src = `importScripts(${u('wasm/compiled.js')}, ${u('engine.js')}, ${u('ddplay.js')});
+let mod = null, solve = null;
+self.onmessage = async e => {
+  const m = e.data;
+  if (m.wasm) { mod = mod || m.wasm; return; }
+  try {
+    if (!solve) { if (!mod) mod = await WebAssembly.compile(await (await fetch(${u('wasm/compiled.wasm')})).arrayBuffer()); solve = ddSolver(create_dds_module, mod); }
+    self.postMessage({ k: m.k, i: m.i, r: await solve(m.job) });
+  } catch (err) { self.postMessage({ k: m.k, i: m.i, error: String(err && err.message || err) }); }
+};`;
+  const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+  const w = PlayDD.w = new Worker(url);
+  ddWasm().then(mod => { if (mod) try { w.postMessage({ wasm: mod }); } catch (e) { } });
+  w.onmessage = e => {
+    const m = e.data, en = PlayDD.cache.get(m.k), j = PlayDD.cur; PlayDD.cur = null;
+    if (m.error) { reviewFail(); return; }
+    if (en && j) {
+      const legalHere = j.legal, best = Math.max(...legalHere.map(c => m.r[c] ?? -1));
+      const got = m.r[j.card];
+      en.res[m.i] = got === undefined || best < 0 ? { loss: 0, best: [] } : { loss: Math.max(0, best - got), best: legalHere.filter(c => m.r[c] === best), legal: legalHere, tricks: got };
+      en.n++; if (en.n >= en.res.length) en.done = true;
+      onReviewUpdate(m.k);
+    }
+    pumpReview();
+  };
+  w.onerror = () => reviewFail();
+  return w;
+}
+function reviewFail() {
+  PlayDD.failed = true; PlayDD.queue = []; PlayDD.cur = null;
+  try { if (PlayDD.w) PlayDD.w.terminate(); } catch (e) { } PlayDD.w = null;
+  for (const [k, en] of PlayDD.cache) if (!en.done) PlayDD.cache.delete(k);
+  if (T && openRecord !== null) onReviewUpdate(null);
+}
+// The review of a board's play: { res: [per card: null (not yet) or { loss, best, tricks }], done }, started on first ask.
+function playReview(h) {
+  if (!h || !h.contract || !h.tricks || !h.tricks.length || PlayDD.failed || typeof Worker === 'undefined') return null;
+  if (SEATS.some(s => !h.hands[s] || h.hands[s].some(c => c[0] === '?'))) return null;
+  const k = reviewKey(h);
+  let en = PlayDD.cache.get(k);
+  if (en) return en;
+  const flat = reviewFlat(h), strain = h.contract.strain;
+  en = { res: flat.map(() => null), n: 0, done: false };
+  const played = new Set();
+  flat.forEach((pc, i) => {
+    const hands = {}; SEATS.forEach(s => { hands[s] = h.hands[s].filter(c => !played.has(c)); });
+    const trick = flat.slice(i - pc.pos, i).map(x => x.card);
+    const led = trick.length ? suitOf(trick[0]) : null, hand = hands[pc.seat];
+    const follow = led && hand.filter(c => suitOf(c) === led);
+    const legal = follow && follow.length ? follow : hand;
+    played.add(pc.card);
+    if (legal.length < 2 || (legal.every(c => suitOf(c) === suitOf(legal[0])) && ddRunOf(legal, hands, trick))) { en.res[i] = { loss: 0, best: [] }; en.n++; return; }
+    const job = { trump: DD_TRUMP[strain], first: SEATS.indexOf(pc.leader), trick, pbn: ddPBN(hands), hands, mover: pc.seat };
+    PlayDD.queue.push({ k, i, job, legal, card: pc.card });
+  });
+  if (en.n >= en.res.length) en.done = true;
+  if (PlayDD.cache.size > 30) PlayDD.cache.delete(PlayDD.cache.keys().next().value);
+  PlayDD.cache.set(k, en);
+  pumpReview();
+  return en;
+}
+// all the legal cards are one run of equals in one suit (no card anyone holds or has played to this trick between them): no choice to check
+function ddRunOf(legal, hands, trick) {
+  const s = suitOf(legal[0]), rs = legal.map(rankOf).sort((a, b) => a - b), others = new Set(SEATS.flatMap(x => hands[x]).concat(trick));
+  for (let r = rs[0]; r <= rs[rs.length - 1]; r++) if (others.has(s + RANKS[r]) && !legal.includes(s + RANKS[r])) return false;
+  return true;
+}
+function pumpReview() {
+  if (PlayDD.cur || PlayDD.failed || !PlayDD.queue.length) return;
+  if (ddRobotBusy()) { setTimeout(pumpReview, 300); return; } // a robot is thinking: it goes first
+  // the board in the open hand record goes first
+  const want = openRecord !== null && T && T.history[openRecord] && T.history[openRecord].tricks ? reviewKey(T.history[openRecord]) : null;
+  let i = want ? PlayDD.queue.findIndex(j => j.k === want) : -1; if (i < 0) i = 0;
+  const j = PlayDD.cur = PlayDD.queue.splice(i, 1)[0];
+  if (!PlayDD.cache.has(j.k)) { PlayDD.cur = null; pumpReview(); return; }
+  try { reviewWorker().postMessage({ k: j.k, i: j.i, job: { trump: j.job.trump, first: j.job.first, trick: j.job.trick, pbn: j.job.pbn, hands: j.job.hands, mover: j.job.mover } }); }
+  catch (e) { reviewFail(); }
+}
+let reviewFrame = 0;
+function onReviewUpdate() { // redraw the open hand record's play table (at most once per frame)
+  if (reviewFrame) return;
+  reviewFrame = requestAnimationFrame(() => { reviewFrame = 0; if (typeof redrawReview === 'function') redrawReview(); });
 }
 
 // ---------- PBN export ----------
