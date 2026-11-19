@@ -1,0 +1,280 @@
+// ===== feature: explorer =====
+// Bidding explorer: build any auction with the bidding box (any dealer and vulnerability) and see what the robots'
+// system (js/bidding.js, read-only) takes every call to mean. With a hand for the seat to call (typed, dealt, or an
+// "Example hand" that fits the auction so far) it shows the robot's call there. Self-contained: its own screen,
+// built on first use. Loaded before app.js; uses app.js helpers at run time. The shared helpers (bx*) are also used
+// by js/flashcards.js.
+
+// ---- shared helpers ----
+const bxEl = id => document.getElementById(id);
+const BX_SUITS = ['S', 'H', 'D', 'C'];
+const bxEsc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+const bxRed = s => s === 'H' || s === 'D';
+// a call as HTML: the level black, the suit symbol in its colour
+const bxCallHTML = call => bidValue(call) >= 0
+  ? `${call[0]}${call[1] === 'N' ? 'NT' : `<span class="${bxRed(call[1]) ? 'red ' : ''}s-${call[1]}">${SYM[call[1]]}</span>`}`
+  : call === 'P' ? '<span class="bx-p">Pass</span>' : call;
+// plain text with ♥ ♦ in red (the system's explanations use suit symbols)
+const bxText = s => bxEsc(s).replace(/[♥♦]/g, x => `<span class="red s-${x === '♥' ? 'H' : 'D'}">${x}</span>`);
+const bxRank = r => (r === 'T' ? '10' : r);
+
+function bxHandHTML(cards) {
+  return BX_SUITS.map(s => {
+    const cs = cards.filter(c => c[0] === s).sort((a, b) => RANKS.indexOf(b[1]) - RANKS.indexOf(a[1]));
+    return `<div class="bx-suit"><span class="${bxRed(s) ? 'red ' : ''}s-${s}">${SYM[s]}</span> ${cs.length ? cs.map(c => bxRank(c[1])).join(' ') : '–'}</div>`;
+  }).join('') + `<div class="note">${hcp(cards)} HCP</div>`;
+}
+// "AKQ2 J54 T92 832" (spades hearts diamonds clubs), the same with dots, or with suit letters ("S AKQ2 H J54 ...")
+const bxHandText = cards => BX_SUITS.map(s => cards.filter(c => c[0] === s).sort((a, b) => RANKS.indexOf(b[1]) - RANKS.indexOf(a[1])).map(c => c[1]).join('') || '-').join(' ');
+function bxParseHand(str) {
+  let s = String(str || '').toUpperCase().replace(/10/g, 'T').replace(/[♠]/g, ' S ').replace(/[♥]/g, ' H ').replace(/[♦]/g, ' D ').replace(/[♣]/g, ' C ');
+  let groups;
+  if (/[SHDC]/.test(s)) { // no rank is S, H, D or C, so these are suit letters
+    // suit letters: S AKQ2 H J54 D T9 C 832 (missing suits are voids)
+    const m = {}; let cur = null;
+    for (const ch of s.replace(/[:,.]/g, ' ')) {
+      if ('SHDC'.includes(ch)) { cur = ch; m[cur] = m[cur] || ''; }
+      else if (/[AKQJT2-9]/.test(ch)) { if (!cur) return { error: 'Put a suit letter before each suit.' }; m[cur] += ch; }
+    }
+    groups = BX_SUITS.map(x => m[x] || '');
+  } else {
+    groups = s.trim().split(/[\s.,/|]+/).filter(Boolean).map(g => g === '-' || g === '—' ? '' : g);
+    if (groups.length !== 4) return { error: 'Type four suits, spades first: AKQ2 J54 T92 832 (a dash for a void).' };
+  }
+  const cards = [];
+  for (let i = 0; i < 4; i++) for (const r of groups[i].replace(/[-—]/g, '')) {
+    if (!RANKS.includes(r)) return { error: `"${r}" isn't a card rank.` };
+    const c = BX_SUITS[i] + r;
+    if (cards.includes(c)) return { error: `${SYM[BX_SUITS[i]]}${bxRank(r)} is there twice.` };
+    cards.push(c);
+  }
+  if (cards.length !== 13) return { error: `That is ${cards.length} card${cards.length === 1 ? '' : 's'}; a hand has 13.` };
+  return { cards: sortHand(cards) };
+}
+// the bidding box; pre tells the explorer's and the flashcards' buttons apart
+function bxBoxHTML(dealer, auction, level, pre) {
+  const legal = legalCalls(dealer, auction);
+  const minLevel = [1, 2, 3, 4, 5, 6, 7].find(l => STRAINS.some(s => legal.includes(l + s)));
+  return `<div class="bbox"><div class="lv">${[1, 2, 3, 4, 5, 6, 7].map(l => `<button class="bcard ${level === l ? 'sel' : ''}" data-${pre}level="${l}" ${!minLevel || l < minLevel ? 'disabled' : ''}>${l}</button>`).join('')}</div>
+    <div class="st">${STRAINS.map(s => `<button class="bcard ${bxRed(s) ? 'red' : ''} s-${s}" data-${pre}call="${level ? level + s : ''}" aria-label="${level ? level + ' ' : ''}${STRAIN_WORD[s]}" ${level && legal.includes(level + s) ? '' : 'disabled'}>${SYM[s]}</button>`).join('')}</div>
+    <div class="sp"><button class="bcard pass" data-${pre}call="P">Pass</button><button class="bcard dbl" data-${pre}call="X" aria-label="Double" ${legal.includes('X') ? '' : 'disabled'}>X</button><button class="bcard rdbl" data-${pre}call="XX" aria-label="Redouble" ${legal.includes('XX') ? '' : 'disabled'}>XX</button></div></div>`;
+}
+// the auction grid with every call explained by the system (all seats treated as robots); '?' for the next call
+function bxGridHTML(auction, dealer, vul, open) {
+  const view = { seats: { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'robot' }, W: { kind: 'robot' } }, auction, phase: open ? 'auction' : 'done' };
+  return auctionGridHTML(view, auction, dealer, vul, null);
+}
+// keyboard for a bidding box: 1-7 pick a level, C D H S N bid, P pass, X double or redouble. Returns true if used.
+function bxBoxKey(k, dealer, auction, level, setLevel, call) {
+  const legal = legalCalls(dealer, auction);
+  if (/^[1-7]$/.test(k)) { if (STRAINS.some(s => legal.includes(k + s))) setLevel(+k); return true; }
+  const st = { c: 'C', d: 'D', h: 'H', s: 'S', n: 'N' }[k];
+  if (st && level && legal.includes(level + st)) { call(level + st); return true; }
+  if (k === 'p') { call('P'); return true; }
+  if (k === 'x') { const c = legal.includes('X') ? 'X' : legal.includes('XX') ? 'XX' : null; if (c) call(c); return true; }
+  return false;
+}
+// does this hand fit what the seat has shown (points and suit lengths, as the system reads its calls)?
+function bxFitsShown(cards, sh) {
+  const p = hcp(cards), L = suitLengths(cards);
+  if (p < sh.pts || p > sh.ptsMax) return false;
+  for (const s of BX_SUITS) if (L[s] < (sh.len[s] || 0) || L[s] > (sh.maxLen[s] ?? 13)) return false;
+  return true;
+}
+// A hand for `seat` that fits the auction: first one the robot would have bid exactly this way with (each of the
+// seat's own calls is its robot call there), else one that fits what those calls show. { cards, strict } or null.
+function bxExample(auction, dealer, vul, seat, ms = 1500) {
+  const own = []; auction.forEach((a, i) => { if (a.by === seat) own.push(i); });
+  const t0 = Date.now(), strictMs = own.length ? ms * 0.65 : 0;
+  if (!own.length) return { cards: deal()[seat], strict: true };
+  while (Date.now() - t0 < strictMs) {
+    const cards = deal()[seat];
+    let ok = true;
+    for (const i of own) { const r = botCall(cards, seat, dealer, auction.slice(0, i), vul); if (!r || r.call !== auction[i].call) { ok = false; break; } }
+    if (ok) return { cards, strict: true };
+  }
+  let sh = null; try { sh = shown(auction, seat, vul); } catch (e) { sh = null; }
+  if (!sh) return null;
+  while (Date.now() - t0 < ms) { const cards = deal()[seat]; if (bxFitsShown(cards, sh)) return { cards, strict: false }; }
+  return null;
+}
+// what the system says a call means, and whether it is alerted or announced (by the app's ACBL reading)
+function bxMeaning(auction, i, vul, metas) {
+  let text = null, alert = null;
+  try { text = describeCall(auction, i, vul, metas); alert = (metas && metas[i] && metas[i].alert) || null; } catch (e) { text = null; }
+  const a = auction[i];
+  if (a.alert && !(text && text.startsWith(a.alert))) { text = a.alert; alert = a.alert; } // a robot's own reason (a judgement double)
+  const ak = text && typeof alertKind === 'function' ? alertKind(alert, auction, i) : null;
+  return { text, kind: ak ? ak.kind : null, say: ak ? ak.say : null };
+}
+function bxForcing(m) { return !m ? '' : m.f === 2 ? 'game forcing' : m.f === 1 ? 'forcing' : m.inv ? 'invitational' : ''; }
+// leaving the screen goes back where it was opened from: the table, if one is still open, else the home page
+function bxOpenScreen(id) {
+  if (typeof leaveModals === 'function') leaveModals();
+  if (typeof BP !== 'undefined' && BP.on && typeof leaveBidPractice === 'function') leaveBidPractice();
+  const fromTable = !bxEl('tableView').classList.contains('hidden');
+  for (const s of ['home', 'tableView', 'explorer', 'flashcards']) { const el = bxEl(s); if (el) el.classList.add('hidden'); }
+  bxEl(id).classList.remove('hidden');
+  if (typeof lobbyTimer !== 'undefined') clearInterval(lobbyTimer);
+  window.scrollTo(0, 0);
+  return fromTable;
+}
+function bxCloseScreen(id, fromTable, focusId) {
+  hideExplain();
+  bxEl(id).classList.add('hidden');
+  if (fromTable && typeof T !== 'undefined' && T) { bxEl('tableView').classList.remove('hidden'); if (typeof render === 'function') render(); return; }
+  bxEl('home').classList.remove('hidden');
+  const b = focusId && bxEl(focusId); if (b) b.focus({ preventScroll: true });
+  if (typeof loadLobby === 'function') { loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000); }
+}
+const bxVisible = id => { const el = bxEl(id); return !!el && !el.classList.contains('hidden'); };
+
+// ---- the explorer ----
+const EX = { on: false, fromTable: false, dealer: 'N', vul: 'None', auction: [], level: null, hands: {}, ex: {}, msg: '' };
+try { const s = JSON.parse(localStorage.getItem('bridge-ex') || 'null'); if (s && SEATS.includes(s.dealer)) { EX.dealer = s.dealer; EX.vul = s.vul || 'None'; EX.auction = (s.calls || []).map(c => ({ call: c })); } } catch (e) { }
+
+function exBuild() {
+  if (bxEl('explorer')) return;
+  const s = document.createElement('section');
+  s.id = 'explorer'; s.className = 'hidden';
+  const opt = (v, t) => `<option value="${v}">${t}</option>`;
+  s.innerHTML = `<div class="topbar"><span class="tt">Bidding explorer</span>
+    <label class="row note bx-sel">Dealer <select id="exDealer">${SEATS.map(x => opt(x, SEAT_NAME[x])).join('')}</select></label>
+    <label class="row note bx-sel">Vul <select id="exVul">${opt('None', 'None')}${opt('NS', 'N-S')}${opt('EW', 'E-W')}${opt('Both', 'Both')}</select></label>
+    <button class="btn small" id="exUndo">Undo</button><button class="btn small" id="exClear">Clear</button>
+    <button class="btn small" id="exLeave">Leave</button></div>
+    <div class="bx-wrap"><div class="bx-main"><div id="exTurn" class="note"></div><div id="exBox"></div><div id="exHandBox"></div></div>
+    <div class="bx-side"><div id="exGrid"></div><div id="exList"></div></div></div>`;
+  bxEl('tableView').after(s); // after the table's topbar: app.js finds that one as the first .topbar
+  s.addEventListener('click', exClick);
+  bxEl('exDealer').addEventListener('change', e => { EX.dealer = e.target.value; EX.ex = {}; exRelabel(); exRender(); });
+  bxEl('exVul').addEventListener('change', e => { EX.vul = e.target.value; EX.ex = {}; exRender(); });
+}
+function exRelabel() { let s = EX.dealer; for (const a of EX.auction) { a.by = s; s = nextSeat(s); } }
+function exSave() { try { localStorage.setItem('bridge-ex', JSON.stringify({ dealer: EX.dealer, vul: EX.vul, calls: EX.auction.map(a => a.call) })); } catch (e) { } }
+function startExplorer() {
+  exBuild();
+  EX.fromTable = bxOpenScreen('explorer'); EX.on = true;
+  // a saved auction that is no longer legal (it shouldn't happen) starts afresh
+  exRelabel();
+  for (let i = 0; i < EX.auction.length; i++) if (!legalCalls(EX.dealer, EX.auction.slice(0, i)).includes(EX.auction[i].call)) { EX.auction = []; break; }
+  bxEl('exDealer').value = EX.dealer; bxEl('exVul').value = EX.vul;
+  exRender(); exFocus();
+}
+function leaveExplorer() { EX.on = false; bxCloseScreen('explorer', EX.fromTable, 'explorerBtn'); }
+function exFocus(part) { const b = bxEl('exBox') && bxEl('exBox').querySelector(`${part || ''} button:not(:disabled)`); if (b) b.focus({ preventScroll: true }); }
+const exSeat = () => auctionTurn(EX.dealer, EX.auction);
+function exCall(call, alert) {
+  if (auctionOver(EX.auction) || !legalCalls(EX.dealer, EX.auction).includes(call)) return;
+  const a = { by: exSeat(), call }; if (alert) a.alert = alert;
+  EX.auction.push(a); EX.level = null; EX.msg = ''; exSave(); exRender();
+}
+function exUndo() { if (!EX.auction.length) return; EX.auction.pop(); EX.level = null; EX.msg = ''; exSave(); exRender(); }
+function exClear() { EX.auction = []; EX.level = null; EX.hands = {}; EX.ex = {}; EX.msg = ''; exSave(); exRender(); }
+
+function exRender() {
+  const over = auctionOver(EX.auction), seat = exSeat();
+  bxEl('exUndo').disabled = !EX.auction.length; bxEl('exClear').disabled = !EX.auction.length && !Object.keys(EX.hands).length;
+  bxEl('exGrid').innerHTML = bxGridHTML(EX.auction, EX.dealer, EX.vul, !over);
+  // every call with its meaning, in order
+  let metas = null; try { metas = auctionMetas(EX.auction, EX.vul); } catch (e) { metas = null; }
+  // (the grid shows the whole auction; a pass that means nothing special isn't listed)
+  const rows = EX.auction.map((a, i) => {
+    const m = bxMeaning(EX.auction, i, EX.vul, metas);
+    if (a.call === 'P' && !m.text) return '';
+    const tag = m.kind === 'alert' ? '<span class="bx-al">Alert</span> ' : m.kind === 'announce' ? `<span class="bx-an">Announced "${bxEsc(m.say)}"</span> ` : '';
+    return `<tr><td class="bx-by">${a.by}</td><td class="bx-c">${bxCallHTML(a.call)}</td><td>${tag}${m.text ? bxText(m.text) : a.call === 'P' ? '' : '<span class="note">No special meaning</span>'}</td></tr>`;
+  });
+  bxEl('exList').innerHTML = rows.some(Boolean) ? `<table class="bx-list">${rows.join('')}</table>` : EX.auction.length ? '' : '<p class="note">Bid with the box to build an auction. Every call is explained as the robots read it.</p>';
+  if (over) {
+    const c = finalContract(EX.auction);
+    bxEl('exTurn').innerHTML = `Auction over: ${c ? redSym(esc(contractText(c))) : 'passed out'}.`;
+    bxEl('exBox').innerHTML = ''; bxEl('exHandBox').innerHTML = '';
+    return;
+  }
+  bxEl('exTurn').textContent = `${SEAT_NAME[seat]} to call.`;
+  bxEl('exBox').innerHTML = bxBoxHTML(EX.dealer, EX.auction, EX.level, 'ex');
+  exRenderHand();
+}
+function exRenderHand() {
+  const seat = exSeat(), hand = EX.hands[seat];
+  let out = `<div class="bx-hand-head"><b>${SEAT_NAME[seat]}'s hand</b>
+    <button class="btn small" data-exdeal="1">Deal</button><button class="btn small" data-exexample="1" title="A hand that fits ${SEAT_NAME[seat]}'s calls so far">Example hand</button>
+    ${hand ? '<button class="btn small" data-exdrop="1">Remove</button>' : ''}</div>
+    <div class="row bx-in"><input type="text" id="exHandIn" placeholder="AKQ2 J54 T92 832" aria-label="${SEAT_NAME[seat]}'s hand, spades first" value="${hand ? bxHandText(hand) : ''}"><button class="btn small" data-exset="1">Set</button></div>`;
+  if (EX.msg) out += `<p class="note">${bxEsc(EX.msg)}</p>`;
+  if (hand) {
+    const r = botCall(hand, seat, EX.dealer, EX.auction, EX.vul);
+    const after = EX.auction.concat(r.alert ? { by: seat, call: r.call, alert: r.alert } : { by: seat, call: r.call });
+    let metas = null; try { metas = auctionMetas(after, EX.vul); } catch (e) { metas = null; }
+    const m = bxMeaning(after, after.length - 1, EX.vul, metas);
+    const tag = m.kind === 'alert' ? ' <span class="bx-al">Alert</span>' : m.kind === 'announce' ? ` <span class="bx-an">Announced</span>` : '';
+    const note = EX.ex[seat] === false ? '<p class="note">No hand found that the robot would have bid this way with, so this one only fits the points and suit lengths the calls show.</p>' : '';
+    out += `<div class="bx-hand">${bxHandHTML(hand)}</div>${note}
+      <p class="bx-robot">Robot's call: <b>${bxCallHTML(r.call)}</b>${tag}${m.text ? ` <span class="note">${bxText(m.text)}</span>` : ''}
+      <button class="btn small" data-exbid="${r.call}"${r.alert ? ` data-exalert="${bxEsc(r.alert)}"` : ''}>Bid it</button></p>`;
+  }
+  bxEl('exHandBox').innerHTML = out;
+}
+function exClick(e) {
+  const b = e.target.closest('button, [data-alert]'); if (!b) return;
+  const d = b.dataset, seat = exSeat();
+  if (b.id === 'exLeave') leaveExplorer();
+  else if (b.id === 'exUndo') { exUndo(); }
+  else if (b.id === 'exClear') { exClear(); exFocus(); }
+  else if (d.exlevel) { EX.level = +d.exlevel; bxEl('exBox').innerHTML = bxBoxHTML(EX.dealer, EX.auction, EX.level, 'ex'); exFocus('.st'); }
+  else if (d.excall) { exCall(d.excall); exFocus(); }
+  else if (d.exbid) { exCall(d.exbid, d.exalert); exFocus(); }
+  else if (d.exdeal) { EX.hands[seat] = deal()[seat]; delete EX.ex[seat]; EX.msg = ''; exRenderHand(); }
+  else if (d.exdrop) { delete EX.hands[seat]; delete EX.ex[seat]; EX.msg = ''; exRenderHand(); }
+  else if (d.exset) exSetHand();
+  else if (d.exexample) {
+    b.disabled = true; b.textContent = 'Dealing…';
+    setTimeout(() => { // let "Dealing…" paint first
+      const r = bxExample(EX.auction, EX.dealer, EX.vul, seat);
+      if (r) { EX.hands[seat] = r.cards; EX.ex[seat] = r.strict; EX.msg = ''; } else EX.msg = 'No hand found that fits these calls.';
+      exRenderHand();
+    }, 20);
+  }
+  else if (d.alert) { if (bxEl('explainPop')) hideExplain(); else showExplain(b, d.alert); }
+  else return;
+  e.stopPropagation();
+}
+function exSetHand() {
+  const seat = exSeat(), v = bxEl('exHandIn').value;
+  if (!v.trim()) { delete EX.hands[seat]; EX.msg = ''; exRenderHand(); return; }
+  const r = bxParseHand(v);
+  if (r.error) { EX.msg = r.error; exRenderHand(); const i = bxEl('exHandIn'); i.value = v; i.focus(); return; }
+  EX.hands[seat] = r.cards; delete EX.ex[seat]; EX.msg = ''; exRenderHand();
+}
+
+// Keys while the explorer or the flashcards are open. Caught before the table's own keys (a table left open
+// under the screen must not take a P as a pass); default actions such as typing still happen.
+if (typeof window !== 'undefined') window.addEventListener('keydown', e => {
+  const exOn = bxVisible('explorer'), fcOn = bxVisible('flashcards');
+  if (!exOn && !fcOn) return;
+  if (bxEl('modalRoot') && bxEl('modalRoot').firstChild) return;
+  e.stopPropagation();
+  if (e.key === 'Escape' && bxEl('explainPop')) { hideExplain(); return; }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.agrid [data-alert]')) {
+    e.preventDefault(); if (bxEl('explainPop')) hideExplain(); else showExplain(e.target, e.target.dataset.alert); return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+    if (exOn && e.key === 'Enter' && e.target.id === 'exHandIn') { e.preventDefault(); exSetHand(); }
+    return;
+  }
+  const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (exOn) {
+    if (k === 'u' || k === 'Backspace') { exUndo(); exFocus(); e.preventDefault(); return; }
+    if (!auctionOver(EX.auction) && bxBoxKey(k, EX.dealer, EX.auction, EX.level, l => { EX.level = l; bxEl('exBox').innerHTML = bxBoxHTML(EX.dealer, EX.auction, EX.level, 'ex'); exFocus('.st'); }, c => { exCall(c); exFocus(); })) e.preventDefault();
+  } else if (typeof fcKey === 'function') fcKey(k, e);
+}, true);
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', e => { if (e.target.closest('[data-explorer]')) startExplorer(); });
+  const b = bxEl('explorerBtn'); if (b) b.addEventListener('click', () => startExplorer());
+}
+
+if (typeof module !== 'undefined') module.exports = { bxParseHand, bxExample, bxFitsShown, bxHandText };

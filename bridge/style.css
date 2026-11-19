@@ -601,3 +601,36 @@ table.daily-lb tr.you td { font-weight: 600; }
 .lnk { background: none; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap; }
 .lnk:hover, .lnk:focus-visible { border-color: var(--brass); }
 @media (max-width: 480px) { .reslist.hist .hd { display: none; } } /* phones: no date column */
+/* feature: explorer (bidding explorer and "What do you bid?" flashcards) */
+#explorer, #flashcards { max-width: 980px; margin: 0 auto; padding: 12px; }
+.bx-sel { gap: 4px; }
+.bx-sel select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; }
+.bx-wrap { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.bx-main { flex: 1 1 340px; min-width: 0; }
+.bx-side { flex: 0 0 300px; min-width: 0; }
+.bx-main > .note:first-child { margin: 0 0 8px; }
+.bx-hand { font-family: var(--serif); font-size: 22px; background: #fff; color: #111; border: 1px solid #00000026; border-radius: 8px; padding: 8px 12px; margin: 8px 0 10px; max-width: 520px; box-sizing: border-box; }
+.bx-hand .note { font-size: 13px; color: #555; }
+.bx-hand .red, .bx-list .red, .bx-robot .red, .fc-res .red, #exTurn .rs { color: var(--card-red, #d32f2f); }
+.bx-hand-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 12px 0 6px; }
+.bx-hand-head b { margin-right: auto; }
+.bx-in { flex-wrap: nowrap; max-width: 520px; }
+.bx-in input { font-family: var(--serif); }
+.bx-robot { margin: 6px 0; }
+.bx-p { color: var(--pass); }
+.bx-list { border-collapse: collapse; margin: 8px 0; font-size: 14px; width: 100%; }
+.bx-list th, .bx-list td { padding: 3px 8px 3px 0; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.bx-list .bx-by { color: var(--ink-soft); width: 1.2em; }
+.bx-list .bx-c, .bx-list th { font-weight: 700; white-space: nowrap; width: 2.6em; }
+.bx-al, .bx-an { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+.bx-al { border: 1px solid #d32f2f; color: #c62828; }
+.bx-an { border: 1px solid #1565c0; color: #1565c0; }
+.fc-topics { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.fc-topics [aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--brass); border-color: var(--brass); }
+.fc-res p { margin: 4px 0; }
+.fc-ok, .fc-no { font-weight: 700; }
+.fc-no { color: var(--ink); }
+.fc-acc { margin-top: 14px; }
+.fc-acc .btn { margin-left: 6px; }
+@media (max-width: 640px) { .bx-side { flex: 1 1 100%; order: -1; } } /* phones: the auction above the hand */
+@media (max-width: 640px) { #explorer .bx-side { display: contents; } #exGrid { order: -1; flex: 1 1 100%; } #exList { order: 2; flex: 1 1 100%; } }
