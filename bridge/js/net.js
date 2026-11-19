@@ -41,7 +41,7 @@ const Net = {
         robotDDSolve(m.view, m.prefer).then(card => { if (this.ws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'thought', key: m.key, card: card || null })); });
       } else if (m.type === 'error') toast(m.msg);
       else if (m.type === 'notfound') {
-        const wasOpen = this.gotState, gone = this.code; this.close(); forgetTable(gone);
+        const wasOpen = this.gotState, gone = this.code; this.close(); forgetTable(gone); setJoinState(null);
         toast(wasOpen ? (m.closed && m.msg ? m.msg : 'This table has closed.') : 'No table has that code. Check the letters and try again.');
         if (wasOpen) goHome();
       }

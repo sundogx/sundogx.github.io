@@ -114,7 +114,7 @@ function ddHTML(h) {
   let played = '';
   if (en.done && h.contract) {
     const dt = en.table[h.contract.declarer][h.contract.strain];
-    played = `<p class="note">Double dummy, ${contractText(h.contract)} takes ${dt} tricks (${resultText(h.contract, dt)}). At the table: ${h.declTricks}.</p>`;
+    played = `<p class="note">Double dummy, ${typeof contractHTML === "function" ? contractHTML(h.contract) : contractText(h.contract)} takes ${dt} tricks (${resultText(h.contract, dt)}). At the table: ${h.declTricks}.</p>`;
   }
   let parLine = '';
   if (par) {

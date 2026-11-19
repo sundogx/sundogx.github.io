@@ -305,7 +305,12 @@ function auctionGridHTML(t, auction = t.auction, dealer = t.dealer, vul = t.vul,
 // Red suit symbols in red wherever they appear as text (contracts, chat, results). Only text between tags is
 // touched, never attributes; the s-H / s-D classes keep the four-colour deck option working.
 const redSym = html => html.replace(/(^|>)([^<]+)/g, (m, a, b) => a + b.replace(/[♥♦]/g, x => `<span class="rs s-${x === '♥' ? 'H' : 'D'}">${x}</span>`));
-const contractHTML = c => redSym(esc(contractText(c)));
+// A contract as text: the suit in its colour, and a doubled or redoubled contract's X / XX set apart in the
+// auction box's colours (X red, XX blue), so "3NTX" reads as 3NT doubled. short: "3NTX E" for tables.
+const contractWords = c => c ? `${c.level} ${STRAIN_WORD[c.strain]}${c.doubled === 2 ? ' redoubled' : c.doubled ? ' doubled' : ''} by ${SEAT_NAME[c.declarer]}` : 'Passed out'; // for screen readers
+const dblHTML = d => d ? `<span class="xd${d === 2 ? ' xx' : ''}" title="${d === 2 ? 'Redoubled' : 'Doubled'}">${d === 2 ? 'XX' : 'X'}</span>` : '';
+const contractHTML = (c, short) => !c ? (short ? 'Pass' : 'Passed out')
+  : `<span class="ct">${c.level}${c.strain === 'N' ? 'NT' : `<span class="${isRed(c.strain) ? 'rs ' : ''}s-${c.strain}">${SYM[c.strain]}</span>`}${dblHTML(c.doubled)}</span> ${short ? c.declarer : 'by ' + SEAT_NAME[c.declarer]}`;
 // Board indicator: one edge per seat as seen at this table (red = that side vulnerable), D on the dealer's edge, board number inside.
 function boardBoxHTML(t, o) {
   const edge = { [o.top]: 'top', [o.right]: 'right', [o.bottom]: 'bottom', [o.left]: 'left' };
@@ -323,7 +328,7 @@ function trickBoxHTML(t) {
   if (last && last.contract && last.declTricks != null && ours + theirs !== 13) { // claim or concession: only the totals are known
     ours = sameSide(side, c.declarer) ? last.declTricks : 13 - last.declTricks; theirs = 13 - ours;
   }
-  return `<div class="tbx" role="img" aria-label="${contractText(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us" title="${mySeat(t) ? 'Your side' : 'Declarer\'s side'}">${ours}</div><div class="them" title="Opponents">${theirs}</div></div>`;
+  return `<div class="tbx" role="img" aria-label="${contractWords(c)}. Tricks: ${mySeat(t) ? 'your side' : 'declarer\'s side'} ${ours}, opponents ${theirs}"><div class="us" title="${mySeat(t) ? 'Your side' : 'Declarer\'s side'}">${ours}</div><div class="them" title="Opponents">${theirs}</div></div>`;
 }
 function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ? 'Both vulnerable' : v === 'NS' ? 'N-S vulnerable' : 'E-W vulnerable'; }
 
@@ -371,7 +376,7 @@ function renderFelt() {
     if (t.phase === 'play' && !t.claim && ts && !occupant(t, controllerOf(t, ts))) bn += `<div class="banner"><h3>Game paused</h3>${SEAT_NAME[controllerOf(t, ts)]} is empty. Sit there or add a robot.</div>`;
     if (t.claim) bn += claimBanner(t);
     bn += awayBanner(t) + undoBanner(t);
-    if (t.phase === 'done') bn += resultBanner(t);
+    if (t.phase === 'done' && !drawerMode.matches) bn += resultBanner(t);
   }
   if (t.phase === 'auction') {
     const ts = turnSeat(t);
@@ -383,6 +388,7 @@ function renderFelt() {
   const lastOK = t.phase === 'play' && completedTricks(t.play).length > 0;
   html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}${bn ? `<div class="bwrap ${t.phase === 'done' ? 'done' : ''}">${bn}</div>` : ''}</div>`;
   $('felt').innerHTML = html;
+  renderPlayInfo(t, t.phase === 'done' && drawerMode.matches && !t.masked && t.history.length ? `<div class="bwrap done">${resultBanner(t)}</div>` : '');
   fitTrick();
   const g = $('felt').querySelector('.agrid'); if (g) g.scrollTop = g.scrollHeight; // a long auction scrolls; show the latest calls
 }
@@ -431,11 +437,18 @@ function resultBanner(t) {
   const mine = mySeat(t);
   const sideScore = !mine ? h.scoreNS : (sideOf(mine) === 'NS' ? h.scoreNS : -h.scoreNS);
   const label = mine ? 'Your side' : 'N-S';
-  return `<div class="banner"><h3>${h.contract ? contractHTML(h.contract) : 'Passed out'}</h3>
-    ${h.contract ? `<div class="big">${resultText(h.contract, h.declTricks)}</div><div>${h.declTricks} tricks for declarer</div>` : ''}
-    <div style="margin-top:4px">${label}: <b>${sideScore > 0 ? '+' : ''}${sideScore}</b></div>
-    <div class="row">${mine || t.local || isHost(t) ? '<button class="btn primary" data-next="1">Next board</button>' : ''}<button class="btn" data-record="${t.history.length - 1}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn" data-review="${t.history.length - 1}">Review play</button>` : ''}</div></div>`;
+  const i = t.history.length - 1, next = mine || t.local || isHost(t);
+  // one compact panel: contract and result, tricks and score, then the buttons (it must fit the middle of a phone's table)
+  return `<div class="banner result"><h3>${h.contract ? `${contractHTML(h.contract)} <span class="res">${resultText(h.contract, h.declTricks)}</span>` : 'Passed out'}</h3>
+    <div>${h.contract ? `${h.declTricks} trick${h.declTricks === 1 ? '' : 's'} for declarer<br>` : ''}${label} <b class="sc">${sideScore > 0 ? '+' : ''}${sideScore}</b></div>
+    ${next ? '<div class="row"><button class="btn primary" data-next="1">Next board</button></div>' : ''}
+    <div class="row sub"><button class="btn small" data-record="${i}">Hand record</button>${h.tricks && h.tricks.length ? `<button class="btn small" data-review="${i}" aria-label="Review the play">Review</button>` : ''}</div></div>`;
 }
+// Phones: the contract and the trick count sit under your hand (the sidebar is out of sight there); a phone held
+// sideways also shows the end-of-board panel there, in the room the bidding box leaves, rather than over the table.
+const phoneInfo = window.matchMedia('(max-width: 560px), (orientation: landscape) and (max-height: 520px)');
+const pinfoHTML = t => t.contract && t.phase !== 'auction' ? `<div class="pinfo"><p class="pc">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}</div>` : '';
+function renderPlayInfo(t, banner) { $('playInfo').innerHTML = !phoneInfo.matches || t.masked ? '' : banner || pinfoHTML(t); }
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
   const seat = mine || orient(t).bottom; // spectators see the bottom seat here when allowed
@@ -506,7 +519,7 @@ function renderSide(force) {
 }
 function renderAuctionPane(t) {
   if (t.masked) { $('pane-auction').innerHTML = '<p class="empty">In a team match, onlookers see each board once both rooms have played it.</p>'; return; }
-  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + (t.contract ? `<p style="margin:10px 0 0">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}` : '') + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted; gold-outlined calls are explained. Tap any to read it.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
+  $('pane-auction').innerHTML = t.board ? auctionGridHTML(t) + pinfoHTML(t) + (t.phase === 'auction' ? '<p class="note">Calls with a red outline are alerted; gold-outlined calls are explained. Tap any to read it.</p>' : '') : '<p class="empty">The auction appears here once the board is dealt.</p>';
 }
 function renderChatPane(t) {
   const log = $('chatLog');
@@ -563,7 +576,7 @@ function renderResultsPane(t) {
     ${t.history.length ? '<div class="row"><button class="btn small" id="pbnAll">Download all boards (PBN)</button></div>' : ''}` : '<p class="empty">Finished boards appear here.</p>');
   const pa = $('pbnAll'); if (pa) pa.addEventListener('click', () => downloadText(`bridge-${t.id}.pbn`, t.history.map(h => pbnBoard(h, t)).join('\n\n') + '\n'));
 }
-const cShort = c => c ? `${c.level}${SYM[c.strain]}${c.doubled ? 'X'.repeat(c.doubled) : ''} ${c.declarer}` : 'Pass';
+const cShort = c => contractHTML(c, true);
 function renderTop() {
   const t = T, mine = mySeat(t);
   $('tName').textContent = t.name;
@@ -1058,11 +1071,11 @@ function showOptions() {
     ${opt('hint', 'Hints in practice', 'A Hint button shows what the robot would bid or play in your seat.')}
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
-    <h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
+    <div class="kbdhelp"><h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
     <table class="reslist"><tr><td>Bidding</td><td><b>1</b>–<b>7</b> then <b>C D H S N</b> to bid, <b>P</b> pass, <b>X</b> double or redouble, <b>Enter</b> to confirm</td></tr>
     <tr><td>Playing</td><td><b>←</b> <b>→</b> choose a card, <b>Enter</b> to play it</td></tr>
     <tr><td>Anytime</td><td><b>L</b> last trick, <b>H</b> hint (when hints are on), <b>N</b> next board, <b>?</b> this window, <b>Esc</b> close a window</td></tr>
-    <tr><td>Replay</td><td><b>←</b> <b>→</b> step through the play</td></tr></table>`);
+    <tr><td>Replay</td><td><b>←</b> <b>→</b> step through the play</td></tr></table></div>`);
   m.querySelectorAll('[data-pref]').forEach(cb => cb.addEventListener('change', () => {
     Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (T) render();
   }));
@@ -1327,7 +1340,7 @@ async function loadLobby() {
 
 // ---------- navigation ----------
 // a window (hand record, options...) or call explanation left open must not stay over the next screen
-function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; }
+function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; setJoinState(null); }
 function showTableView() {
   $('home').classList.add('hidden'); $('tableView').classList.remove('hidden');
   clearInterval(lobbyTimer);
@@ -1347,10 +1360,18 @@ function openOnline(code) {
   }
   wasMyTurn = false; $('alertChk').checked = false; $('alertText').classList.add('hidden');
   setTimeout(() => { if (Net.code === code && !Net.gotState) toast('Still trying to reach the table. Check your connection.', 4000); }, 5000);
+  // from the lobby: say that something is happening (the table opens once it answers), with a way to give up
+  if (!$('home').classList.contains('hidden')) setJoinState(code);
   Net.open(code, () => {
-    lastRenderedVersion = -1; showTableView();
+    setJoinState(null); lastRenderedVersion = -1; showTableView();
     history.replaceState(null, '', '#' + code);
   });
+}
+function setJoinState(code) {
+  const el = $('joinState');
+  el.classList.toggle('hidden', !code);
+  el.innerHTML = code ? `Connecting to table ${esc(code)}… <button class="btn small" id="joinCancel">Cancel</button>` : '';
+  if (code) $('joinCancel').addEventListener('click', () => { Net.close(); setJoinState(null); });
 }
 function goHome() {
   releaseWakeLock(); leaveModals();
