@@ -531,9 +531,12 @@ const BenCore = (() => {
     const nnTop = () => legal.slice().sort((a, b) => nnScore(b) - nnScore(a) || lowFirst(a, b))[0];
     // sample the hidden hands (JS: the app's auction-limit sampler deals the pool; BEN's networks weight it)
     const poolN = o.pool || 120, k = o.k || 40, t0 = now();
-    const pool = ddSample(view.limits ? view : { ...view, limits: {} }, poolN, rand);
-    if (!pool.length) return { card: nnTop(), info: { ...info, why: 'no samples' } };
     const hidden = [...SEATS4].filter(s => !view.known[s]);
+    const seenL = new Set(), pool = ddSample(view.limits ? view : { ...view, limits: {} }, poolN, rand).filter(h => { // unique layouts, as BEN's get_unique_samples
+      const key = hidden.map(s => h[s].slice().sort().join('')).join('|');
+      return !seenL.has(key) && seenL.add(key);
+    });
+    if (!pool.length) return { card: nnTop(), info: { ...info, why: 'no samples' } };
     const fullOf = (h, s) => [...h[s], ...playedBy[s]];
     const vul = vulArr(view.vul), aucCalls = view.auction.map(a => a.call), dealer = view.auction.length ? view.auction[0].by : 'N';
     const auc = padded(aucCalls, dealer);
