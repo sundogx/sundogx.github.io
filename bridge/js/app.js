@@ -649,6 +649,7 @@ function render() {
   wasMyTurn = mt;
   claimFeedback(T); chatUnread(T); refreshSeats();
   updateTitle();
+  if (window.Notify) Notify.onRender(T); /* feature: notify */
   scheduleRobot();
   autoNext(T); savePractice();
   if (typeof Stats !== 'undefined') Stats.note(T); /* feature: stats */
@@ -880,7 +881,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) flush
 
 // ----- tell people in another tab or app that it's their turn -----
 const BASE_TITLE = document.title;
-function updateTitle() { document.title = T && isMyTurn(T) && document.hidden ? 'Your turn: ' + BASE_TITLE : BASE_TITLE; }
+function updateTitle() { if (window.Notify) return Notify.title(); /* feature: notify */ document.title = T && isMyTurn(T) && document.hidden ? 'Your turn: ' + BASE_TITLE : BASE_TITLE; }
 document.addEventListener('visibilitychange', updateTitle);
 
 // ----- seat requests (tables with locked seats) -----
@@ -1108,6 +1109,7 @@ function showOptions() {
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
+    ${window.Notify ? Notify.optionsHTML(opt) : '' /* feature: notify */}
     <label class="row" style="gap:8px;margin:4px 0 8px">Robot speed in practice <select id="optSpeed">${['slow', 'normal', 'fast'].map(v => `<option value="${v}" ${Prefs.speed === v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</select></label>
     <p style="margin:4px 0 8px"><button class="btn small" data-syscard="1">Robots' system card</button></p>${'' /* feature: card */}
     <div class="kbdhelp"><h3 style="font-size:16px;margin-top:14px">Keyboard shortcuts</h3>
@@ -1116,7 +1118,7 @@ function showOptions() {
     <tr><td>Anytime</td><td><b>L</b> last trick, <b>H</b> hint (when hints are on), <b>N</b> next board, <b>?</b> this window, <b>Esc</b> close a window</td></tr>
     <tr><td>Replay</td><td><b>←</b> <b>→</b> step through the play</td></tr></table></div>`);
   m.querySelectorAll('[data-pref]').forEach(cb => cb.addEventListener('change', () => {
-    Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (T) render();
+    Prefs[cb.dataset.pref] = cb.checked; savePrefs(); applyPrefs(); if (cb.dataset.pref === 'confirm') selCard = null; if (cb.dataset.pref === 'confirmBid') pendingCall = null; if (window.Notify) Notify.optionChanged(cb.dataset.pref, cb.checked); /* feature: notify */ if (T) render();
   }));
   $('optSpeed').addEventListener('change', e => { Prefs.speed = e.target.value; savePrefs(); });
   if (typeof BenBridge !== 'undefined') BenBridge.wireOptions(m);
@@ -1385,6 +1387,7 @@ async function loadLobby() {
   let tables;
   try { tables = (await api('/api/tables')).tables; }
   catch (e) { el.innerHTML = navigator.onLine === false ? '<div class="empty">You\'re offline. Practice with robots still works; the table list comes back when you reconnect.</div>' : '<div class="empty">Couldn\'t load the table list. Check your connection, then tap Refresh.</div>'; return; }
+  if (window.Notify && tables.length) { const all = tables.length; tables = Notify.filterTables(tables); if (!tables.length) { el.innerHTML = `<div class="empty">None of the ${all} open tables match the filter.</div>`; return; } } /* feature: notify */
   if (!tables.length) { el.innerHTML = '<div class="empty">No open tables right now. Open one and invite your friends.</div>'; return; }
   // tables with a free seat (empty or robot) first, then the busiest
   const free = t => SEATS.filter(s => !t.seats[s] || t.seats[s].kind === 'robot').length;
