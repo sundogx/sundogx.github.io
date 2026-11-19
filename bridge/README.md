@@ -152,6 +152,13 @@ The hand analysis runs DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to W
 - **Results** in practice: each board against a table of four robots playing the same deals, both scores and the IMPs, with the running total.
 - Leaving an online table during a board you're seated at asks first, since it empties your seat.
 
+## History: flags, notes, leaks; suit symbols in chat
+
+- **Flags and notes** (`js/stats.js`, Options > History and statistics): the ☆ on a row flags the board; a saved board's hand record has the flag, a short note (kept with the record in IndexedDB) and a "‹ History" button back to the list. "Flagged" filters the list. Each row shows the contract and result and the opening lead; a note shows under its row.
+- **PBN file / Print recap:** for the boards ticked after "Select", else every board the filters show. The PBN file is one `pbnBoard` per board (`js/analysis.js`), dated by the record, with the flag and note as a `{comment}`. The recap is a print-friendly page per board: diagram, auction, result and par, lead, note.
+- **Where the IMPs went** (`js/leaks.js`): over the last 20/50/100/all of the filtered boards, the IMPs lost by kind. Contract kinds compare your contract, played double dummy, with par: doubled contracts, missed slam, missed game (par is your side's making game), overbid game or slam (your game or slam fails double dummy), part-score battles (no game either way), and other (strain, sacrifices). Play kinds come from the play review (`playReview`, read-only): the tricks your cards (and dummy's, when you declare) gave away double dummy, as declarer, on defence and with your opening lead, each turned into IMPs on that board's score. Each kind links to its boards. The double-dummy tables and reviews are worked out one board at a time only while the History window is open or no table is open, and the review result is stored in the record (`rv`), so a board is checked once.
+- **Suit symbols in chat** (`js/chatsym.js`, Options, on by default): when you send a message, whole-word tokens become symbols: `2s` → 2♠, `4h` → 4♥, `3nt`/`3n` → 3NT, `4sx` → 4♠X, `sa` → ♠A, `dk` → ♦K, `h10` → ♥10. Pairs that are also words (`ha`, `da`, `ca`, `st`, `dj`, `sk`, `ct`, `hq`, `ht`, `sq`) are converted only in capitals, and links and addresses are left alone. The chat already draws ♥/♦ in red. Client-only: the server sees text.
+
 ## BEN robots (option)
 
 **Use BEN robots** (Options, off by default, practice tables only) has the practice robots bid, lead and play with BEN (github.com/lorserker/ben, by Lorand Dali and Thorvald Aagaard, GPL-3.0). BEN's neural networks run in the browser in a dedicated worker, `ben/ben-worker.js`.

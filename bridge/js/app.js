@@ -1087,6 +1087,7 @@ function showOptions() {
     ${opt('hint', 'Hints in practice', 'A Hint button shows what the robot would bid or play in your seat.')}
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
     ${typeof ShowPoints !== 'undefined' ? ShowPoints.optionsHTML(opt) : '' /* feature: showpoints */}
+    ${typeof ChatSym !== 'undefined' ? ChatSym.optionsHTML() : '' /* feature: chatsym */}
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
     ${window.Notify ? Notify.optionsHTML(opt) : '' /* feature: notify */}
@@ -1282,7 +1283,7 @@ $('roomBtn').addEventListener('click', () => {
 $('soundBtn').addEventListener('click', () => { soundOn = !soundOn; $('soundBtn').textContent = soundOn ? 'Sound on' : 'Sound off'; $('soundBtn').setAttribute('aria-pressed', soundOn); if (soundOn) beep(); });
 $('chatSend').addEventListener('click', sendChat);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
-function sendChat() { const v = $('chatInput').value.trim(); if (!v) return; $('chatInput').value = ''; doAct('chat', v); }
+function sendChat() { let v = $('chatInput').value.trim(); if (!v) return; $('chatInput').value = ''; if (typeof ChatSym !== 'undefined') v = ChatSym.convert(v); /* feature: chatsym */ doAct('chat', v); }
 function selectTab(name) {
   document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x.dataset.tab === name));
   ['auction', 'chat', 'results'].forEach(n => $('pane-' + n).classList.toggle('hidden', n !== name));

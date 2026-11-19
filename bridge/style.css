@@ -585,3 +585,19 @@ table.daily-lb tr.you td { font-weight: 600; }
   .modal .box .sc-ex { min-height: 32px; padding: 0 6px; }
   .modal .box .row { min-width: 0; }
 }
+
+/* feature: history — flags, notes and the leak finder in the History window */
+.hstar { background: none; border: 0; padding: 0 4px; font-size: 16px; line-height: 1; color: var(--ink-soft); cursor: pointer; min-height: 0; }
+.hstar[aria-pressed="true"] { color: var(--brass); }
+.reslist.hist tr.hasnote td { border-bottom: 0; padding-bottom: 0; }
+.reslist.hist tr.hnote td { font-size: 12px; font-style: italic; color: var(--ink-soft); padding: 0 2px 5px 26px; }
+.hflagf { display: inline-flex; gap: 4px; align-items: center; font-size: 14px; }
+.histbar { display: flex; gap: 8px; align-items: center; margin: 0 40px 8px 0; }
+.histbar input[type="text"] { flex: 1; min-width: 0; padding: 4px 8px; font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); }
+.leaks { margin: 4px 0 12px; }
+.leaks summary { cursor: pointer; font-weight: 600; }
+.leaktab th[scope="row"] { font-weight: 400; font-size: 14px; color: var(--ink); }
+.leaktab td:last-child { line-height: 1.8; }
+.lnk { background: none; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.lnk:hover, .lnk:focus-visible { border-color: var(--brass); }
+@media (max-width: 480px) { .reslist.hist .hd { display: none; } } /* phones: no date column */
