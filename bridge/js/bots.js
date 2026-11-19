@@ -106,7 +106,6 @@ const OFF = k => ((typeof globalThis !== 'undefined' && globalThis.BOT_OFF) || B
 // Weights of the features in swF (a defender's lead after the opening lead), dsF (a discard), dlF (the declaring side's
 // lead) and flF (following suit; only the groups listed, side + seat 1|2 + n|s), by contract kind: fitted with
 // tests/heurfit.js (ridge regression, x10) to the average of the double-dummy result and a heuristic play-out (Y=mix).
-// The defenders' discard weights are still the double-dummy fit.
 const BOT_SWITCH_NAMES = ['sigUp', 'sigDown', 'partnerLed', 'iLed', 'trump', 'throughHonour', 'upToWeak', 'dummyRuffs', 'ruffSluff', 'kNoA', 'qNoAK', 'master', 'myLen', 'dummyLen', 'seqTop', 'doubletonRuff', 'singletonRuff', 'declBid', 'dummyBid', 'partnerBid', 'dummyMasters', 'dummyLongSuit', 'partnerRuffs', 'declVoid', 'aceNoK', 'masters2', 'trumpPassive', 'declRuffs', 'cashUrgent', 'intoTenace', 'noHonour', 'tenace', 'unseen'];
 const BOT_DISCARD_NAMES = ['hcp', 'len', 'masters', 'mateLen', 'mateMasters', 'dummyLen', 'guardDummy', 'unguards', 'voidToRuff', 'singleton', 'sigUp', 'sigDown', 'ledSuit', 'higherUnseen', 'unseen', 'longCards', 'trump'];
 const BOT_SWITCH_W = { NT: [1.2, 0.1, 1.5, 1, 0, 0.4, 2.5, 0, 0, 0.2, 0.5, 2, 0.4, -0.7, 0.9, 0, 0, -1.9, 0.4, 2, -0.7, 0.4, 0, 2.5, -1.3, 2.9, 0, 0, 0.3, 0.1, 0.5, -0.5, 0.8], suit: [0.4, 0.1, 0.1, 0, -2.6, 0.1, 0.6, -2.4, 0.2, -0.2, 0, 0.3, 0.1, -0.2, 0.7, 0, 0.6, -0.3, 0, 0.6, -0.4, 0.1, 1.4, 2.3, -0.5, -0.2, 2.2, -3.2, 0.4, -1, -0.1, -0.1, -0.2] };
