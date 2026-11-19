@@ -195,7 +195,8 @@ function tricksWon(play, contract) {
 function scoreContract(c, tricks, vul) {
   const v = isVul(vul, c.declarer);
   const need = c.level + 6;
-  const mult = c.doubled === 2 ? 4 : c.doubled === 1 ? 2 : 1;
+  const dbl = c.doubled || 0; // a contract without the field is undoubled
+  const mult = dbl === 2 ? 4 : dbl === 1 ? 2 : 1;
   if (tricks >= need) {
     const per = (c.strain === 'C' || c.strain === 'D') ? 20 : 30;
     let trickScore = c.level * per + (c.strain === 'N' ? 10 : 0);
@@ -204,21 +205,21 @@ function scoreContract(c, tricks, vul) {
     score += trickScore >= 100 ? (v ? 500 : 300) : 50;
     if (c.level === 6) score += v ? 750 : 500;
     if (c.level === 7) score += v ? 1500 : 1000;
-    if (c.doubled === 1) score += 50;
-    if (c.doubled === 2) score += 100;
+    if (dbl === 1) score += 50;
+    if (dbl === 2) score += 100;
     const over = tricks - need;
-    if (c.doubled === 0) score += over * per;
-    else score += over * (v ? 200 : 100) * (c.doubled === 2 ? 2 : 1);
+    if (dbl === 0) score += over * per;
+    else score += over * (v ? 200 : 100) * (dbl === 2 ? 2 : 1);
     return score;
   }
   const down = need - tricks;
-  if (c.doubled === 0) return -down * (v ? 100 : 50);
+  if (dbl === 0) return -down * (v ? 100 : 50);
   let pen = 0;
   for (let i = 1; i <= down; i++) {
     if (v) pen += i === 1 ? 200 : 300;
     else pen += i === 1 ? 100 : i <= 3 ? 200 : 300;
   }
-  if (c.doubled === 2) pen *= 2;
+  if (dbl === 2) pen *= 2;
   return -pen;
 }
 function scoreNS(c, tricks, vul) {

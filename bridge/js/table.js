@@ -143,7 +143,7 @@ const A = {
     if (t.undoReq) { toast('Answer the undo request first'); return false; }
     const left = 13 - completedTricks(t.play).length;
     if ((seenLeft != null && seenLeft !== left) || n > left) { toast('The number of tricks left changed; claim again'); return false; }
-    if (n < 0) return false;
+    if (!Number.isInteger(n) || n < 0) return false;
     const opp = sameSide(seat, t.contract.declarer)
       ? [nextSeat(t.contract.declarer), partnerOf(nextSeat(t.contract.declarer))]
       : [t.contract.declarer];
