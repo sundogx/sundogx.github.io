@@ -226,7 +226,7 @@ function downloadText(name, text, type = 'text/plain') {
 // Opening leads go to robotDDLead below (js/leads.js), several workers at once.
 // After the opening lead the robots also read the cards played so far (BEN-style play-consistency weighting,
 // js/ddplay.js ddConsistency): 96 layouts are dealt and the K that best fit the play so far are solved, weighted by fit.
-const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, K: 24, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30,
+const RobotDD = { w: null, n: 0, wait: new Map(), fails: 0, K: 24, MIN_K: 8, BUDGET_MS: 1500, LEADS: true, LEAD_TOL: 30, SPLIT_TRICKS: 2,
   DECL: { pool: 96, weigh: 1, wOpp: 0.8 }, DEF: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8 } };
 function robotDDWorker() {
   if (RobotDD.w) return RobotDD.w;
@@ -259,6 +259,10 @@ function robotDDCard(t, seat) {
   } catch (e) { console.error(e); return Promise.resolve(null); }
   return robotDDSolve(view, prefer);
 }
+// The options of a robot's card decision (js/ddplay.js ddChoose).
+function robotDDOpts(prefer) {
+  return { k: RobotDD.K, minK: RobotDD.MIN_K, ms: RobotDD.BUDGET_MS, hardMs: RobotDD.BUDGET_MS + 400, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: RobotDD.DECL, defender: RobotDD.DEF };
+}
 // Solve a robot's view (from ddView). Also used for online tables: the server sends a robot's view to a
 // player's browser to work out, since the solver needs more CPU time than the server's free plan allows.
 function robotDDSolve(view, prefer) {
@@ -267,6 +271,8 @@ function robotDDSolve(view, prefer) {
     if (!ddWorthIt(view)) return Promise.resolve(null);
     if (!RobotDD.LEADS && !view.tricks.length) return Promise.resolve(null);
     if (!view.tricks.length && view.prior && typeof leadPick === 'function') return robotDDLead(view);
+    if (view.tricks.length <= RobotDD.SPLIT_TRICKS && LeadDD.ws.length > 1 && typeof ddDecide === 'function') return robotDDSplit(view, prefer);
+    leadWorkersClose(); // past the first tricks: the helper workers aren't needed until the next board
   } catch (e) { console.error(e); return Promise.resolve(null); }
   const k = ++RobotDD.n;
   return new Promise(res => {
@@ -277,7 +283,7 @@ function robotDDSolve(view, prefer) {
       if (w && [...w.busy.values()].some(t0 => Date.now() - t0 > 10e3)) robotDDDrop(false); else robotDDDone();
     }, RobotDD.BUDGET_MS + 500);
     RobotDD.wait.set(k, card => { clearTimeout(timer); res(card); });
-    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: { k: RobotDD.K, minK: 8, ms: RobotDD.BUDGET_MS, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: RobotDD.DECL, defender: RobotDD.DEF } }); }
+    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: robotDDOpts(prefer) }); }
     catch (e) { RobotDD.wait.delete(k); clearTimeout(timer); robotDDDrop(true); res(null); }
   });
 }
@@ -314,12 +320,37 @@ function robotDDLead(view) {
     try { w.postMessage({ k, leadSamples: view, opts: { k: per, minK: 2, ms: LeadDD.BUDGET_MS } }); } catch (e) { end(got); }
   }));
   return Promise.all(parts).then(rs => {
-    leadWorkersClose();
+    if (!RobotDD.SPLIT_TRICKS) leadWorkersClose(); // else kept for the first tricks (robotDDSplit)
     robotDDDone();
     const results = [].concat(...rs);
     if (results.length < LeadDD.MIN) return null;
     return leadPick(view, leadCards(view.known[view.seat], view.contract.strain), results).card;
   }).catch(() => { leadWorkersClose(); robotDDDone(); return null; });
+}
+// The first tricks: with most cards still out, each layout takes tens of milliseconds to solve (a few hundred on a
+// phone), so these decisions are split between the lead's workers, kept open until then: each deals its share of the
+// layouts (and of the pool for the play check), solves them and streams the results back with their weights. The page
+// pools them and decides (ddDecide), the same way ddChoose does in one worker.
+function robotDDSplit(view, prefer) {
+  const ws = LeadDD.ws.slice();
+  const o = { ...ddOpts(view, robotDDOpts(prefer)), declarer: null, defender: null };
+  const per = Math.ceil(o.k / ws.length), pool = o.pool ? Math.ceil(o.pool * per / o.k) : 0;
+  const parts = ws.map(w => new Promise(res => {
+    const k = ++LeadDD.n, got = [], wts = [];
+    const end = () => { clearTimeout(timer); LeadDD.wait.delete(k); res({ got, wts }); };
+    const timer = setTimeout(end, RobotDD.BUDGET_MS + 500); // late: keep what has arrived
+    LeadDD.wait.set(k, m => {
+      if (m.result) { got.push(m.result); wts.push(m.weight); }
+      else if (m.done || m.error) end();
+    });
+    try { w.postMessage({ k, playSamples: view, opts: { ...o, k: per, pool, minK: 1, hardMs: 0, prefer: null } }); } catch (e) { end(); }
+  }));
+  return Promise.all(parts).then(rs => {
+    robotDDDone();
+    const results = [].concat(...rs.map(r => r.got)), weights = [].concat(...rs.map(r => r.wts));
+    const r = ddDecide(view, results, o.weigh ? weights : null, o);
+    return r ? r.card : null;
+  }).catch(() => { robotDDDone(); return null; });
 }
 // Warm up the solver workers during the auction of a practice game, so the opening lead and the first cards
 // don't wait for workers to start (js/app.js calls this while robots bid). Cheap to call repeatedly.

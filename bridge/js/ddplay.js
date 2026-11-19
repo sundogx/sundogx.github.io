@@ -51,12 +51,17 @@ function ddAuctionLimits(auction, seat, vul, full = true) {
   return k;
 }
 // Did the seat show a balanced hand (a natural notrump bid, by the system's own meanings)?
+let ddMetaMemo = { key: null, metas: null }; // the last auction's meanings (ddView asks for each hidden seat)
 function ddShownBalanced(auction, seat, vul) {
-  let metas = null;
-  try {
-    if (typeof auctionMetas === 'function') metas = auctionMetas(auction, vul);
-    else if (typeof require !== 'undefined') { const req = require; metas = req('./bidding.js')._metas(auction, vul); }
-  } catch (e) { metas = null; }
+  const key = vul + ':' + auction.map(a => a.by + a.call).join(',');
+  let metas = ddMetaMemo.key === key ? ddMetaMemo.metas : null;
+  if (!metas) {
+    try {
+      if (typeof auctionMetas === 'function') metas = auctionMetas(auction, vul);
+      else if (typeof require !== 'undefined') { const req = require; metas = req('./bidding.js')._metas(auction, vul); }
+    } catch (e) { metas = null; }
+    ddMetaMemo = { key, metas };
+  }
   return !!metas && auction.some((a, i) => a.by === seat && metas[i] && metas[i].bal);
 }
 
@@ -377,43 +382,72 @@ function ddWorthIt(view) {
 }
 // The whole decision. solve(job) -> Promise<{card: tricks}>. Returns { card, stats, samples, ms } or null (use the heuristic).
 // opts: k (layouts, default 20), minK (fewest solved layouts worth trusting, default 6), ms (time budget),
-// rand, prefer (the heuristic card, for ties), tol.
+// hardMs (when the caller stops waiting: give up early if minK layouts can't be solved by then), rand,
+// prefer (the heuristic card, for ties), tol, agg (see ddPick).
 // Inference from the play (after the opening lead): pool (layouts dealt before the k best-fitting are solved),
-// weigh (average by fit), wOpp/wPart/wLead/wLeadSuit (see ddConsistency). opts.declarer / opts.defender hold
-// extra options for the declaring side's and the defenders' decisions after the opening lead.
+// weigh (average by fit), wOpp/wPart/wLead/wLeadSuit (see ddConsistency), consMs (time for the play check,
+// default 30% of the budget), penBase (weight factor per point of distance from the auction, default 0.7).
+// opts.declarer / opts.defender hold extra options for the declaring side's and the defenders' decisions after the lead.
+// The parts (ddOpts, ddDeals, ddSolveDeals, ddDecide) are also used separately: the page can split the layouts of a
+// slow decision between several workers (js/dds-worker.js playSamples) and decide on the pooled results.
 async function ddChoose(view, solve, opts = {}) {
-  const legal = ddLegal(view);
   if (!ddWorthIt(view)) return null;
-  const side = sameSide(view.seat, view.contract.declarer) ? opts.declarer : opts.defender;
-  if (side && view.tricks.length) opts = { ...opts, ...side };
-  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  opts = ddOpts(view, opts);
   if (!view.tricks.length && opts.lead === 'conv' && view.prior && typeof leadChoose === 'function') return leadChoose(view, solve, opts); // js/leads.js
-  const t0 = now(), k = opts.k || 20, minK = Math.min(k, opts.minK || 6), budget = opts.ms || Infinity;
-  const rand = opts.rand || Math.random;
-  let deals, weights = null;
-  if (opts.pool > k && view.tricks.length && typeof botPlay === 'function') {
-    // BEN-style: deal a larger pool, weight each layout by how well it explains the play so far, solve the best k
-    const pens = [], pool = ddSample(view, opts.pool, rand, 0, pens);
-    // the play check costs time on every layout: on a slow device score only as many as fit in a share of the budget
-    const consMs = opts.consMs != null ? opts.consMs : budget * 0.3, pb = opts.penBase != null ? opts.penBase : 0.7;
-    const ws = [];
-    for (let i = 0; i < pool.length; i++) {
-      if (i >= k && now() - t0 > consMs) { pool.length = i; break; }
-      ws.push(ddConsistency(view, pool[i], opts) * Math.pow(pb, pens[i] || 0));
-    }
-    const order = pool.map((h, i) => i).sort((a, b) => ws[b] - ws[a]); // stable: ties keep the sampler's order
-    deals = order.slice(0, k).map(i => pool[i]);
-    if (opts.weigh) weights = order.slice(0, k).map(i => ws[i]);
-  } else deals = ddSample(view, k, rand);
-  const results = [];
-  let solving = 0; // stop before a solve that would probably end past the budget
-  for (const h of deals) {
-    const t = now();
-    if (results.length >= minK && t - t0 + (results.length ? solving / results.length : 0) > budget) break;
-    results.push(await solve(ddJob(view, h)));
-    solving += now() - t;
+  const t0 = ddNow();
+  const { deals, weights } = ddDeals(view, opts, t0);
+  const results = await ddSolveDeals(view, deals, solve, opts, t0);
+  if (!results) return null;
+  const r = ddDecide(view, results, weights, opts);
+  if (r) r.ms = ddNow() - t0;
+  return r;
+}
+function ddNow() { return typeof performance !== 'undefined' ? performance.now() : Date.now(); }
+// The options for this decision: the side's own (opts.declarer / opts.defender) after the opening lead.
+function ddOpts(view, opts) {
+  const side = sameSide(view.seat, view.contract.declarer) ? opts.declarer : opts.defender;
+  return side && view.tricks.length ? { ...opts, ...side } : opts;
+}
+// The layouts to solve, best first, and their weights (null: all equal). t0: when the decision started (for consMs).
+function ddDeals(view, opts, t0 = ddNow()) {
+  const k = opts.k || 20, budget = opts.ms || Infinity, rand = opts.rand || Math.random;
+  if (!(opts.pool > k && view.tricks.length && typeof botPlay === 'function')) return { deals: ddSample(view, k, rand), weights: null };
+  // BEN-style: deal a larger pool, weight each layout by how well it explains the play so far, solve the best k
+  const pens = [], pool = ddSample(view, opts.pool, rand, 0, pens);
+  // the play check costs time on every layout: on a slow device score only as many as fit in a share of the budget
+  const consMs = opts.consMs != null ? opts.consMs : budget * 0.3, pb = opts.penBase != null ? opts.penBase : 0.7;
+  const ws = [];
+  for (let i = 0; i < pool.length; i++) {
+    if (i >= k && ddNow() - t0 > consMs) { pool.length = i; break; }
+    ws.push(ddConsistency(view, pool[i], opts) * Math.pow(pb, pens[i] || 0));
   }
-  if (results.length < minK) return null;
+  const order = pool.map((h, i) => i).sort((a, b) => ws[b] - ws[a]); // stable: ties keep the sampler's order
+  return { deals: order.slice(0, k).map(i => pool[i]), weights: opts.weigh ? order.slice(0, k).map(i => ws[i]) : null };
+}
+// Solves the layouts in order until the budget: stops before a solve that would probably end past opts.ms, once it
+// has opts.minK. Returns the results ({card: tricks} per layout), or null when minK can't be reached by opts.hardMs.
+// onResult(r, i) is called after each solve.
+async function ddSolveDeals(view, deals, solve, opts, t0 = ddNow(), onResult = null) {
+  const minK = Math.min(opts.k || 20, opts.minK || 6, deals.length), budget = opts.ms || Infinity, hardMs = opts.hardMs || Infinity;
+  const results = [];
+  let solving = 0;
+  for (const h of deals) {
+    const t = ddNow();
+    if (results.length >= minK && t - t0 + (results.length ? solving / results.length : 0) > budget) break;
+    // too slow to reach minK before the caller stops waiting: give up now and free the worker for the next card
+    if (results.length && results.length < minK && t - t0 + (minK - results.length) * solving / results.length > hardMs) return null;
+    const r = await solve(ddJob(view, h));
+    solving += ddNow() - t;
+    results.push(r);
+    if (onResult) onResult(r, results.length - 1);
+  }
+  return results;
+}
+// The card from solved layouts (weights: one per result, or null). Returns { card, stats, samples } or null when
+// fewer than opts.minK layouts were solved.
+function ddDecide(view, results, weights, opts) {
+  if (results.length < Math.min(opts.k || 20, opts.minK || 6)) return null;
+  const legal = ddLegal(view);
   if (weights) { const m = Math.max(...weights.slice(0, results.length)); weights = m > 0 ? weights.slice(0, results.length).map(x => x / m) : null; }
   let cands = legal, o = opts;
   if (!view.tricks.length && opts.lead === 'conv') { // opening lead: the solver picks the suit, convention the card
@@ -423,8 +457,8 @@ async function ddChoose(view, solve, opts = {}) {
   }
   if (weights) o = { ...o, weights };
   const r = ddPick(view, cands, results, opts.prefer, o);
-  r.samples = results.length; r.ms = now() - t0;
+  r.samples = results.length;
   return r;
 }
 
-if (typeof module !== 'undefined') module.exports = { ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose };
+if (typeof module !== 'undefined') module.exports = { ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };
