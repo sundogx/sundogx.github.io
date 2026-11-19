@@ -981,7 +981,7 @@ function compDirect(ctx) { // they opened; our side has only passed so far
   if (ctx.cheap('N') === 3 && lv >= 3) T.push(T_('3N', h => h.H >= 16 && stopper(h, st), MM(16, 37, { nt: true })));
   for (const s of unbid) {
     const l = lvl(s);
-    if (l <= 2 && lv <= 2 && ctx.ok((l + 1) + s) && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= (l + 1 === 3 ? 7 : 6) && h.H >= (vw < 0 ? 4 : 5) && h.H <= 10 && longest(h, their) === s && hon(h, s, 'AKQJ') >= 2, MM(5, 10, { mn: { [s]: 6 }, a: 'Weak jump overcall', t: 'wjo' })));
+    if (l <= 2 && lv <= 2 && ctx.ok((l + 1) + s) && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= (l + 1 === 3 && !(!BID_OFF('wj6') && MIN(s) && vw <= 0 && h.sp[s] >= 4) ? 7 : 6) && h.H >= (vw < 0 ? 4 : 5) && h.H <= 10 && longest(h, their) === s && hon(h, s, 'AKQJ') >= 2, MM(5, 10, { mn: { [s]: 6 }, a: 'Weak jump overcall', t: 'wjo' })));
     if (l === 1) T.push(T_('1' + s, h => h.L[s] >= 5 && h.H >= (vk >= 2 ? 9 : vk < 0 ? 7 : 8) && h.H <= 17 && longest(h, their) === s && (vk >= 1 ? h.H >= 11 || goodSuit(h, s) : h.H >= 10 || hon(h, s, 'AKQJT') >= 2), MM(8, 17, { mn: { [s]: 5 }, t: 'ovc' })));
     if (l === 2) T.push(T_('2' + s, h => h.L[s] >= 5 && h.H >= (vk >= 1 ? 11 : 10) && h.H <= 17 && longest(h, their) === s && (vk >= 1 ? goodSuit(h, s) || (h.L[s] >= 6 && hon(h, s, 'AKQJT') >= 2) : h.L[s] >= 6 || goodSuit(h, s)), MM(10, 17, { mn: { [s]: 5 }, t: 'ovc' })));
     if (l === 3) T.push(T_('3' + s, h => h.L[s] >= 6 && h.H >= 12 && goodSuit(h, s) && longest(h, their) === s, MM(12, 18, { mn: { [s]: 6 }, t: 'ovc' })));
