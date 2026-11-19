@@ -347,5 +347,17 @@ async function quickBoard(a, b) {
 }
 
 
+// --- friends mode: a browser that doesn't answer think requests (asleep) stops being asked on every card
+{
+  const { code: fc } = await (await post({ secret: sec('alice'), name: 'Alice', tableName: 'sleepy', priv: true })).json();
+  const a = await client(fc, 'Alice'); await sleep(400);
+  for (const s of ['N', 'E', 'W']) { a.act('robot', s); await sleep(150); }
+  const robotCards = () => { const t = a.t(); return t.phase === 'play' ? t.play.tricks.flatMap(x => x.cards).filter(c => !(c.seat === 'S' || (c.seat === 'N' && t.contract.declarer === 'S'))).length : 0; };
+  await until(() => robotCards() >= 16 || a.t().phase === 'done' || (humanMove({ S: a }) && false), 90000, 300);
+  const n = robotCards();
+  check(n >= 8 && a.thinks.length <= 2 + Math.ceil(n / 8) + 1, `a browser that let two think requests run out is rarely asked again (${a.thinks.length} requests for ${n} robot cards)`);
+  a.act('close'); await sleep(300); a.ws.close();
+}
+
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nall checks passed');
 process.exit(failed ? 1 : 0);

@@ -359,7 +359,11 @@ export class TableRoom extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       this.t = (await ctx.storage.get('t')) || null;
       if (this.t && !this.t.history) this.t.history = (await ctx.storage.get('h')) || [];
+      // (a table saved before the chat had its own key has it in 't': the next save moves it)
+      const legacyChat = !!(this.t && this.t.chat);
+      if (this.t && !this.t.chat) this.t.chat = (await ctx.storage.get('c')) || [];
       this.savedSig = this.t ? histSig(this.t.history) : '';
+      this.savedChat = this.t && !legacyChat ? this.t.chatN || 0 : -1;
       this.other = (await ctx.storage.get('other')) || [];
     });
     // Keep-alive pings are answered without waking the object.
@@ -556,13 +560,15 @@ export class TableRoom extends DurableObject {
     return true;
   }
 
-  // The finished boards are written only when one is added; the rest of the table is small.
+  // Every move writes the table itself (a few KB). The finished boards (up to ~200 KB) are written only when
+  // one is added, and the chat (up to ~20 KB) only when a line is added (chatN counts the lines), not with every card.
   async save() {
-    const t = this.t, { history, ...rest } = t;
-    const puts = { t: rest }, sig = histSig(history);
+    const t = this.t, { history, chat, ...rest } = t;
+    const puts = { t: rest }, sig = histSig(history), cn = t.chatN || 0;
     if (sig !== this.savedSig) puts.h = history;
+    if (cn !== this.savedChat) puts.c = chat;
     await this.ctx.storage.put(puts);
-    this.savedSig = sig;
+    this.savedSig = sig; this.savedChat = cn;
   }
 
   robotPending() {
@@ -610,9 +616,14 @@ export class TableRoom extends DurableObject {
     const seated = new Set(SEATS.map(s => t.seats[s] && t.seats[s].kind === 'human' ? t.seats[s].id : null).filter(Boolean));
     const socks = this.ctx.getWebSockets().filter(w => { const a = w.deserializeAttachment() || {}; return a.uid && seated.has(a.uid); });
     // (an onlooker only when nobody is seated, and never in a team match: they could pass the cards to the other room)
-    const pool = socks.length || t.match ? socks : this.ctx.getWebSockets().filter(w => (w.deserializeAttachment() || {}).uid);
+    let pool = socks.length || t.match ? socks : this.ctx.getWebSockets().filter(w => (w.deserializeAttachment() || {}).uid);
+    // a browser that let two requests in a row run out (a phone asleep, a slow device) is asked again only now and then,
+    // so the robots don't wait THINK_MS for it on every card
+    this.thinkN = (this.thinkN || 0) + 1;
+    const keen = pool.filter(w => ((w.deserializeAttachment() || {}).miss || 0) < 2);
+    if (keen.length || this.thinkN % 8) pool = keen;
     if (!pool.length) return;
-    const ws = pool[(this.thinkN = (this.thinkN || 0) + 1) % pool.length];
+    const ws = pool[this.thinkN % pool.length];
     const key = G.playKey(t), a = ws.deserializeAttachment() || {};
     // Only the browser asked may answer: the position (playKey) is public, so the reply must carry this
     // random nonce (sent only to that browser, as part of the key it echoes) and come from the same person.
@@ -620,6 +631,13 @@ export class TableRoom extends DurableObject {
     // The request is also kept on that connection (free, unlike storage), so it survives the object hibernating.
     try { ws.serializeAttachment({ ...a, th: { key, nonce: this.think.nonce, at: this.think.at, due } }); } catch (e) { }
     this.sendTo(ws, { type: 'think', key: key + '#' + this.think.nonce, view, prefer });
+  }
+  // No answer in time: count it against the connection that was asked (see askThink).
+  thinkMissed(th) {
+    for (const w of this.ctx.getWebSockets()) {
+      const a = w.deserializeAttachment() || {};
+      if (a.th && a.th.nonce === th.nonce) try { w.serializeAttachment({ ...a, miss: (a.miss || 0) + 1 }); } catch (e) { }
+    }
   }
   // The open think request; after the object woke from hibernation it is read back from the connection that was asked.
   getThink() {
@@ -635,7 +653,7 @@ export class TableRoom extends DurableObject {
     const th = this.getThink();
     if (!th || th.done || !this.t || u.uid !== th.uid || m.key !== th.key + '#' + th.nonce || G.playKey(this.t) !== th.key) return;
     th.done = true; th.card = typeof m.card === 'string' && m.card.length === 2 ? m.card : null; // legality is checked when it's played
-    if (u.th && u.th.nonce === th.nonce) try { ws.serializeAttachment({ ...u, th: { ...u.th, done: true, card: th.card } }); } catch (e) { }
+    if (u.th && u.th.nonce === th.nonce) try { ws.serializeAttachment({ ...u, miss: 0, th: { ...u.th, done: true, card: th.card } }); } catch (e) { }
     if (Date.now() >= th.due) this.ctx.storage.setAlarm(Date.now()).catch(e => console.error(e)); // the robot's pause is over: play now
   }
 
@@ -652,6 +670,7 @@ export class TableRoom extends DurableObject {
     if (this.robotPending()) {
       const th = this.getThink(), key = this.t.phase === 'play' ? G.playKey(this.t) : null;
       if (th && key && th.key === key && !th.done && Date.now() < th.at + THINK_MS) { await this.ctx.storage.setAlarm(th.at + THINK_MS); return; } // still thinking
+      if (th && key && th.key === key && !th.done) this.thinkMissed(th);
       const hint = th && th.done && th.card && th.key === key ? { key, card: th.card } : null;
       const ok = await this.apply({}, t => {
         const ts = G.turnSeat(t), o = G.occupant(t, G.controllerOf(t, ts));
