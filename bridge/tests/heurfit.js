@@ -8,6 +8,7 @@
 //   side on lead (which suit); follow: the card when following suit (botPlay's candidates; groups by side, seat, strain).
 // Y=dd (default) scores each candidate by double dummy; Y=roll by playing the rest out with the heuristic robot in all
 // four seats (the opponents it meets at the table); Y=mix averages the two.
+// EXP=a,b sets globalThis.BOT_EXP (the experiments in js/bots.js) while fitting.
 // Prints the weights for notrump and for suit contracts, ready to paste into js/bots.js, and how often the
 // fitted choice and the current choice pick a best suit on the fitting boards.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
@@ -64,6 +65,7 @@ if (isMainThread) {
   const wasmDir = path.join(__dirname, '..', 'js', 'wasm');
   const create = require(path.join(wasmDir, 'compiled.js'));
   const { kind, seed } = workerData, Y = process.env.Y || 'dd';
+  if (process.env.EXP) globalThis.BOT_EXP = process.env.EXP.split(','); // experiment switches in js/bots.js (EXP('a'))
   let solve = null;
   parentPort.on('message', async g => {
     if (g < 0) return process.exit(0);

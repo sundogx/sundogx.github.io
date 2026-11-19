@@ -218,7 +218,7 @@ Round 3 against round 2 (`BASE=tests/fixtures/basebots3.js node tests/heurstim.j
 
 Most of the declarer's gain is the finesse read from the auction (about +0.02 tricks on the tuning seeds); the defenders' is the discard refit and the second-seat ruffs. All four seats new, declarer is 0.12 tricks under the double-dummy result (0.15 before). Against perfect play the leak report barely moves (on 2,000 held-out boards the declaring side loses 1.36 tricks a board, was 1.38; the defenders 1.23 both), so these gains are mostly against the heuristic's own kind of opponents. Timing with the auction read: mean about 0.02 ms a card, p99 under 0.09 ms (round 2 under 0.05 ms on the same machine).
 
-Round 4 against round 3 (`tests/fixtures/basebots4.js`, now the default baseline), defenders only, 3,971 held-out boards. `OVER=k node tests/heurstim.js …` doubles every contract at the level where declarer needs k tricks more than double dummy, since the robots' own auctions rarely end doubled:
+Round 4 against round 3 (`tests/fixtures/basebots4.js`; the default baseline is now `basebots5.js`, the heuristic after round 4), defenders only, 3,971 held-out boards. `OVER=k node tests/heurstim.js …` doubles every contract at the level where declarer needs k tricks more than double dummy, since the robots' own auctions rarely end doubled:
 
 | Contracts | IMPs a board | Tricks a board |
 |---|---|---|
@@ -227,7 +227,7 @@ Round 4 against round 3 (`tests/fixtures/basebots4.js`, now the default baseline
 | Doubled, one trick too high (`OVER=1`) | +0.06 ± 0.03 | +0.013 ± 0.005 |
 | Doubled, two tricks too high (`OVER=2`) | +0.14 ± 0.04 | +0.024 ± 0.006 |
 
-Left out in round 4: a trump-lead bonus without the crossruff condition, high-low from a doubleton in partner's suit, no `set2` in doubled contracts, and declarer cashing out instead of developing when a doubled contract is far off.
+Left out in round 4: a trump-lead bonus without the crossruff condition, high-low from a doubleton in partner's suit, no `set2` in doubled contracts, and declarer cashing out instead of developing when a doubled contract is far off. Left out in round 5 (all within noise on the tuning seeds `dev` and `dev2`): declarer cashing a side suit with spare winners to discard fast losers before losing the lead in trumps or developing a suit, a defender's encouraging first discard (a high spot from a suit headed by the ace or touching honours), a bonus for the suit partner's first discard asked for (or against the one it denied), and the switch weights refitted with partner's first discard as features (`EXP=a,b node tests/heurfit.js …` fits with experiments on).
 
 With the new heuristic in all four seats, declarer takes 0.15 tricks fewer than the double-dummy result of the deal, against 0.41 before. In notrump it now matches it, because the heuristic defenders lose about as much as declarer does. `node tests/heurstim.js 600 leak` solves every decision double-dummy and totals the tricks lost by kind of decision and by the rule that chose the card. On 1,988 held-out boards, against perfect play, the declaring side now loses 1.38 tricks a board (was 1.83) and the defenders 1.23 (was 1.42). The largest leaks left are declarer's leads in suit contracts (0.50), defenders' switches (0.34 in suit contracts, 0.19 in notrump), declarer's leads in notrump (0.29), and declarer's third-hand play in suit contracts (0.14).
 
