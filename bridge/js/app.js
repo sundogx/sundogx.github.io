@@ -1175,7 +1175,7 @@ document.addEventListener('keydown', e => {
   if (k === 'Escape' && selCard) { selCard = null; renderHand(); renderFelt(); }
   if (k === 'l' && !$('lastTrickBtn').disabled) showLastTrick();
   else if (k === 'h' && hintOK(T)) { showHint(); e.preventDefault(); }
-  else if (k === 'n' && T.phase === 'done' && $('felt').querySelector('[data-next]')) { doAct('next'); e.preventDefault(); }
+  else if (k === 'n' && T.phase === 'done' && $('tableView').querySelector('[data-next]')) { doAct('next'); e.preventDefault(); } // a phone held sideways shows the panel under the hand (#playInfo)
   else if (k === '?') { showOptions(); e.preventDefault(); }
 });
 
@@ -1409,7 +1409,12 @@ async function loadLobby() {
 
 // ---------- navigation ----------
 // a window (hand record, options...) or call explanation left open must not stay over the next screen
-function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; setJoinState(null); }
+function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimWatch = null; setJoinState(null); closeTableMenus(); }
+// the sidebar drawer (phones held sideways) and the More menu belong to the table you leave, not the next one
+function closeTableMenus() {
+  $('side').classList.remove('open'); $('sideBtn').setAttribute('aria-expanded', 'false'); syncSideInert();
+  $('tableView').querySelector('.topbar').classList.remove('open'); $('moreBtn').setAttribute('aria-expanded', 'false');
+}
 function showTableView() {
   if (typeof BP !== 'undefined' && BP.on) leaveBidPractice(); /* feature: bidpractice */
   if (typeof LT !== 'undefined' && LT.on) leaveLeadTrainer(false); /* feature: leadtrainer */
