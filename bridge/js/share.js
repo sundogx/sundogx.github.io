@@ -177,7 +177,7 @@ function parseLIN(text) {
       ['S', 'W', 'N', 'E'].forEach((seat, j) => { hands[seat] = linHand(hs[j] || ''); });
       fillFourth(hands);
     } else if (k === 'sv') vul = { o: 'None', '0': 'None', n: 'NS', e: 'EW', b: 'Both' }[v.trim().toLowerCase()] || 'None';
-    else if (k === 'ah') { const m = /(\d+)/.exec(v); if (m) board = +m[1]; }
+    else if (k === 'ah') { const m = /(\d+)/.exec(v); if (m) board = +m[1] || 1; }
     else if (k === 'mb') {
       const c = v.trim().replace(/!$/, '').toUpperCase();
       const call = c === 'P' ? 'P' : c === 'D' ? 'X' : c === 'R' ? 'XX' : /^[1-7](N|NT|S|H|D|C)$/.test(c) ? c[0] + c[1] : null;

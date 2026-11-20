@@ -15,8 +15,9 @@ const suitOf = c => c[0];
 const rankOf = c => RANKS.indexOf(c[1]);
 const rankLabel = r => (r === 'T' ? '10' : r);
 
-function boardDealer(n) { return SEATS[(n - 1) % 4]; }
-function boardVul(n) { return VUL_TABLE[(n - 1) % 16]; }
+// (board numbers below 1, e.g. an imported "Board 0", wrap round like any other: board 0 is board 16)
+function boardDealer(n) { return SEATS[(((n - 1) % 4) + 4) % 4]; }
+function boardVul(n) { return VUL_TABLE[(((n - 1) % 16) + 16) % 16]; }
 function isVul(vul, seat) { return vul === 'Both' || vul === sideOf(seat); }
 
 function sortHand(cards) {
