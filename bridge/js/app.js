@@ -44,6 +44,7 @@ const LOCAL_ACTS = {
 };
 function doAct(name, ...args) {
   if (!T) return;
+  if (name === 'next' && swNext()) return; /* feature: swreload */
   if (T.local) return act(s => (LOCAL_ACTS[name] || A[name])(s, ...args));
   Net.send({ type: 'act', name, args });
 }
@@ -954,15 +955,65 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && wa
 // ----- installable app and offline practice -----
 if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
   navigator.serviceWorker.register('sw.js').catch(() => { });
-  // a new version was installed while this page was open: offer to reload (it loads by itself next time anyway)
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (!e.data || e.data.type !== 'updated' || document.querySelector('.toast.update')) return;
-    const d = document.createElement('div'); d.className = 'toast update'; d.setAttribute('role', 'status');
-    d.innerHTML = 'A new version of the app is ready. <button class="btn small">Reload</button>';
-    d.querySelector('button').addEventListener('click', () => location.reload());
-    document.body.appendChild(d); setTimeout(() => d.remove(), 15000);
+  /* feature: swreload */
+  // A new version took over while this page was open. The service worker keeps serving this page (and the
+  // workers it starts) its own version, and the page reloads itself at a safe moment: see swSafe and doAct.
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'updated') swUpdateReady(); });
+  let hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController) swUpdateReady(); hadController = true; });
+  navigator.serviceWorker.ready.then(r => { if (r.active) r.active.postMessage({ type: 'hello' }); }).catch(() => { });
+  // a page left open for days (a phone app) looks for a new version when it comes back to the screen
+  let swCheckedAt = Date.now();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || Date.now() - swCheckedAt < 30 * 60e3) return;
+    swCheckedAt = Date.now();
+    navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(() => { });
   });
 }
+let swUpdate = false, swReloading = false;
+function swUpdateReady() {
+  if (swUpdate) return;
+  swUpdate = true;
+  setInterval(() => { if (swSafe()) swReload(); }, 1000);
+}
+function swReload(resume) {
+  if (swReloading) return;
+  swReloading = true; flushPractice();
+  try { if (resume) sessionStorage.setItem('bridge-swresume', resume); } catch (e) { }
+  location.reload();
+}
+// nothing on screen the reload would lose: no window open, nothing being typed
+function swQuiet() {
+  if ($('modalRoot').firstChild || !$('joinState').classList.contains('hidden')) return false;
+  const ae = document.activeElement;
+  if (ae && (ae.isContentEditable || ae.tagName === 'TEXTAREA' || (ae.tagName === 'INPUT' && !['checkbox', 'radio', 'button'].includes(ae.type)))) return false;
+  if ($('chatInput').value.trim() || $('alertText').value.trim() || $('codeInput').value.trim() || $('tableName').value.trim()) return false;
+  return $('nameInput').value.trim() === (me.name || '');
+}
+// Safe moments: the home screen, or an online table between boards (the seat is kept: reconnecting takes it back).
+// Practice reloads when the next board is asked for (doAct), so the finished board stays up until then.
+function swSafe() {
+  if (!swUpdate || swReloading || !swQuiet()) return false;
+  if (!T) return !$('home').classList.contains('hidden');
+  return !T.local && Net.gotState && (T.phase === 'done' || T.phase === 'waiting') && !T.claim;
+}
+// the Next button (or the automatic next board) on a practice table: save it, reload, then deal the next board
+function swNext() {
+  if (!swUpdate || swReloading || !T || !T.local || T.phase !== 'done' || T.daily || T.whatIf || T.oneOff || !swQuiet()) return false;
+  flushPractice();
+  const s = savedPractice();
+  if (!s || s.id !== T.id || s.board !== T.board || s.phase !== 'done') return false; // not a table "Continue practice" brings back
+  swReload('next'); return true;
+}
+function swResume() { // after that reload
+  let r = null;
+  try { r = sessionStorage.getItem('bridge-swresume'); sessionStorage.removeItem('bridge-swresume'); } catch (e) { }
+  if (r !== 'next' || !savedPractice()) return false;
+  startPractice(false);
+  if (T && T.local && T.phase === 'done') doAct('next');
+  return true;
+}
+/* end feature: swreload */
 
 // ----- "More" menu on phones -----
 const drawerMode = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
@@ -1516,6 +1567,7 @@ window.addEventListener('hashchange', async () => {
   await adoptIdentityFromLink();
   const code = location.hash.slice(1).toUpperCase();
   if (/^[A-Z]{5}$/.test(code) && me.name) openOnline(code);
+  else if (swResume()) { } /* feature: swreload: back to the practice table after an update */
   else if (/^[A-Z]{5}$/.test(code)) $('codeInput').value = code;
   loadLobby();
   clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000);

@@ -27,7 +27,7 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `js/dds-worker.js`, `js/wasm/` | The WebAssembly solver (see below); it also picks the practice robots' cards. |
 | `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
 | `src/game.js` | **Generated** by `build.mjs` from `js/engine.js`, `js/bidding.js`, `js/leads.js`, `js/bots.js`, `js/ddplay.js` and `js/table.js`, so the server runs exactly the same rules and robots as the page. Don't edit it; `npm run dev` and `npm run deploy` rebuild it. |
-| `sw.js` | Service worker: caches the app so practice works offline. Bump `CACHE` and keep `CORE` in step when files are added. |
+| `sw.js` | Service worker: caches the app so practice works offline. Bump `CACHE` on every deploy (nothing new reaches people otherwise) and keep `CORE` in step when files are added. See "Updates" below. |
 | `tests/` | `npm test` (rules, robots, bidding fuzz), `node tests/ddtest.js` (solver, robot sampler), `node tests/playsim.js` (robot card play, sampling against heuristic), `node tests/heurstim.js` (the heuristic robot against its previous version, also in doubled overbids with `OVER=k`, and where it loses tricks against double dummy), `node tests/heurfit.js` (fits the heuristic's switch and discard weights), `node tests/leadsim.js` (opening leads), `node tests/claimtest.js` and `node tests/claimsim.js` (claims, see below), `BRIDGE_URL=http://localhost:8787 node tests/online.test.mjs` (a running server). Bidding: `node tests/bidddsim.js` (match against the old bidding, scored double-dummy; `--base=basebid` plays the 2/1 system before the constructive changes, `tests/fixtures/basebid.js`), `node tests/bidloss.js` (where uncontested auctions lose against the best double-dummy contract), `node tests/bidshow.js` (read auctions), `node tests/bidwhy.js` (why a robot made a call)., `node tests/bidpar.js` (where the robots lose IMPs against par, by side and auction type), `node tests/bidoverbid.js` (robots against a human who overbids) |
 
 The page's scripts are plain scripts that share globals, loaded in the order above. Practice games run entirely in the page; online tables run on the server, which sends each person only the cards they may see.
@@ -89,6 +89,16 @@ Wrangler prints an address like `https://bridge.<your-subdomain>.workers.dev`. P
     window.BRIDGE_API = 'https://bridge.<your-subdomain>.workers.dev';
 
 Commit and push. The Worker only accepts requests from `https://sundogx.github.io` (see `ALLOWED_ORIGINS` in `src/worker.js`).
+
+## Updates (service worker)
+
+Every file is served from the copy `sw.js` saved for its version (`CACHE`), and a saved copy is never replaced, so a page and everything it loads later (the solver workers `js/dds-worker.js` with their `importScripts`, the play and Learn blob workers, `compiled.wasm`) are always one version. A change reaches people only through a new `CACHE` name: **bump it on every deploy**.
+
+- The browser looks for a new `sw.js` on each page load, and an open page asks again when it comes back to the screen after 30 minutes or more. The new service worker downloads every file afresh and takes over at once.
+- Pages (and their workers) that were open then keep being served their old copy, so nothing mixes. The pins (which page or worker is on which copy) are kept in Cache storage under `bridge-meta`, since the browser stops an idle service worker. A worker is followed from its script request, which names the page that started it; a blob worker can't be, so it gets the old copy when every open page is on it (the usual case, one tab) and the new one when old and new tabs are open at once. The old copy is deleted once nothing uses it.
+- The open page then reloads itself at a safe moment (`app.js`, "feature: swreload"): on the home screen, on an online table between boards (`waiting` or `done`; reconnecting takes the seat back), or on a practice table when you press Next (or the next board starts by itself): the table is saved, the page reloads, reopens it and deals the next board. Never mid-board, never with a window open, a box focused or unsent text in a box (chat, alert, table code or name). No message is shown. Elsewhere (the explorer, flash cards, lead and bidding practice, the daily deal) it waits until you go home.
+- Offline the app opens from the saved copy; the first visit works as before (the page comes from the network, the service worker saves the same files and takes over).
+- Test: `NODE_PATH=<dir with playwright-core> node tests/swupdate.pw.js .` serves versions A, B, C and D from a local server to a real Chrome profile and checks all of the above; `tests/swonline.pw.js <wrangler dev address>` checks the reload on an online table (seat kept, none mid-board).
 
 ## Run it locally
 
