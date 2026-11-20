@@ -166,7 +166,8 @@ function logged(b, f, src, hum) { // with --penlog: the robots' penalty-double j
   if (!PENLOG) return f();
   globalThis.BID_PENLOG = [];
   const r = f();
-  for (const e of globalThis.BID_PENLOG) penRows.push(Object.assign(e, { def: 13 - b.dd[e.decl][e.st], vul: b.vul, src, hum: hum && sameSide(e.lbBy, hum) ? 1 : 0 }));
+  const ct = r && r.ct; // fin: the contract judged became final
+  for (const e of globalThis.BID_PENLOG) penRows.push(Object.assign(e, { def: 13 - b.dd[e.decl][e.st], vul: b.vul, src, hum: hum && sameSide(e.lbBy, hum) ? 1 : 0, fin: ct && ct.level === e.lv && ct.strain === e.st && ct.declarer === e.decl ? 1 : 0 }));
   globalThis.BID_PENLOG = null;
   return r;
 }

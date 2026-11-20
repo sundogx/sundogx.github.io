@@ -1950,6 +1950,34 @@ function penaltyGain(ctx, D) { // expected IMPs from doubling rather than passin
   }
   return ev / ws;
 }
+// Round 13 (dtfit): the defence estimate refitted to the double-dummy defence of 164,000 judgeX decisions (robot
+// self-play and people's overbids, tests/bidoverbid.js --penlog; people's contracts weighted 4 to 1). Against a suit
+// contract, a few things of my hand and the auction the old fit missed: partner's shown length in their trump suit
+// (pTr: partner bid it), a void, trump length beyond three, trump honours and side quick tricks. Against notrump,
+// the whole fit is redone with side quick tricks split by suits they bid (qO) or not (qS) and my longest suit.
+// (Refitting the suit terms from scratch traded people's overbids for the robots' contracts: not kept.)
+function quickTricks(x, L) {
+  const A = x.includes('A'), K = x.includes('K'), Q = x.includes('Q');
+  return A && K ? (L <= 5 ? 2 : 1.5) : A && Q ? (L <= 5 ? 1.5 : 1) : A ? (L <= 6 ? 1 : 0.5) : K && Q ? (L <= 5 ? 1 : 0.5) : K && L >= 2 ? 0.5 : 0;
+}
+function defFit(ctx, h, D) {
+  const st = ctx.lb.call[1], f = defTricks.f;
+  let qS = 0, qO = 0, voids = 0, sideL = 0;
+  for (const s of SUITS) {
+    if (s === st) continue;
+    const q = quickTricks(h.has[s], h.L[s]);
+    if (ctx.oppSuits.includes(s)) qO += q; else qS += q;
+    if (h.L[s] === 0) voids++;
+    sideL = Math.max(sideL, h.L[s]);
+  }
+  if (st === 'N') {
+    const lv = +ctx.lb.call[0];
+    return 0.751 + 0.581 * f.sideT + 0.224 * f.pPts + 0.151 * h.H - 0.174 * lv - 0.823 * (lv >= 6) - 0.067 * f.pPass - 0.024 * f.pBid + 0.118 * f.pLo
+      - 0.024 * f.oLo + 0.088 * f.weOp - 0.134 * f.iBid + 0.307 * qS + 0.076 * qO + 0.094 * sideL;
+  }
+  const trH = [...'AKQJT'].filter(r => h.has[st].includes(r)).length;
+  return D - 0.14 + 0.044 * qS + 0.071 * qO + 0.336 * voids + 0.083 * Math.max(0, h.L[st] - 3) + 0.049 * trH + 0.442 * (ctx.P.mn[st] || 0);
+}
 function judgeX(ctx, h, extra = 0) { // true: double their contract for penalty (extra: how much more the double must gain)
   const lb = ctx.lb; if (!lb || sameSide(lb.by, ctx.seat) || !ctx.ok('X') || (lb.m && lb.m.art)) return false;
   const lnp = lastNonPass(ctx.prefix); if (!lnp || lnp.call !== lb.call || lnp.by !== lb.by) return false;
@@ -1957,12 +1985,14 @@ function judgeX(ctx, h, extra = 0) { // true: double their contract for penalty 
   const lv = +lb.call[0], st = lb.call[1];
   if (lv < (BID_K('pxl') ?? 2)) return false;
   const [pPts] = pointShares(ctx, h);
-  let D = defTricks(ctx, h, pPts) + (BID_K('pxd') ?? 0);
+  let D = defTricks(ctx, h, pPts);
+  if (!BID_OFF('dtfit')) D = defFit(ctx, h, D);
+  D += BID_K('pxd') ?? 0;
   const fs = globalThis.BID_PENLOG || BID_K('fitx') ? fitsShown(ctx, h) : null, f0 = Object.assign({}, defTricks.f);
   if (BID_K('fitx')) D += BID_K('fitx') * fitAdj(st, fs); // measured worse (round 7): off
   const g = penaltyGain(ctx, D);
   judgeX.last = { D, lv, st };
-  if (globalThis.BID_PENLOG) globalThis.BID_PENLOG.push(Object.assign({ decl: theirDeclarer(ctx), st, lv, D, g, lbBy: lb.by }, f0, fs));
+  if (globalThis.BID_PENLOG) globalThis.BID_PENLOG.push(Object.assign({ decl: theirDeclarer(ctx), st, lv, D, g, extra, lbBy: lb.by, hand: SUITS.map(s => h.has[s]).join('.'), pHi: Math.min(37, ctx.P.hi), lLo: ctx.L.lo, rLo: ctx.R.lo, lHi: Math.min(37, ctx.L.hi), rHi: Math.min(37, ctx.R.hi), pTr: st === 'N' ? 0 : ctx.P.mn[st] || 0, lTr: st === 'N' ? 0 : ctx.L.mn[st] || 0, rTr: st === 'N' ? 0 : ctx.R.mn[st] || 0, oSuits: ctx.oppSuits.join(''), pSuits: SUITS.filter(s => (ctx.P.mn[s] || 0) >= 4).join(''), nCalls: ctx.prefix.length, lS: SUITS.map(s => (ctx.L.mn[s] || 0) + '' + (ctx.R.mn[s] || 0)).join('.') }, f0, fs));
   return g >= (BID_K('pxm') ?? 3.5) + extra; // a high bar: the estimate is rough, and they may run or redouble
 }
 
