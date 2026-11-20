@@ -781,7 +781,7 @@ export class TableRoom extends DurableObject {
     // only a table robot's cards: never a person's (a stand-in for an away player, or the robots finishing when time is up)
     if (!o || o.kind !== 'robot') return;
     let view, prefer;
-    try { view = G.ddView(t, ts); if (!G.ddWorthIt(view)) return; prefer = G.botPlay(t, ts); } catch (e) { console.error(e); return; }
+    try { view = G.ddView(t, ts); if (!G.ddWorthIt(view)) return; prefer = G.botPlayH(t, ts); } // (the heuristic card only: the browser solves the position itself) catch (e) { console.error(e); return; }
     // seated players first (they are likely to stay), taking turns so one slow phone isn't always asked
     const seated = new Set(SEATS.map(s => t.seats[s] && t.seats[s].kind === 'human' ? t.seats[s].id : null).filter(Boolean));
     const socks = this.ctx.getWebSockets().filter(w => { const a = w.deserializeAttachment() || {}; return a.uid && seated.has(a.uid); });

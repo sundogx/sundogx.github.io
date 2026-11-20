@@ -28,7 +28,7 @@ const exports = `
 
 export {
   SEATS, SEAT_NAME, A, newTable, startBoard, sysMsg, mySeat, canSee, turnSeat, controllerOf, occupant,
-  dummySeat, remainingHand, completedTricks, rid, legalCalls, legalPlays, botCall, botPlay, sureTricks, claimHolds, claimAccept, claimAnswer, claimSolver, claimPos, robotClaimCount, ddView, ddWorthIt, playKey, friendsMode, undoReveals,
+  dummySeat, remainingHand, completedTricks, rid, legalCalls, legalPlays, botCall, botPlay, botPlayH, sureTricks, claimHolds, claimAccept, claimAnswer, claimSolver, claimPos, robotClaimCount, ddView, ddWorthIt, playKey, friendsMode, undoReveals,
 };
 export { scoreNS, boardVul }; // feature: daily
 `;

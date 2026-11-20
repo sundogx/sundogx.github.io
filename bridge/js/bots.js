@@ -139,7 +139,103 @@ function seatShown(auction, vul, who) {
 function botFeatures(t, seat, kind) { const r = botPlay(t, seat, kind); return r && r.opts ? r : null; }
 let botWhy = ''; // which rule chose the last card (tests/heurstim.js leak report)
 const R = (why, card) => { botWhy = why; return card; };
-function botPlay(t, seat, want) { // want (tests/heurfit.js): return the features of a decision instead of a card
+function botPlay(t, seat, want) {
+  const card = botPlayH(t, seat, want);
+  // the endgame search runs at a real table (not in js/ddplay.js's replay of the play so far, which calls botPlay
+  // for every card of every layout), and not for the practice robots set to Beginner
+  if (want || OFF('end')) return card;
+  if (!EXP('end') && (t.phase !== 'play' || (typeof Learn !== 'undefined' && (() => { try { const lv = Learn.robotLevel(t, seat); return lv && lv.heuristic; } catch (e) { return false; } })()))) return card;
+  const e = botEndgame(t, seat, card);
+  return e && e !== card ? R('endSim', e) : card;
+}
+// The endgame (round 10): with END_TRICKS or fewer cards left, deal the cards this seat can't see at random (keeping
+// to the suits each hand has shown out of), solve each layout double dummy (claimSolver) after each candidate card,
+// and play the card with the best total score over the layouts; the heuristic's card unless another scores higher.
+// Up to END_LAYOUTS layouts within END_NODES search nodes (about 0.3-0.4 microseconds each; the server has 10 ms of
+// CPU for a request), more in the page; with fewer than 4 layouts solved, the heuristic's card.
+const END_TRICKS = 7, END_LAYOUTS = 24, END_NODES = 5000, END_NODES_PAGE = 30000;
+let botEndStats = { calls: 0, over: 0, nodes: 0 };
+function botEndgame(t, seat, rc) {
+  const play = t.play, c = t.contract, hands = t.hands;
+  const my = remainingHand(hands, play, seat);
+  const left = my.length;
+  if (left > (+globalThis.END_TRICKS || END_TRICKS) || left < 2) return null;
+  const legal = legalPlays(hands, play, c, seat);
+  if (legal.length < 2) return null;
+  const decl = c.declarer, dummy = partnerOf(decl), onDecl = sameSide(seat, decl);
+  const dummyUp = play.tricks.length > 0 && play.tricks[0].cards.length > 0;
+  const visible = new Set([seat]);
+  if (dummyUp) visible.add(dummy);
+  if (onDecl) { visible.add(decl); visible.add(dummy); }
+  const hidden = SEATS.filter(s => !visible.has(s));
+  if (hidden.length !== 2) return null;
+  const rem = {}; for (const s of SEATS) rem[s] = remainingHand(hands, play, s);
+  const pool = [...rem[hidden[0]], ...rem[hidden[1]]].sort(); // (sorted: its order mustn't depend on who holds what)
+  const out = { [hidden[0]]: new Set(), [hidden[1]]: new Set() };
+  for (const x of play.tricks) for (const pc of x.cards.slice(1)) if (pc.card[0] !== x.cards[0].card[0] && out[pc.seat]) out[pc.seat].add(x.cards[0].card[0]);
+  // distinct candidates: one card of each run of equals in this hand (no unseen or partner's card between them)
+  const gone = playedCards(play);
+  const cands = [];
+  for (const x of legal.slice().sort((a, b) => SUITS.indexOf(a[0]) - SUITS.indexOf(b[0]) || rankOf(a) - rankOf(b))) {
+    const y = cands[cands.length - 1];
+    let eq = !!y && y[0] === x[0];
+    for (let r = rankOf(y || x) + 1; eq && r < rankOf(x); r++) if (!gone.has(x[0] + RANKS[r])) eq = false;
+    if (eq) { if (x === rc) cands[cands.length - 1] = rc; } else cands.push(x);
+  }
+  if (cands.length < 2) return null;
+  const n0 = rem[hidden[0]].length, n1 = rem[hidden[1]].length;
+  // seeded only from what this seat can see (its hand, the hands it sees, the unseen cards as a sorted set and the play
+  // so far), so positions that look the same to it sample the same layouts
+  const rand = seededRand(seat + ':' + SEATS.map(s => visible.has(s) ? rem[s].join('') : '').join('|') + ':' + pool.join('') + ':' + play.tricks.map(x => x.cards.map(pc => pc.card).join('')).join(''));
+  const side = SEATS.indexOf(seat) & 1, need = c.level + 6;
+  const sc = cands.map(() => 0), L = +globalThis.END_LAYOUTS || END_LAYOUTS, budget = +globalThis.END_NODES || (t.local ? END_NODES_PAGE : END_NODES);
+  let nodes = 0, n = 0;
+  botEndStats.calls++;
+  const ri = Math.max(0, cands.indexOf(rc));
+  for (let k = 0; k < L && nodes < budget; k++) {
+    // a random layout: cards of a suit one hand has shown out of go to the other, the rest at random
+    const h = { [hidden[0]]: [], [hidden[1]]: [] }, free = [];
+    for (const x of pool) { if (out[hidden[0]].has(x[0])) h[hidden[1]].push(x); else if (out[hidden[1]].has(x[0])) h[hidden[0]].push(x); else free.push(x); }
+    if (h[hidden[0]].length > n0 || h[hidden[1]].length > n1) return null;
+    for (let i = free.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); const z = free[i]; free[i] = free[j]; free[j] = z; }
+    for (const x of free) (h[hidden[0]].length < n0 ? h[hidden[0]] : h[hidden[1]]).push(x);
+    const lay = { ...rem, ...h };
+    // this side's tricks after each candidate: the heuristic's card exactly, the others compared with it
+    const val = cands.map(() => 0), order = [ri, ...cands.keys()].filter((i, j) => j === 0 || i !== ri);
+    let ok = true, base = 0;
+    for (const i of order) {
+      const x = cands[i];
+      const p2 = { tricks: play.tricks.map(tr => ({ leader: tr.leader, cards: tr.cards.slice() })) };
+      applyPlay(p2, c, seat, x);
+      const l2 = { ...lay, [seat]: lay[seat].filter(y => y !== x) };
+      const S = claimSolver(claimPos({ play: p2, contract: c }, l2), side, Math.max(1, budget - nodes));
+      const tw = tricksWon(p2, c), got = sameSide(seat, decl) ? tw.decl : tw.def;
+      let v;
+      if (i === ri) { v = S.value(); if (v !== null) v += got; }
+      else { // up or down from the heuristic card's count, one trick at a time
+        v = base; let r = S.win(v - got);
+        if (r) { while (r === true && v - got < left) { r = S.win(v + 1 - got); if (r) v++; } if (r === false) r = true; }
+        else { while (r === false && v > got) { v--; r = S.win(v - got); } }
+        if (r === null) v = null;
+      }
+      nodes += S.nodes();
+      if (v === null) { ok = false; break; }
+      val[i] = v;
+      if (i === ri) base = v;
+    }
+    if (!ok) break;
+    for (let i = 0; i < cands.length; i++) { const dT = onDecl ? val[i] : 13 - val[i]; const s = scoreContract(c, dT, t.vul); sc[i] += onDecl ? s : -s; }
+    n++;
+    if (n >= 8 && sc.every(x => x === sc[0])) break; // no difference so far: the heuristic's card
+  }
+  botEndStats.nodes += nodes;
+  if (nodes >= budget) botEndStats.over++;
+  if (n < 4) return null;
+  let best = cands.indexOf(rc), bs = best >= 0 ? sc[best] : -1e18;
+  for (let i = 0; i < cands.length; i++) if (sc[i] > bs + 1e-9) { bs = sc[i]; best = i; }
+  return cands[best];
+}
+function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the features of a decision instead of a card
   const c = t.contract, play = t.play, hands = t.hands;
   const trump = c.strain === 'N' ? null : c.strain;
   const legal = legalPlays(hands, play, c, seat);
@@ -1104,4 +1200,4 @@ function simulateBoard(hands, dealer, vul) {
   const d = tricksWon(t.play, contract).decl;
   return { auction, contract, declTricks: d, scoreNS: scoreNS(contract, d, vul), tricks: t.play.tricks };
 }
-if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : k === "lead" ? BOT_DLEAD_NAMES : k === "follow" ? BOT_FOLLOW_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount };
+if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botEndStats: () => botEndStats, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : k === "lead" ? BOT_DLEAD_NAMES : k === "follow" ? BOT_FOLLOW_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount };
