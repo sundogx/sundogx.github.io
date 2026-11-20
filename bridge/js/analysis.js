@@ -364,9 +364,10 @@ function robotDDWorker() {
   w.busy = new Map(); // requests the worker hasn't answered yet (also those the page stopped waiting for): k -> sent at
   w.onmessage = e => {
     const m = e.data, f = RobotDD.wait.get(m.k);
+    if (m.preMs != null) { if (f && f.pre) f.pre(m.preMs); return; } // the worker worked out prefer first (robotDDSolve)
     w.busy.delete(m.k);
     if (m.error) { RobotDD.fails++; console.warn('robot solver:', m.error); } else if (m.card) RobotDD.fails = 0;
-    if (f) { RobotDD.wait.delete(m.k); f(m.card || null); }
+    if (f) { RobotDD.wait.delete(m.k); f(m.card || m.prefer || null); }
     robotDDDone();
   };
   w.onerror = () => robotDDDrop(true);
@@ -393,9 +394,11 @@ function robotDDCardStd(t, seat) {
     if (lv && lv.heuristic) return Promise.resolve(null); // Beginner: the heuristic card (botPlay, botLead)
     if (typeof ddView !== 'function') return Promise.resolve(null);
     view = ddView(t, seat);
-    prefer = botPlay(t, seat); // the heuristic's card wins ties (sequence leads, signals)
   } catch (e) { console.error(e); return Promise.resolve(null); }
-  return robotDDSolve(view, prefer, lv);
+  // prefer, the heuristic's card (it wins ties: sequence leads, signals), is worked out only where it is used, and
+  // for the one-worker decisions (the endgame search makes it several milliseconds, more on a phone) in the worker;
+  // when the solver gives no card, the decision resolves to prefer, so robotStep needn't work it out again
+  return robotDDSolve(view, null, lv, { hands: t.hands, play: t.play, contract: t.contract, auction: t.auction, vul: t.vul, local: t.local, phase: t.phase });
 }
 // lv (feature: learn, the practice robot strength): overrides of K, MIN_K, BUDGET_MS, POOL (layouts dealt for the
 // play check), LEAD_K and LEAD_MS (the opening lead's layouts and budget); none = the settings above and below.
@@ -407,25 +410,34 @@ function robotDDOpts(prefer, lv) {
 }
 // Solve a robot's view (from ddView). Also used for online tables: the server sends a robot's view to a
 // player's browser to work out, since the solver needs more CPU time than the server's free plan allows.
-function robotDDSolve(view, prefer, lv) {
+// table (practice robots, robotDDCardStd): what botPlay reads of the table, for prefer when it is needed (prefer null)
+function robotDDSolve(view, prefer, lv, table) {
   if (RobotDD.fails >= 3 || typeof Worker === 'undefined' || typeof ddWorthIt !== 'function') return Promise.resolve(null);
   try {
     if (!ddWorthIt(view)) return Promise.resolve(null);
     if (!RobotDD.LEADS && !view.tricks.length) return Promise.resolve(null);
     if (!view.tricks.length && view.prior && typeof leadPick === 'function') return robotDDLead(view, lv);
-    if (view.tricks.length <= RobotDD.SPLIT_TRICKS && LeadDD.ws.length > 1 && typeof ddDecide === 'function') return robotDDSplit(view, prefer, lv);
+    if (view.tricks.length <= RobotDD.SPLIT_TRICKS && LeadDD.ws.length > 1 && typeof ddDecide === 'function') {
+      if (table) prefer = botPlay(table, view.seat); // (the first tricks: no endgame search, cheap)
+      return robotDDSplit(view, prefer, lv).then(card => card || (table ? prefer : null));
+    }
     leadWorkersClose(); // past the first tricks: the helper workers aren't needed until the next board
   } catch (e) { console.error(e); return Promise.resolve(null); }
   const k = ++RobotDD.n;
   return new Promise(res => {
-    const timer = setTimeout(() => { // too slow: play the heuristic card. The worker finishes the job and goes on;
+    const late = () => { // too slow: play the heuristic card. The worker finishes the job and goes on;
       // it is restarted only if it seems stuck (an answer more than 10 seconds late)
       RobotDD.wait.delete(k); res(null);
       const w = RobotDD.w;
       if (w && [...w.busy.values()].some(t0 => Date.now() - t0 > 10e3)) robotDDDrop(false); else robotDDDone();
-    }, robotDDParams(lv).BUDGET_MS + 500);
-    RobotDD.wait.set(k, card => { clearTimeout(timer); res(card); });
-    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: robotDDOpts(prefer, lv) }); }
+    };
+    const due = Date.now() + robotDDParams(lv).BUDGET_MS + 500;
+    let timer = setTimeout(late, due - Date.now());
+    const f = card => { clearTimeout(timer); res(card); };
+    // the worker's time on prefer doesn't count against the budget (it used to be spent here, before the timer started)
+    f.pre = ms => { clearTimeout(timer); timer = setTimeout(late, Math.max(0, due + ms - Date.now())); };
+    RobotDD.wait.set(k, f);
+    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: robotDDOpts(prefer, lv), table: prefer == null && table ? table : undefined }); }
     catch (e) { RobotDD.wait.delete(k); clearTimeout(timer); robotDDDrop(true); res(null); }
   });
 }

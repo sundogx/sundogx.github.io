@@ -1,6 +1,8 @@
 // Web Worker: double-dummy solving for the page (js/analysis.js). Messages:
 //  { k, h, st }               the hand record: one strain of one deal, each declarer's result as it is found
-//  { k, play: view, opts }    a robot's card by double-dummy sampling (js/ddplay.js ddChoose)
+//  { k, play: view, opts, table? }  a robot's card by double-dummy sampling (js/ddplay.js ddChoose); with table, the
+//                             worker works out opts.prefer (botPlay), says how long that took ({ k, preMs }) and
+//                             sends it back with the card ({ k, card, prefer })
 //  { k, leadSamples: view, opts }  an opening lead: solver results on sampled layouts (js/leads.js leadSample),
 //                             streamed one by one ({ k, result }) and then all together ({ k, results })
 //  { k, playSamples: view, opts }  a share of the layouts of a card decision (js/ddplay.js ddDeals, ddSolveDeals),
@@ -69,11 +71,14 @@ self.onmessage = async e => {
     return;
   }
   if (m.play) { // robot card: { k, play: view (only what the robot may see), opts }
-    const { k, play, opts } = m;
+    const { k, play, table } = m;
+    let opts = m.opts || {}, prefer = null;
     try {
-      const r = await ddChoose(play, await getSolver(), opts || {});
-      self.postMessage({ k, card: r ? r.card : null, samples: r ? r.samples : 0, ms: r ? Math.round(r.ms) : 0 });
-    } catch (err) { self.postMessage({ k, card: null, error: String(err && err.message || err) }); }
+      // table: the page sent what botPlay needs instead of its card (js/analysis.js robotDDSolve): work it out here
+      if (table) { const t0 = ddNow(); prefer = botPlay(table, play.seat); opts = { ...opts, prefer }; self.postMessage({ k, preMs: ddNow() - t0 }); }
+      const r = await ddChoose(play, await getSolver(), opts);
+      self.postMessage({ k, card: r ? r.card : null, prefer, samples: r ? r.samples : 0, ms: r ? Math.round(r.ms) : 0 });
+    } catch (err) { self.postMessage({ k, card: null, prefer, error: String(err && err.message || err) }); }
     return;
   }
   const { k, h, st } = m;
