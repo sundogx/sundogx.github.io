@@ -947,7 +947,7 @@ function compDirect(ctx) { // they opened; our side has only passed so far
   }
   if (st === 'N') { // over their notrump
     if (lv === 1) T.push(T_('X', h => h.H >= (balancing ? 13 : 15) && h.sh[0] <= 5 && h.sh[1] <= 4, dblMeaning(ctx)));
-    for (const s of ['S', 'H', 'D', 'C']) if (ctx.cheap(s) <= 3) T.push(T_(ctx.cheap(s) + s, h => h.L[s] >= 6 && h.H >= (ctx.cheap(s) >= 3 ? 10 : 7) || (h.L[s] >= 5 && goodSuit(h, s) && h.H >= 9 && ctx.cheap(s) === 2 && h.sh[1] >= 4 && longest(h) === s), MM(7, 15, { mn: { [s]: 5 } })));
+    for (const s of ['S', 'H', 'D', 'C']) if (ctx.cheap(s) <= 3) T.push(T_(ctx.cheap(s) + s, h => (BID_OFF('ntovs') || !ctx.oppSuits.includes(s)) && (h.L[s] >= 6 && h.H >= (ctx.cheap(s) >= 3 ? 10 : 7) || (h.L[s] >= 5 && goodSuit(h, s) && h.H >= 9 && ctx.cheap(s) === 2 && h.sh[1] >= 4 && longest(h) === s)), MM(7, 15, { mn: { [s]: 5 } })));
     T.push(T_('P', () => true, ANY()));
     return T;
   }
@@ -1471,7 +1471,7 @@ function runFromXX(ctx, adv) {
   const st = ctx.lb.call[1], their = ctx.oppSuits.slice(); if (!their.includes(st)) their.push(st);
   const unbid = SUITS.filter(s => !their.includes(s));
   const best = h => unbid.slice().sort((a, b) => (h.L[b] + (MAJ(b) ? 0.5 : 0)) - (h.L[a] + (MAJ(a) ? 0.5 : 0)))[0];
-  const T = [T_('P', h => h.L[st] >= (adv ? 5 : 5) && hon(h, st, 'AKQJT') >= 3, MM(adv ? 3 : 12, 37, { mn: { [st]: 5 }, a: 'Wants to defend their contract redoubled' }))];
+  const T = [T_('P', h => (h.L[st] >= 5 && hon(h, st, 'AKQJT') >= 3) || (!BID_OFF('xxlong') && h.L[st] >= (BID_K('xxl') ?? 5) && h.L[best(h)] <= (BID_K('xxb') ?? 4)), MM(adv ? 3 : 12, 37, { mn: { [st]: 5 }, a: 'Wants to defend their contract redoubled' }))];
   for (const s of unbid) if (ctx.cheap(s) <= 2) T.push(T_(ctx.cheap(s) + s, h => best(h) === s, MM(0, adv ? 8 : 37, { mn: { [s]: adv ? 3 : 4 }, a: adv ? null : null })));
   T.push(T_('P', () => true, ANY()));
   return T;
@@ -1789,7 +1789,8 @@ function natural(ctx, h, reserved) {
     }
     // law of total tricks: compete to the level of our trumps
     if (fit && pBid) {
-      const lott = Math.min(fitLen - 6, 4);
+      // with extra values (22+ between us by my count) one level higher: an 8-card fit competes to the three level
+      const lott = Math.min(fitLen - 6, 4) /* round 9 tried +1 level with 22+ combined (lott22): +0.012 held out, but worse partnering humans; not kept */;
       const c = ctx.cheap(fit) + fit;
       if (ctx.cheap(fit) <= lott && ok(c) && (ctx.cheap(fit) <= 3 || totLo >= 20)) return c;
     }
