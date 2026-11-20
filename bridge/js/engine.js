@@ -12,7 +12,8 @@ const partnerOf = s => SEATS[(SEATS.indexOf(s) + 2) % 4];
 const sideOf = s => (s === 'N' || s === 'S') ? 'NS' : 'EW';
 const sameSide = (a, b) => sideOf(a) === sideOf(b);
 const suitOf = c => c[0];
-const rankOf = c => RANKS.indexOf(c[1]);
+const RANK_IX = { 2: 0, 3: 1, 4: 2, 5: 3, 6: 4, 7: 5, 8: 6, 9: 7, T: 8, J: 9, Q: 10, K: 11, A: 12 };
+const rankOf = c => RANK_IX[c[1]] ?? -1; // = RANKS.indexOf(c[1]) for any one character, by a lookup (speed)
 const rankLabel = r => (r === 'T' ? '10' : r);
 
 // (board numbers below 1, e.g. an imported "Board 0", wrap round like any other: board 0 is board 16)
@@ -68,6 +69,11 @@ function suitLengths(cards) {
 
 // ---- Auction ----
 function bidValue(call) { // '1C' -> 0 ... '7N' -> 34; non-bids -> -1
+  if (typeof call === 'string') { // (speed: the same as the test below, without a regular expression)
+    if (call.length !== 2) return -1;
+    const l = call.charCodeAt(0) - 48, st = STRAINS.indexOf(call[1]);
+    return l >= 1 && l <= 7 && st >= 0 ? (l - 1) * 5 + st : -1;
+  }
   if (!/^[1-7][CDHSN]$/.test(call)) return -1;
   return (+call[0] - 1) * 5 + STRAINS.indexOf(call[1]);
 }
@@ -146,12 +152,31 @@ function trickWinner(trick, strain) {
 }
 function playedCards(play) {
   const set = new Set();
-  play.tricks.forEach(t => t.cards.forEach(pc => set.add(pc.card)));
+  for (const t of play.tricks) for (const pc of t.cards) set.add(pc.card);
   return set;
 }
-function remainingHand(hands, play, seat) {
-  const used = playedCards(play);
-  return hands[seat].filter(c => !used.has(c));
+// card -> 0..51 from its two character codes (-1 for anything else), and a scratch table of the cards played
+const CARD_SUIT_IX = new Int8Array(128).fill(-1), CARD_RANK_IX = new Int8Array(128).fill(-1);
+SUITS.forEach((s, i) => { CARD_SUIT_IX[s.charCodeAt(0)] = i; });
+[...RANKS].forEach((r, i) => { CARD_RANK_IX[r.charCodeAt(0)] = i; });
+const cardIx = c => {
+  if (typeof c !== 'string' || c.length !== 2) return -1;
+  const a = c.charCodeAt(0), b = c.charCodeAt(1);
+  if (a > 127 || b > 127 || CARD_SUIT_IX[a] < 0 || CARD_RANK_IX[b] < 0) return -1;
+  return CARD_SUIT_IX[a] * 13 + CARD_RANK_IX[b];
+};
+const playedMark = new Uint8Array(52);
+function remainingHand(hands, play, seat) { // = hands[seat] less playedCards(play), without building a Set (speed)
+  const hand = hands[seat];
+  playedMark.fill(0);
+  for (const t of play.tricks) for (const pc of t.cards) {
+    const i = cardIx(pc.card);
+    if (i < 0) { const used = playedCards(play); return hand.filter(c => !used.has(c)); } // not a card: the plain way
+    playedMark[i] = 1;
+  }
+  const out = [];
+  for (const c of hand) { const i = cardIx(c); if (i < 0 || !playedMark[i]) out.push(c); }
+  return out;
 }
 function currentTrick(play) {
   const t = play.tricks[play.tricks.length - 1];

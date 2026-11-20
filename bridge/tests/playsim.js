@@ -20,6 +20,9 @@
 // W (4th argument) workers; seed (5th): use a fresh seed for held-out numbers.
 // Reports, for the side whose play changed: IMPs per board and tricks per board (mean ± standard error),
 // how many boards changed, and the time per sampled decision.
+// Sampled playouts are cached on disk (tests/simcache.js; NOCACHE=1 to switch off): a later run with the same code
+// reuses them, e.g. the current settings' playouts when only NEW changes. The "ms each" of reused playouts is the
+// time measured when they were first played.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
 
@@ -29,7 +32,7 @@ if (isMainThread) {
   const W = Math.max(1, +process.argv[5] || Math.max(1, os.cpus().length - 2));
   const seed = process.argv[6] || 'playsim';
   const acc = {}; variants.forEach(v => acc[v] = { n: 0, imp: 0, imp2: 0, tr: 0, tr2: 0, changed: 0, dec: 0, ms: 0 });
-  let done = 0, next = 0, live = W;
+  let done = 0, next = 0, live = W, hits = 0;
   const t0 = Date.now();
   const report = () => {
     console.log(`boards ${done} (K=${K}, ${W} workers, ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
@@ -45,7 +48,7 @@ if (isMainThread) {
     const feed = () => { if (next < N) wk.postMessage(next++); else wk.postMessage(-1); };
     wk.on('message', m => {
       if (m.ready) return feed();
-      done++;
+      done++; hits += m.hits || 0;
       for (const v of variants) {
         const r = m.res[v]; if (!r) continue;
         const a = acc[v]; a.n++; a.imp += r.imp; a.imp2 += r.imp * r.imp; a.tr += r.tr; a.tr2 += r.tr * r.tr; if (r.tr) a.changed++; a.dec += r.dec; a.ms += r.ms;
@@ -54,7 +57,7 @@ if (isMainThread) {
       feed();
     });
     wk.on('error', e => { console.error(e); process.exitCode = 1; });
-    wk.on('exit', () => { if (--live === 0) report(); });
+    wk.on('exit', () => { if (--live === 0) { report(); if (hits) console.log(`  (${hits} sampled playouts reused from the cache, tests/simcache.js)`); } });
   }
 } else {
   Object.assign(globalThis, require('../js/engine.js'));
@@ -64,6 +67,9 @@ if (isMainThread) {
   const create = require(path.join(wasmDir, 'compiled.js'));
   const { K, variants, seed } = workerData;
   let solve = null;
+  const cache = require('./simcache.js').openCache('playsim', [__filename]);
+  const env = JSON.stringify([process.env.ODD || '', process.env.DBL || '']);
+  const cached = async (key, f) => { const k = JSON.stringify([seed, K, env, ...key]); let r = cache.get(k); if (r === undefined) { r = await f(); cache.set(k, r); } return r; };
   const NEW = JSON.parse(process.env.NEW || '{}');
   // what the page uses (js/analysis.js RobotDD and robotDDSolve). CUR_JSON overrides it, e.g. to test a new baseline.
   const CUR = JSON.parse(process.env.CUR_JSON || 'null') || { lead: 'conv', leadTol: 30, minK: 8,
@@ -116,20 +122,20 @@ if (isMainThread) {
       const extra = { leadc: { lead: 'conv' }, leadct: { lead: 'conv', leadTol: 30 }, defc: { lead: 'conv' }, defct: { lead: 'conv', leadTol: 30 } };
       let cur = null;
       for (const v of variants) if (/^n/.test(v)) {
-        if (!cur) cur = (await playOut(hands, auction, ct, vul, () => true, seededRand(seed + ':cur:' + g), CUR)).decl;
+        if (!cur) cur = (await cached(['cur', g, CUR], () => playOut(hands, auction, ct, vul, () => true, seededRand(seed + ':cur:' + g), CUR))).decl;
         const [kind, name] = v.split('.'), X = NEW[name] || {};
         const nsel = { ndecl: (s, i) => decl(s) ? X : true, ndef: (s, i) => decl(s) ? true : X, nlead: (s, i) => i === 0 ? X : true, nplay: (s, i) => !decl(s) && i > 0 ? X : true }[kind];
-        const r = await playOut(hands, auction, ct, vul, nsel, seededRand(seed + ':cur:' + g), CUR);
+        const r = await cached([kind, X, g, CUR], () => playOut(hands, auction, ct, vul, nsel, seededRand(seed + ':cur:' + g), CUR));
         const sign = kind === 'ndecl' ? 1 : -1;
         res[v] = { imp: sign * toImps(scoreContract(ct, r.decl, vul) - scoreContract(ct, cur, vul)), tr: sign * (r.decl - cur), dec: r.dec, ms: r.ms };
       }
       for (const v of variants) if (!/^n/.test(v)) {
-        const r = await playOut(hands, auction, ct, vul, sel[v], seededRand(seed + ':dd:' + v + ':' + g), extra[v]);
+        const r = await cached([v, g], () => playOut(hands, auction, ct, vul, sel[v], seededRand(seed + ':dd:' + v + ':' + g), extra[v]));
         const sign = v === 'decl' ? 1 : -1; // results for the side whose play changed
         res[v] = { imp: sign * toImps(scoreContract(ct, r.decl, vul) - baseScore), tr: sign * (r.decl - base), dec: r.dec, ms: r.ms };
       }
     }
-    parentPort.postMessage({ g, res });
+    parentPort.postMessage({ g, res, hits: cache.hits }); cache.hits = 0;
   });
   (async () => {
     const mod = await WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm')));

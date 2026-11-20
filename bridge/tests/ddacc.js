@@ -10,13 +10,16 @@
 //   SIDE=decl|def: only the declaring side's or the defenders' decisions (default both, reported apart).
 //   TO=n: stop after card n. LEADDD=1: the opening lead played is the solver's (the page robot's), not botLead.
 //   BY=trick: also report by stage (trick 1, 2-3, 4-6, 7-9, 10-13) and whether the player leads (L) or follows (F).
+// The sampler's choices are cached on disk (tests/simcache.js; NOCACHE=1 to switch off): a later run with the same code
+// reuses them (the current options' choices when only NEW changes, all of them for boards already done); their ms is
+// the time measured when they were first made. DUMP runs don't use the cache.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
 
 if (isMainThread) {
   const N = +process.argv[2] || 200, W = Math.max(1, +process.argv[3] || Math.max(1, os.cpus().length - 2));
   const seed = process.argv[4] || 'ddacc', every = +process.argv[5] || 3;
-  const acc = {}; let done = 0, next = 0, live = W; const t0 = Date.now();
+  const acc = {}; let done = 0, next = 0, live = W, hits = 0; const t0 = Date.now();
   const add = (k, d) => { const a = acc[k] || (acc[k] = { n: 0, tr: 0, tr2: 0, imp: 0, imp2: 0, ch: 0, ms0: 0, ms1: 0, base: 0, baseT: 0 }); a.n++; a.baseT += d.baseT || 0; a.tr += d.tr; a.tr2 += d.tr * d.tr; a.imp += d.imp; a.imp2 += d.imp * d.imp; if (d.ch) a.ch++; a.ms0 += d.ms0; a.ms1 += d.ms1; a.base += d.base; };
   const report = () => {
     console.log(`boards ${done} (${W} workers, ${((Date.now() - t0) / 1000).toFixed(0)} s); gain of the new options per decision (positive = better)`);
@@ -30,12 +33,12 @@ if (isMainThread) {
     const feed = () => wk.postMessage(next < N ? next++ : -1);
     wk.on('message', m => {
       if (m.ready) return feed();
-      done++; for (const d of m.res) add(d.side, d);
+      done++; hits += m.hits || 0; for (const d of m.res) add(d.side, d);
       if (done % 50 === 0) report();
       feed();
     });
     wk.on('error', e => { console.error(e); process.exitCode = 1; });
-    wk.on('exit', () => { if (--live === 0) report(); });
+    wk.on('exit', () => { if (--live === 0) { report(); if (hits) console.log(`  (${hits} sampler choices reused from the cache, tests/simcache.js)`); } });
   }
 } else {
   Object.assign(globalThis, require('../js/engine.js'));
@@ -48,7 +51,15 @@ if (isMainThread) {
   const CUR = JSON.parse(process.env.CUR_JSON || 'null') || { k: 20, lead: 'conv', leadTol: 30, minK: 8,
     declarer: { pool: 96, weigh: 1, wOpp: 0.8, relax: 0.05, stop: 1 }, defender: { pool: 96, weigh: 1, wOpp: 0.8, wPart: 0.8, relax: 0.05, stop: 1 } };
   const merge = (base, X) => ({ ...base, ...X, declarer: { ...base.declarer, ...X, ...X.declarer }, defender: { ...base.defender, ...X, ...X.defender } });
-  let solve = null;
+  let solve = null, realSolve = null;
+  const cache = require('./simcache.js').openCache('ddacc', [__filename]);
+  const env = JSON.stringify([process.env.ODD || '', process.env.DBL || '', process.env.LEADDD || '']);
+  const choose = async (key, view, o) => { // ddChoose, through the cache: { card, ms } (or the full result with DUMP)
+    if (process.env.DUMP) return D.ddChoose(view, solve, o);
+    const k = JSON.stringify([seed, env, ...key]); let r = cache.get(k);
+    if (r === undefined) { const x = await D.ddChoose(view, solve, o); r = x ? { card: x.card, ms: x.ms } : null; cache.set(k, r); }
+    return r;
+  };
   parentPort.on('message', async g => {
     if (g < 0) return process.exit(0);
     const rand = seededRand(seed + ':' + g);
@@ -64,18 +75,18 @@ if (isMainThread) {
         const side = sameSide(s, ct.declarer) ? 'decl' : 'def';
         if (process.env.TO && i >= +process.env.TO) break;
         if (i === 0 && process.env.LEADDD) {
-          const lv = D.ddView(t, s, CUR), lr = await D.ddChoose(lv, solve, { ...CUR, prefer, rand: seededRand(seed + ':lead:' + g) });
+          const lv = D.ddView(t, s, CUR), lr = await choose(['lead', g, CUR], lv, { ...CUR, prefer, rand: seededRand(seed + ':lead:' + g) });
           if (lr) { applyPlay(t.play, ct, s, lr.card); continue; }
         }
         if (i % every === 0 && i >= (+process.env.FROM || 0) && (!process.env.SIDE || process.env.SIDE === side)) {
           const v0 = D.ddView(t, s, CUR);
           if (D.ddWorthIt(v0)) {
             const o0 = { ...CUR, prefer, rand: seededRand(seed + ':c:' + g + ':' + i) }, o1 = { ...merge(CUR, NEW), prefer, rand: seededRand(seed + ':c:' + g + ':' + i) };
-            const a = await D.ddChoose(v0, solve, o0), b = process.env.NEW ? (NEW.heur ? { card: prefer, ms: 0 } : await D.ddChoose(D.ddView(t, s, o1), solve, o1)) : a; // NEW='{"heur":1}': the heuristic card (Beginner, js/learn.js)
+            const a = await choose(['a', g, i, CUR], v0, o0), b = process.env.NEW ? (NEW.heur ? { card: prefer, ms: 0 } : await choose(['b', g, i, CUR, NEW], D.ddView(t, s, o1), o1)) : a; // NEW='{"heur":1}': the heuristic card (Beginner, js/learn.js)
             if (a && b) {
               // the real deal, solved for the player to move: tricks for its side from here with each card
               const real = {}; for (const x of SEATS) real[x] = remainingHand(hands, t.play, x);
-              const r = await solve(D.ddJob(v0, real));
+              const r = await realSolve(D.ddJob(v0, real));
               let won = 0; for (const tr of t.play.tricks) if (tr.cards.length === 4 && sameSide(trickWinner(tr, ct.strain), s)) won++;
               const onDecl = sameSide(s, ct.declarer);
               const pts = c => { const mine = won + r[c], sc = scoreContract(ct, onDecl ? mine : 13 - mine, vul); return onDecl ? sc : -sc; };
@@ -100,11 +111,11 @@ if (isMainThread) {
         applyPlay(t.play, ct, s, prefer);
       }
     }
-    parentPort.postMessage({ g, res });
+    parentPort.postMessage({ g, res, hits: cache.hits }); cache.hits = 0;
   });
   (async () => {
     const mod = await WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm')));
-    solve = D.ddSolver(create, mod);
+    solve = D.ddSolver(create, mod); realSolve = require('./simcache.js').cachedSolve(solve); // the real deal's positions, cached on disk
     parentPort.postMessage({ ready: true });
   })();
 }

@@ -14,6 +14,8 @@
 // OVER=k: every contract is doubled and its level set so declarer needs k tricks more than double dummy (an overbid
 // doubled; the auction stays the robots' own).
 // BASE=path compares against another copy of bots.js instead of the frozen fixture; NEW=path replaces js/bots.js.
+// Double-dummy solves of real positions are cached on disk (tests/simcache.js cachedSolve, keyed by the position; valid
+// while only the robots' code changes), so a rerun on the same seed mostly skips the solver. NOCACHE=1 switches it off.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
 
@@ -140,7 +142,7 @@ if (isMainThread) {
   });
   (async () => {
     const mod = await WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm')));
-    solve = D.ddSolver(create, mod);
+    solve = require('./simcache.js').cachedSolve(D.ddSolver(create, mod)); // exact positions, cached on disk (NOCACHE=1: off)
     parentPort.postMessage({ ready: true });
   })();
 }

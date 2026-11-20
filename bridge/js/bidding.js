@@ -1953,10 +1953,26 @@ function convertX(ctx, h) {
   return D - (7 - lv) >= (BID_K('xcv') ?? 1.5);
 }
 // ---- Entry points ----
+// Speed only (perf2): the metas of the last auction seen are kept, and a later auction that starts with the same
+// calls (the usual case: the next robot call, shown(), the play) reuses them and explains only the new calls.
+// A call's meaning depends only on the calls before it (call and seat), vul and the test knobs BID_OFF/BID_K.
+let metasMemo = null;
 function auctionMetas(auction, vul) { // what every call so far means, by the system
-  const metas = [];
-  for (let i = 0; i < auction.length; i++) metas.push(explainCall(auction.slice(0, i), auction[i].by, auction[i].call, metas, vul));
+  const knobs = JSON.stringify([globalThis.BID_OFF || null, globalThis.BID_K || null]);
+  const c = metasMemo && metasMemo.vul === vul && metasMemo.knobs === knobs ? metasMemo : null;
+  let n = 0;
+  if (c) while (n < auction.length && n < c.calls.length && c.calls[n] === auction[n].call && c.bys[n] === auction[n].by) n++;
+  const metas = c ? c.metas.slice(0, n) : [];
+  for (let i = n; i < auction.length; i++) metas.push(explainCall(auction.slice(0, i), auction[i].by, auction[i].call, metas, vul));
+  metasMemo = { vul, knobs, calls: auction.map(a => a.call), bys: auction.map(a => a.by), metas: metas.slice() };
   return metas;
+}
+function metasAdd(auction, vul, metas, by, call, m) { // remember the meaning of a call about to be made after auction
+  const c = metasMemo;
+  if (!c || c.vul !== vul || c.calls.length !== auction.length || c.metas.length !== metas.length || c.metas.some((x, i) => x !== metas[i])) return;
+  if (c.knobs !== JSON.stringify([globalThis.BID_OFF || null, globalThis.BID_K || null])) return;
+  if (auction.some((a, i) => a.call !== c.calls[i] || a.by !== c.bys[i])) return;
+  metasMemo = { vul, knobs: c.knobs, calls: c.calls.concat([call]), bys: c.bys.concat([by]), metas: c.metas.concat([m]) };
 }
 function explainCall(prefix, seat, call, metas, vul) {
   let ctx;
@@ -1996,7 +2012,10 @@ function chooseCall(hand, seat, auction, vul) {
     }
   }
   if (call !== 'X') why = null;
-  return { call, alert: why || explainCall(auction, seat, call, metas, vul).alert };
+  if (why) return { call, alert: why };
+  const m = explainCall(auction, seat, call, metas, vul);
+  metasAdd(auction, vul, metas, seat, call, m); // (speed) the next auctionMetas finds this call's meaning
+  return { call, alert: m.alert };
 }
 // "Penalty: expects to beat 4♥ (about 2 down)": the robot's own reason for a judgement double, kept with the call
 // (its alert), since the auction alone can't say it

@@ -281,8 +281,9 @@ console.log(`par: ${nPar} tables (${orderDep} where it depends on who bids first
     };
     function go(cards, seat) {
       if (cards.length === 4) { const w = win(cards); return (sameSide(w, claimer) ? 1 : 0) + (h[w].length ? go([], w) : 0); }
-      const key = SEATS.map(x => h[x].join('')).join('|') + seat + cards.map(pc => pc.card).join('');
-      if (memo.has(key)) return memo.get(key);
+      // memoised at the start of each trick only (cheaper keys; the value is the same)
+      const key = cards.length ? null : SEATS.map(x => h[x].join('')).join('|') + seat;
+      if (key !== null && memo.has(key)) return memo.get(key);
       const led = cards.length && cards[0].card[0], follow = led && h[seat].some(c => c[0] === led);
       let best = null;
       for (const c of h[seat]) {
@@ -292,7 +293,7 @@ console.log(`par: ${nPar} tables (${orderDep} where it depends on who bids first
         h[seat] = keep;
         if (best === null || (sameSide(seat, claimer) ? v > best : v < best)) best = v;
       }
-      memo.set(key, best);
+      if (key !== null) memo.set(key, best);
       return best;
     }
     return go(open ? tr.cards.slice() : [], playTurn(t.play, t.contract));

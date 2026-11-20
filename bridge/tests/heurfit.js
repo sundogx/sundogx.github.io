@@ -11,6 +11,8 @@
 // EXP=a,b sets globalThis.BOT_EXP (the experiments in js/bots.js) while fitting.
 // Prints the weights for notrump and for suit contracts, ready to paste into js/bots.js, and how often the
 // fitted choice and the current choice pick a best suit on the fitting boards.
+// Double-dummy solves of real positions are cached on disk (tests/simcache.js cachedSolve, keyed by the position; valid
+// while only the robots' code changes), so a rerun on the same seed mostly skips the solver. NOCACHE=1 switches it off.
 const { Worker, isMainThread, parentPort, workerData } = require('worker_threads');
 const os = require('os'), path = require('path'), fs = require('fs');
 
@@ -102,7 +104,7 @@ if (isMainThread) {
   });
   (async () => {
     const mod = await WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm')));
-    solve = D.ddSolver(create, mod);
+    solve = require('./simcache.js').cachedSolve(D.ddSolver(create, mod)); // exact positions, cached on disk (NOCACHE=1: off)
     parentPort.postMessage({ ready: true });
   })();
 }
