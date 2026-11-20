@@ -687,3 +687,30 @@ fieldset.pm legend { font-weight: 600; margin-bottom: 6px; }
 .rows .rk.play { position: relative; }
 .rows .ddn { position: static; display: inline-block; vertical-align: super; margin-left: 1px; min-width: 0; border: none; padding: 0; background: none; font-size: 9px; line-height: 1; }
 .reslist .aided { font-size: 11px; color: var(--ink-soft); margin-left: 4px; }
+
+/* ---------- ux (round 9) ---------- */
+/* home: the main practice button (and New practice) on the first line, the other modes on the next */
+.hero .brk { flex-basis: 100%; height: 0; }
+.hero .row { gap: 8px; }
+.hero .row > .btn:not(.primary) { padding-left: 10px; padding-right: 10px; }
+@media (max-width: 560px) {
+  .hero { padding: 16px 12px; }
+  .hero .brk { display: none; }
+  .hero #practiceBtn { flex: 1 1 100%; }
+  .hero .row > .btn:not(.primary) { flex: 1 1 40%; padding-left: 6px; padding-right: 6px; } /* the other modes two to a line, equal widths */
+}
+/* home: a text box and its button share one line on a phone instead of the button wrapping under it */
+#home .block .row > input[type=text] { flex: 1 1 120px; min-width: 0; }
+/* nothing to join while the list is loading, empty or unavailable */
+#home .block:has(#tableList > .empty) #joinFreeBtn { display: none; }
+/* touch screens: selects outside the table at least 36 px tall (they were 20-28 px); small buttons already get 40 px above */
+@media (pointer: coarse) {
+  #home select, main > section:not(#tableView):not(#home) .topbar select { min-height: 36px; }
+  #home .more-opts summary { padding: 6px 0; }
+}
+/* the keyboard focus ring on every control, not only buttons and text boxes */
+select:focus-visible, summary:focus-visible, a:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .side, .benload > div, .benbar > div, .lt-prog > div { transition: none !important; }
+}
+#home .note:empty { display: none; } /* an empty note (storage warning) left a 26 px gap under the name box */
