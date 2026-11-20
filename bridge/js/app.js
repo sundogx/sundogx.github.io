@@ -3,6 +3,9 @@ const UI_SUITS = ['S', 'H', 'C', 'D']; // alternate colours in hand display
 const isRed = s => s === 'H' || s === 'D';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const $ = id => document.getElementById(id);
+// feature: perf: writing the same text or HTML again still makes the browser lay the page out again, so skip it
+const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
+const setHTML = (el, v) => { if (el._html !== v || el.childNodes.length !== el._n) { el.innerHTML = v; el._html = v; el._n = el.childNodes.length; } };
 // display options, kept in this browser
 const Prefs = (() => {
   let p = {};
@@ -177,13 +180,15 @@ function plateHTML(t, seat) {
 }
 const cssPx = (name, dflt) => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || dflt;
 // the felt's inner width, height and side-column width as laid out (estimated before the first layout)
+let feltG = null; // feltGeom kept while renderFelt builds the seats (nothing on the page changes meanwhile)
 function feltGeom() {
+  if (feltG) return feltG;
   const f = $('felt'), cs = getComputedStyle(f);
   const innerW = (f.clientWidth || 800) - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
   const cols = cs.gridTemplateColumns.split(' ').map(parseFloat).filter(x => x > 0);
   const bx = f.querySelector('.bbx'), boxW = bx ? bx.getBoundingClientRect().width : 92;
   // across the top, the room between the board box and the same margin on the right
-  return { innerW, h: f.clientHeight || 530, colW: cols.length === 3 ? cols[0] : (innerW - 12) * 1.5 / 4, topW: innerW - 2 * (boxW + 8) };
+  return feltG = { innerW, h: f.clientHeight || 530, colW: cols.length === 3 ? cols[0] : (innerW - 12) * 1.5 / 4, topW: innerW - 2 * (boxW + 8) };
 }
 function seatBlock(t, seat, where) {
   const o = occupant(t, seat);
@@ -334,12 +339,12 @@ function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ?
 
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
-  let html = '';
-  if (t.board) html += `<div class="corner tl">${boardBoxHTML(t, o)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && t.boardLimit ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`;
-  html += `<div class="pos-top">${seatBlock(t, o.top, 'top')}</div>`;
-  html += `<div class="pos-left">${seatBlock(t, o.left, 'left')}</div>`;
-  html += `<div class="pos-right">${seatBlock(t, o.right, 'right')}</div>`;
-  html += `<div class="pos-bottom">${seatBlock(t, o.bottom, 'bottom')}</div>`;
+  const parts = []; feltG = null;
+  if (t.board) parts.push(`<div class="corner tl">${boardBoxHTML(t, o)}${t.match ? `<div class="room">${t.match.room}</div>` : ''}${t.timeUp && t.phase !== 'done' ? '<br><span class="bclk over">Time\'s up: robots are finishing</span>' : t.phase !== 'done' && t.boardStart && t.boardLimit ? `<br><span class="bclk" data-start="${t.boardStart}" data-limit="${t.boardLimit || 0}"></span>` : ''}</div>`);
+  try {
+    parts.push(`<div class="pos-top">${seatBlock(t, o.top, 'top')}</div>`, `<div class="pos-left">${seatBlock(t, o.left, 'left')}</div>`,
+      `<div class="pos-right">${seatBlock(t, o.right, 'right')}</div>`, `<div class="pos-bottom">${seatBlock(t, o.bottom, 'bottom')}</div>`);
+  } finally { feltG = null; }
 
   let center = '', bn = '';
   if (t.phase === 'waiting') {
@@ -388,12 +393,25 @@ function renderFelt() {
     bn += undoBanner(t);
   }
   const lastOK = t.phase === 'play' && completedTricks(t.play).length > 0;
-  html += `<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}${bn ? `<div class="bwrap ${t.phase === 'done' ? 'done' : ''}">${bn}</div>` : ''}</div>`;
-  $('felt').innerHTML = html;
+  parts.push(`<div class="pos-center" ${lastOK ? 'data-lasttrick="1" title="Tap to see the last trick"' : ''}>${center}${bn ? `<div class="bwrap ${t.phase === 'done' ? 'done' : ''}">${bn}</div>` : ''}</div>`);
+  patchHTML($('felt'), parts);
   renderPlayInfo(t, t.phase === 'done' && drawerMode.matches && !t.masked && t.history.length ? `<div class="bwrap done">${resultBanner(t)}</div>` : '');
   fitTrick();
   const g = $('felt').querySelector('.agrid'); if (g) g.scrollTop = g.scrollHeight; // a long auction scrolls; show the latest calls
   if (typeof Learn !== 'undefined') Learn.decorate(); /* feature: learn */
+}
+/* feature: perf */ // Redraw only the parts (one element each) whose HTML changed since the last time: a card played usually
+// changes the trick and a seat or two, so the rest of the table isn't rebuilt and laid out again.
+function patchHTML(el, parts) {
+  const kids = el._kids, prev = el._parts;
+  let ok = kids && prev && kids.length === parts.length && el.children.length === parts.length && el.childNodes.length === parts.length && kids.every((k, i) => el.children[i] === k);
+  if (ok) for (let i = 0; i < parts.length && ok; i++) {
+    if (parts[i] === prev[i]) continue;
+    const tp = document.createElement('template'); tp.innerHTML = parts[i];
+    if (tp.content.childNodes.length === 1 && tp.content.firstChild.nodeType === 1) kids[i].replaceWith(tp.content); else ok = false;
+  }
+  if (!ok) el.innerHTML = parts.join('');
+  el._kids = [...el.children]; el._parts = el._kids.length === parts.length ? parts : null;
 }
 // Shrink the trick's cards when the middle of the table is too small for them, so they never cover the hands or plates.
 function fitTrick() {
@@ -448,7 +466,7 @@ const movesOK = t => !t.local && !t.match && isHost(t) && (t.phase === 'done' ||
 // sideways also shows the end-of-board panel there, in the room the bidding box leaves, rather than over the table.
 const phoneInfo = window.matchMedia('(max-width: 560px), (orientation: landscape) and (max-height: 520px)');
 const pinfoHTML = t => t.contract && t.phase !== 'auction' ? `<div class="pinfo"><p class="pc">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}</div>` : '';
-function renderPlayInfo(t, banner) { $('playInfo').innerHTML = !phoneInfo.matches || t.masked ? '' : banner || pinfoHTML(t); }
+function renderPlayInfo(t, banner) { setHTML($('playInfo'), !phoneInfo.matches || t.masked ? '' : banner || pinfoHTML(t)); }
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
   const seat = mine || orient(t).bottom; // spectators see the bottom seat here when allowed
@@ -460,8 +478,9 @@ function renderHand() {
   const cw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
   // the bidding box below is as wide as a full 13-card hand
-  document.documentElement.style.setProperty('--handW', Math.round(cw + 12 * Math.min(cw * 0.5, (w - cw - 4) / 12)) + 'px');
-  el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : '') + (legal.includes(c) && isHint(c) ? ' hint' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
+  const hw = Math.round(cw + 12 * Math.min(cw * 0.5, (w - cw - 4) / 12)) + 'px';
+  if (document.documentElement.style.getPropertyValue('--handW') !== hw) document.documentElement.style.setProperty('--handW', hw); // feature: perf: a change here restyles the whole page
+  patchHTML(el, [`<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : '') + (legal.includes(c) && isHint(c) ? ' hint' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`]);
   if (typeof Learn !== 'undefined') Learn.decorate(); /* feature: learn */
 }
 const STRAIN_WORD = { C: 'clubs', D: 'diamonds', H: 'hearts', S: 'spades', N: 'notrump' };
@@ -530,7 +549,9 @@ function renderChatPane(t) {
 }
 function renderResultsPane(t) {
   let ns = 0, ew = 0, imps = 0, impN = 0;
-  t.history.forEach(h => { if (h.scoreNS > 0) ns += h.scoreNS; else ew -= h.scoreNS; requestDD(h.hands, false); });
+  // the par column (online tables) needs every board analysed; practice shows no par here, and its boards are analysed
+  // as they end (render) or when opened, so a continued practice doesn't solve its 60 saved boards again /* feature: perf */
+  t.history.forEach(h => { if (h.scoreNS > 0) ns += h.scoreNS; else ew -= h.scoreNS; if (!t.local) requestDD(h.hands, false); });
   const sgn = v => (v > 0 ? '+' : '') + v;
   let head, rowsR, summary = '', note = 'Tap a board to see its hand record.';
   if (t.local) {
@@ -595,15 +616,15 @@ const cShort = c => contractHTML(c, true);
 const againMark = h => h.replayOf ? `<span class="again" title="Board ${h.replayOf} dealt again">=${h.replayOf}</span>` : '';
 function renderTop() {
   const t = T, mine = mySeat(t);
-  $('tName').textContent = t.daily ? Daily.title(t) : t.name; /* feature: daily */
-  $('tCode').textContent = t.local ? '' : (t.private ? 'Private, code ' : 'Code ') + t.id;
+  setText($('tName'), t.daily ? Daily.title(t) : t.name); /* feature: daily */
+  setText($('tCode'), t.local ? '' : (t.private ? 'Private, code ' : 'Code ') + t.id);
   $('lastTrickBtn').disabled = !(t.play && completedTricks(t.play).length);
   $('lastTrickBtn').classList.toggle('hidden', $('lastTrickBtn').disabled);
   const probe = { ...t, play: { ...t.play }, chat: [] };
   $('undoBtn').disabled = !(mine && !t.undoReq && (t.local || t.allowUndo !== false) && doUndo(probe, mine) !== false && (t.phase === 'auction' || t.phase === 'play'));
   $('settingsBtn').classList.toggle('hidden', !isHost(t));
   $('roomBtn').classList.toggle('hidden', !t.match);
-  if (t.match) $('roomBtn').textContent = `Go to ${t.match.room === 'Open' ? 'Closed' : 'Open'} room`;
+  if (t.match) setText($('roomBtn'), `Go to ${t.match.room === 'Open' ? 'Closed' : 'Open'} room`);
   $('undoBtn').classList.toggle('hidden', $('undoBtn').disabled || (!t.local && t.allowUndo === false));
   $('claimBtn').disabled = !(mine && t.phase === 'play' && !t.claim && mine !== dummySeat(t) && t.play.tricks.length > 0);
   $('claimBtn').classList.toggle('hidden', $('claimBtn').disabled);
@@ -879,6 +900,7 @@ function renderSeatRequests() {
   const el = $('seatReqs');
   const reqs = !T.local && isHost(T) && T.requests ? Object.entries(T.requests) : [];
   el.classList.toggle('hidden', !reqs.length);
+  if (!reqs.length && !el.firstChild) return; // feature: perf
   el.innerHTML = reqs.map(([uid, r]) => {
     const free = !T.seats[r.seat] || T.seats[r.seat].kind !== 'human';
     return `<div class="row"><span>${esc(r.name)} would like to sit ${SEAT_NAME[r.seat]}</span><span class="row" style="gap:6px">${free ? `<button class="btn small primary" data-grant="${esc(uid)}">Seat ${esc(r.name)}</button>` : ''}<button class="btn small" data-decline="${esc(uid)}">Decline</button></span></div>`;
@@ -890,7 +912,8 @@ function renderSeatRequests() {
 // ----- spectators chat among themselves while a board is in play -----
 function renderChatHint() {
   const inPlay = T.phase === 'auction' || T.phase === 'play';
-  $('chatInput').placeholder = !T.local && !mySeat(T) && inPlay ? 'Message the other spectators' : 'Table talk';
+  const ph = !T.local && !mySeat(T) && inPlay ? 'Message the other spectators' : 'Table talk';
+  if ($('chatInput').placeholder !== ph) $('chatInput').placeholder = ph;
 }
 
 // ----- play under the same name on a second device -----
@@ -1018,7 +1041,7 @@ function startReplay(h, scroll) {
 // where the game stands: a queued move is only sent if nobody has bid or played since
 function playMark(t) { return [t.board, t.phase, t.auction.length, t.play.tricks.reduce((n, tr) => n + tr.cards.length, 0), !!t.claim].join(':'); }
 
-function showWatchers() { $('watchers').textContent = watchers ? `${watchers} watching` : ''; }
+function showWatchers() { setText($('watchers'), watchers ? `${watchers} watching` : ''); }
 
 // ---------- hints (practice only, an option) ----------
 // What the robot would do in your seat: its call with the system's meaning of it, or its card (the solver's

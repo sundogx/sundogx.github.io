@@ -78,7 +78,17 @@ function ddFail() { // give up for now; try again when the connection returns or
 function ddDropWorkers() { for (const w of DD.workers) { w.onmessage = w.onerror = null; try { w.terminate(); } catch (e) { } } DD.workers = []; }
 function ddRetry() { if (DD.failed) { DD.failed = false; ddDropWorkers(); if (T) renderSide(true); } }
 window.addEventListener('online', ddRetry);
+/* feature: perf */ // Each solver worker holds 20-30 MB. When the analysis has nothing left to do for a while (most of a board, as
+// the analysis runs when a board ends), its workers are closed; they are made again for the next job.
+const DD_IDLE_MS = 30e3;
+let ddIdleTimer = 0;
+function ddIdleCheck() {
+  clearTimeout(ddIdleTimer); ddIdleTimer = 0;
+  if (!DD.workers.length || DD.queue.length || DD.workers.some(w => w.job)) return;
+  ddIdleTimer = setTimeout(() => { ddIdleTimer = 0; if (!DD.queue.length && !DD.workers.some(w => w.job)) ddDropWorkers(); }, DD_IDLE_MS);
+}
 function pumpDD() {
+  ddIdleCheck();
   if (DD.failed || !DD.queue.length) return; // workers are made when there is work
   if (!DD.workers.length) {
     try {
@@ -216,7 +226,13 @@ function ddRunOf(legal, hands, trick) {
   return true;
 }
 let reviewWait = 0;
+let reviewIdle = 0;
 function pumpReview() {
+  clearTimeout(reviewIdle); reviewIdle = 0;
+  if (!PlayDD.cur && !PlayDD.queue.length && PlayDD.w) reviewIdle = setTimeout(() => { // feature: perf: nothing to check: free its memory
+    reviewIdle = 0; if (PlayDD.cur || PlayDD.queue.length || !PlayDD.w) return;
+    try { PlayDD.w.terminate(); } catch (e) { } PlayDD.w = null;
+  }, DD_IDLE_MS);
   if (PlayDD.cur || PlayDD.failed || !PlayDD.queue.length) return;
   if (ddRobotBusy()) { if (!reviewWait) reviewWait = setTimeout(() => { reviewWait = 0; pumpReview(); }, 300); return; } // a robot is thinking: it goes first (one poll at a time)
   // the board in the open hand record goes first
