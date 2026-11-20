@@ -41,14 +41,34 @@ const Daily = {
     const h = t.history.find(x => x.board <= Daily.BOARDS && !x.replayOf && !t.dailyPosted[x.board]);
     if (!h || navigator.onLine === false) return;
     Daily.busy = true; Daily.lastTry = Date.now();
-    const c = h.contract;
     fetch(API_BASE + '/api/daily', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ date: t.daily, board: h.board, secret: me.secret, name: me.name || 'Player', contract: c ? { level: c.level, strain: c.strain, declarer: c.declarer, doubled: c.doubled || 0 } : null, declTricks: c ? h.declTricks : null }),
-    }).then(r => {
-      // posted, already there, or refused for good (an old date): don't send it again
+      body: JSON.stringify({ date: t.daily, board: h.board, secret: me.secret, name: me.name || 'Player', ...Daily.record(h) }),
+    }).then(async r => {
+      // posted, already there, or refused for good (an old date, a result the server's replay doesn't accept): don't send it again
       if (r.ok || (r.status >= 400 && r.status < 500 && r.status !== 429)) { t.dailyPosted[h.board] = true; Daily.lastTry = 0; if (typeof savePractice === 'function') savePractice(); }
+      if (!r.ok && r.status !== 409 && r.status !== 429 && r.status < 500) {
+        const e = await r.json().catch(() => ({}));
+        toast(`Board ${h.board} was not added to the leaderboard${e.error ? ': ' + e.error : ''}`, 5000);
+      }
     }).catch(() => {}).finally(() => { Daily.busy = false; });
+  },
+  // What the server replays (src/worker.js dailyCheck): the calls from the dealer, the cards in order, and for a
+  // board that ended in a claim the tricks it gave declarer's side of those left. The server deals the board itself
+  // and works out the contract, tricks and score.
+  record(h) {
+    const rec = { auction: h.auction.map(a => a.call), play: (h.tricks || []).flatMap(tr => tr.cards.map(pc => pc.card)) };
+    if (h.contract && rec.play.length < 52) rec.claim = h.declTricks - tricksWon({ tricks: h.tricks || [] }, h.contract).decl;
+    return rec;
+  },
+  // The server's claim check (src/worker.js dailyCheck): N-S may get no more of the remaining tricks than they take
+  // double dummy, found within a node budget the free plan's CPU limit allows. The same code with the same budget
+  // gives the same answer here, so at a daily table the robots turn down (and don't make) a claim the server
+  // couldn't confirm, and play goes on, instead of the board being refused for the leaderboard afterwards.
+  CLAIM_NODES: 20000,
+  serverTakes(t, by, n) {
+    const left = 13 - completedTricks(t.play).length;
+    return claimAccept(t, 'N', sideOf(by) === 'NS' ? n : left - n, Daily.CLAIM_NODES);
   },
   async showLeaderboard(board) {
     const t = T; if (!t || !t.daily) return;
@@ -86,6 +106,15 @@ const Daily = {
     btn.textContent = !cur ? 'Daily deals' : cur.phase === 'done' && cur.board >= Daily.BOARDS ? 'Daily deals (done)' : `Daily deals, board ${cur.board} of ${Daily.BOARDS}`;
   },
 };
+// robots' claim answers and their own claims (js/table.js resolveRobotClaim and robotClaim call these globals)
+if (typeof claimAnswer === 'function') {
+  const answer = claimAnswer;
+  claimAnswer = (t, by, n, ...a) => answer(t, by, n, ...a) && (!t.daily || Daily.serverTakes(t, by, n));
+}
+if (typeof robotClaimCount === 'function') {
+  const count = robotClaimCount;
+  robotClaimCount = (t, seat, ...a) => { const n = count(t, seat, ...a); return n != null && t.daily && !Daily.serverTakes(t, seat, n) ? null : n; };
+}
 document.addEventListener('click', e => {
   if (e.target.closest('#dailyBtn')) Daily.start();
   else if (e.target.closest('[data-daily-lb]')) Daily.showLeaderboard();

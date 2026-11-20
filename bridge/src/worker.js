@@ -1112,35 +1112,51 @@ async function dailyRoute(req, env, path) {
   const secret = String(b.secret || '');
   if (secret.length < 16 || secret.length > 200) return json({ error: 'bad request' }, 400);
   const name = cleanName(b.name) || 'Player';
-  let contract = null, tricks = null;
-  if (b.contract != null) {
-    const c = b.contract;
-    if (typeof c !== 'object' || !Number.isInteger(c.level) || c.level < 1 || c.level > 7 || !['C', 'D', 'H', 'S', 'N'].includes(c.strain)
-      || !SEATS.includes(c.declarer) || ![0, 1, 2].includes(c.doubled ?? 0)) return json({ error: 'bad contract' }, 400);
-    if (!Number.isInteger(b.declTricks) || b.declTricks < 0 || b.declTricks > 13) return json({ error: 'bad tricks' }, 400);
-    contract = { level: c.level, strain: c.strain, declarer: c.declarer, doubled: c.doubled ?? 0 };
-    tricks = b.declTricks;
-  }
-  // cheap anti-cheat: the board is dealt here from the same seed ('daily:<date>', board n). If the page sends its
-  // auction (calls from the dealer, as strings or { call }), it must be a legal auction on that board that ends in
-  // the posted contract (or passes out).
-  if (b.auction != null) {
-    const au = b.auction;
-    if (!Array.isArray(au) || au.length > 60 || !au.every(x => typeof x === 'string' || (x && typeof x.call === 'string'))) return json({ error: 'bad auction' }, 400);
-    const t = G.newTable({ name: 'daily', local: true });
-    t.seed = 'daily:' + date; t.board = board - 1; G.startBoard(t);
-    for (const x of au) {
-      const call = typeof x === 'string' ? x : x.call;
-      if (t.phase !== 'auction' || !G.legalCalls(t.dealer, t.auction).includes(call) || G.A.call(t, G.turnSeat(t), call) === false) return json({ error: 'bad auction' }, 400);
-    }
-    if (t.phase === 'auction') return json({ error: 'bad auction' }, 400);
-    const tc = t.contract;
-    const same = tc ? !!contract && tc.level === contract.level && tc.strain === contract.strain && tc.declarer === contract.declarer && (tc.doubled || 0) === contract.doubled : !contract;
-    if (!same) return json({ error: 'contract does not match the auction' }, 400);
-  }
-  // the score is worked out here, from the contract and tricks, never taken from the page
+  // The page sends the whole board: the calls from the dealer, the cards in the order played, and for a board that
+  // ended in a claim, how many of the remaining tricks the claim gave declarer's side. The board is dealt here from
+  // the same seed and replayed with the shared rules; the contract, tricks and score all come from that replay,
+  // never from the page. (Pages from before this sent only a contract and a trick count.)
+  if (b.auction == null) return json({ error: 'This page is out of date: reload it to post daily results' }, 400);
+  const v = dailyCheck(date, board, b);
+  if (v.error) return json({ error: v.error }, 400);
+  const { contract, tricks } = v;
   const score = contract ? G.scoreNS(contract, tricks, G.boardVul(board)) : 0;
   const ip = ipGroup(req.headers.get('cf-connecting-ip') || 'local');
   const r = await dailyStub(env, date).dailyPost({ uid: await idFromSecret(secret), name, board, contract, declTricks: tricks, score }, await idFromSecret('ip:' + ip));
   return json(r.error ? { error: r.error } : r, r.status || 200);
+}
+// Node budget for checking a daily claim (about 0.4 microseconds a node, as for a claim at an online table). Past it
+// only a claim within the sure winners counts (claimAccept's fallback); anything more is refused.
+const DAILY_CLAIM_NODES = 20000;
+const DAILY_RANKS = '23456789TJQKA';
+// Replays a posted daily board on the deal from its seed: { auction: ['1S', 'P', ...], play: ['HK', ...], claim }.
+// Returns { contract, tricks } (both null when passed out) or { error }. Robots' calls and cards are checked like
+// anyone's. A board the page turned round ("rotate so I'm declarer") replays unchanged: the calls and cards are
+// the same in the same order, only the seat names moved, and N-S stays N-S.
+function dailyCheck(date, board, b) {
+  const au = b.auction, cards = b.play == null ? [] : b.play;
+  if (!Array.isArray(au) || au.length < 4 || au.length > 320 || !au.every(x => typeof x === 'string' && x.length <= 2)) return { error: 'bad auction' };
+  if (!Array.isArray(cards) || cards.length > 52 || !cards.every(x => typeof x === 'string' && x.length === 2)) return { error: 'bad play' };
+  const t = G.newTable({ name: 'daily', local: false }); // not local: finishing the board doesn't simulate the robots' own version
+  t.seed = 'daily:' + date; t.board = board - 1; G.startBoard(t);
+  for (const call of au) if (t.phase !== 'auction' || G.A.call(t, G.turnSeat(t), call) === false) return { error: 'illegal auction' };
+  if (t.phase === 'auction') return { error: 'the auction is not over' };
+  if (!t.contract) return cards.length || b.claim != null ? { error: 'a passed-out board has no play' } : { contract: null, tricks: null };
+  for (const card of cards) if (t.phase !== 'play' || G.A.card(t, G.turnSeat(t), card) === false) return { error: 'illegal card' };
+  const c = t.contract, contract = { level: c.level, strain: c.strain, declarer: c.declarer, doubled: c.doubled || 0 };
+  if (t.phase === 'done') return b.claim != null ? { error: 'no claim after the last card' } : { contract, tricks: t.history[t.history.length - 1].declTricks };
+  // ended in a claim: claim = the tricks declarer's side takes of the remaining ones (the trick in progress included)
+  const done = G.completedTricks(t.play), left = 13 - done.length, n = b.claim;
+  if (!Number.isInteger(n) || n < 0 || n > left) return { error: 'the play is not finished' };
+  const side = s => G.SEATS.indexOf(s) & 1;
+  const beats = (x, y) => x[0] === y[0] ? DAILY_RANKS.indexOf(x[1]) > DAILY_RANKS.indexOf(y[1]) : x[0] === c.strain;
+  let won = 0;
+  for (const tr of done) { let w = tr.cards[0]; for (const pc of tr.cards) if (beats(pc.card, w.card)) w = pc; if (side(w.seat) === side(c.declarer)) won++; }
+  // The leaderboard ranks N-S scores, so the claim may give N-S no more of the remaining tricks than they take double
+  // dummy, whoever claimed: a claim by N-S is checked as a robot opponent checks one, and an E-W "concession" can't
+  // hand N-S tricks they couldn't win. Giving N-S fewer (a concession, an E-W claim that N-S accepted) only lowers
+  // their own score, so it stands.
+  const ns = side(c.declarer) === 0 ? n : left - n;
+  if (!G.claimAccept(t, 'N', ns, DAILY_CLAIM_NODES)) return { error: 'claim refused: more than double dummy allows, or too complex to check' };
+  return { contract, tricks: won + n };
 }
