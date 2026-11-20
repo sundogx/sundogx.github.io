@@ -632,9 +632,11 @@ function renderTop() {
   $('claimBtn').classList.toggle('hidden', $('claimBtn').disabled);
   $('hintBtn').classList.toggle('hidden', !hintOK(t));
 }
+let explainBoard = null;
 function render() {
   if (!T) return;
   autoTab(T);
+  if (T.board !== explainBoard) { explainBoard = T.board; hideExplain(); } // a bubble opened by keyboard has no tap to close it
   if (hint && hint.key !== hintKey(T)) { hint = null; if ($('explainPop') && $('explainPop').dataset.hint) hideExplain(); }
   if (selCard) { const ts = turnSeat(T); if (T.phase !== 'play' || !ts || !myLegal(T, ts).includes(selCard)) selCard = null; }
   const ae = document.activeElement; let keep = null;
@@ -1020,7 +1022,14 @@ function swResume() { // after that reload
 const drawerMode = window.matchMedia('(orientation: landscape) and (max-height: 520px)');
 function syncSideInert() { $('side').inert = drawerMode.matches && !$('side').classList.contains('open'); }
 function setSide(open) { $('side').classList.toggle('open', open); $('sideBtn').setAttribute('aria-expanded', open); syncSideInert(); if (open) { const t = $('side').querySelector('[aria-selected=true]'); if (t) t.focus(); } else $('sideBtn').focus(); recheckUnread(); }
-drawerMode.addEventListener('change', syncSideInert); syncSideInert();
+// turned upright the sidebar sits under the table again: close the drawer so turning back doesn't reopen it
+drawerMode.addEventListener('change', () => { if (!drawerMode.matches && $('side').classList.contains('open')) { $('side').classList.remove('open'); $('sideBtn').setAttribute('aria-expanded', 'false'); } syncSideInert(); }); syncSideInert();
+// the open drawer has no backdrop: a tap on the table beside it closes the drawer (and does nothing else)
+document.addEventListener('click', e => {
+  if (!drawerMode.matches || !$('side').classList.contains('open') || $('tableView').classList.contains('hidden')) return;
+  if (e.target.closest('#side, #sideBtn, #modalRoot, .toast')) return;
+  e.preventDefault(); e.stopPropagation(); setSide(false);
+}, true);
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('side').classList.contains('open') && !$('modalRoot').firstChild) setSide(false); });
 $('sideBtn').addEventListener('click', () => {
   if (drawerMode.matches) { if (!$('side').classList.contains('open') && $('sideBtn').classList.contains('unread')) { tabAuto = false; selectTab('chat'); } setSide(!$('side').classList.contains('open')); return; }
@@ -1157,6 +1166,8 @@ function autoNext(t) {
   autoNextAt = key;
   setTimeout(() => {
     if (!T || !Prefs.autoNext || T.phase !== 'done' || T.id + ':' + T.board !== key || $('modalRoot').firstChild || !$('tableView').querySelector('[data-next]')) return;
+    // in another tab or app: wait, so the result is there to see when you come back (the countdown starts again then)
+    if (document.hidden) { autoNextAt = null; document.addEventListener('visibilitychange', () => { if (T) autoNext(T); }, { once: true }); return; }
     doAct('next');
   }, Math.round(5000 * speedMult()));
 }
@@ -1394,8 +1405,9 @@ function autoTab(t) {
   if (want && currentTab() !== 'results') selectTab(want);
 }
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { tabAuto = false; selectTab(b.dataset.tab); }));
-let resizeFrame = 0;
-window.addEventListener('resize', () => { if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; if (T) { renderFelt(); renderHand(); } }); });
+let resizeFrame = 0, resizeW = window.innerWidth;
+// turning the phone redraws the table under a call's bubble: close it (not when only the height changes, as when the address bar slides)
+window.addEventListener('resize', () => { if (window.innerWidth !== resizeW) { resizeW = window.innerWidth; hideExplain(); } if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; if (T) { renderFelt(); renderHand(); } }); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('modalRoot').firstChild) closeModal(); });
 
 // ---------- lobby ----------
