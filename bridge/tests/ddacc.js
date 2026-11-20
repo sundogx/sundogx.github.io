@@ -9,6 +9,8 @@
 //   FROM=n: skip the first n cards (FROM=1 leaves the opening lead out, for options that can't change it).
 //   SIDE=decl|def: only the declaring side's or the defenders' decisions (default both, reported apart).
 //   TO=n: stop after card n. LEADDD=1: the opening lead played is the solver's (the page robot's), not botLead.
+//   AOFF=a,b: BID_OFF keys (js/bidding.js) for the current options' choices only, e.g. AOFF=xpsh compares shown() with and
+//   without that feature (the new options' choices use js/bidding.js as it is).
 //   BY=trick: also report by stage (trick 1, 2-3, 4-6, 7-9, 10-13) and whether the player leads (L) or follows (F).
 // The sampler's choices are cached on disk (tests/simcache.js; NOCACHE=1 to switch off): a later run with the same code
 // reuses them (the current options' choices when only NEW changes, all of them for boards already done); their ms is
@@ -53,7 +55,8 @@ if (isMainThread) {
   const merge = (base, X) => ({ ...base, ...X, declarer: { ...base.declarer, ...X, ...X.declarer }, defender: { ...base.defender, ...X, ...X.defender } });
   let solve = null, realSolve = null;
   const cache = require('./simcache.js').openCache('ddacc', [__filename]);
-  const env = JSON.stringify([process.env.ODD || '', process.env.DBL || '', process.env.LEADDD || '']);
+  const env = JSON.stringify([process.env.ODD || '', process.env.DBL || '', process.env.LEADDD || ''].concat(process.env.AOFF ? [process.env.AOFF] : []));
+  const AOFF = (process.env.AOFF || '').split(',').filter(Boolean), withOff = async (off, f) => { const o = globalThis.BID_OFF; globalThis.BID_OFF = off; try { return await f(); } finally { globalThis.BID_OFF = o; } };
   const choose = async (key, view, o) => { // ddChoose, through the cache: { card, ms } (or the full result with DUMP)
     if (process.env.DUMP) return D.ddChoose(view, solve, o);
     const k = JSON.stringify([seed, env, ...key]); let r = cache.get(k);
@@ -82,7 +85,7 @@ if (isMainThread) {
           const v0 = D.ddView(t, s, CUR);
           if (D.ddWorthIt(v0)) {
             const o0 = { ...CUR, prefer, rand: seededRand(seed + ':c:' + g + ':' + i) }, o1 = { ...merge(CUR, NEW), prefer, rand: seededRand(seed + ':c:' + g + ':' + i) };
-            const a = await choose(['a', g, i, CUR], v0, o0), b = process.env.NEW ? (NEW.heur ? { card: prefer, ms: 0 } : await choose(['b', g, i, CUR, NEW], D.ddView(t, s, o1), o1)) : a; // NEW='{"heur":1}': the heuristic card (Beginner, js/learn.js)
+            const a = AOFF.length ? await withOff(AOFF, () => choose(['a', g, i, CUR], D.ddView(t, s, CUR), o0)) : await choose(['a', g, i, CUR], v0, o0), b = process.env.NEW ? (NEW.heur ? { card: prefer, ms: 0 } : await choose(['b', g, i, CUR, NEW], D.ddView(t, s, o1), o1)) : a; // NEW='{"heur":1}': the heuristic card (Beginner, js/learn.js)
             if (a && b) {
               // the real deal, solved for the player to move: tricks for its side from here with each card
               const real = {}; for (const x of SEATS) real[x] = remainingHand(hands, t.play, x);
