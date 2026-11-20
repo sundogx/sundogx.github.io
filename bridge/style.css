@@ -107,7 +107,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 /* side by side: the sidebar is as tall as the table (.felt height), and the chat log fills it */
 /* the table's height: as tall as the window allows while the hand and bidding box still fit below it */
 :root { --vh: 100vh; }
-@supports (height: 100dvh) { :root { --vh: 100dvh; } }
+@supports (height: 100svh) { :root { --vh: 100svh; } } /* svh, not dvh: dvh changes whenever a phone's address bar slides in or out, which resized the table mid-board */
 /* one table height for the auction and the play (room for the bidding box below it), so the table never changes
    size during a board (owner, 2026-11-20) */
 #tableView, #tableView.bidding { --feltH: clamp(360px, calc(var(--vh) - 380px), 530px); }
@@ -245,10 +245,10 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .fan .card .cr, .fan .card .cs { font-size: calc(var(--cw) * .36); left: 5px; }
 .fan .card .cr { top: 4px; } .fan .card .cs { top: calc(var(--cw) * .36 + 6px); }
 .fan .card.legal { cursor: pointer; transform: translateY(-10px); }
-.fan .card.legal:focus-visible { background: #fffbea; box-shadow: inset 0 0 0 1px #c9a227, -1px 0 0 #0003; outline: none; }
-@media (hover: hover) { .fan .card.legal:hover { background: #fffbea; box-shadow: inset 0 0 0 1px #c9a227, -1px 0 0 #0003; outline: none; } } /* a phone keeps :hover on the last tapped spot, which would highlight the card that slides under the finger */
+.fan .card.legal:focus-visible { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass), -1px 0 0 #0003; outline: none; } /* same as dummy's cards */
+@media (hover: hover) { .fan .card.legal:hover { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass), -1px 0 0 #0003; outline: none; } } /* a phone keeps :hover on the last tapped spot, which would highlight the card that slides under the finger */
 .fan .card.dim { background: #c4c4c4; cursor: default; }
-.fan .card.sel { background: #fff3c2; box-shadow: inset 0 0 0 1.5px #b88a00, -1px 0 0 #0003; }
+.fan .card.sel { background: #ffe680; box-shadow: inset 0 0 0 3px #b88a00, -1px 0 0 #0003; } /* same as dummy's selected card */
 @media (prefers-reduced-motion: reduce) { .fan .card { transition: none; } }
 
 /* auction grid */
