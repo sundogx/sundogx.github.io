@@ -364,6 +364,7 @@ function robotDDWorker() {
   w.busy = new Map(); // requests the worker hasn't answered yet (also those the page stopped waiting for): k -> sent at
   w.onmessage = e => {
     const m = e.data, f = RobotDD.wait.get(m.k);
+    if (m.claim && typeof robotClaimNote === 'function') robotClaimNote(m.claim); // the robot's claim, worked out there (js/table.js robotClaim)
     if (m.preMs != null) { if (f && f.pre) f.pre(m.preMs); return; } // the worker worked out prefer first (robotDDSolve)
     w.busy.delete(m.k);
     if (m.error) { RobotDD.fails++; console.warn('robot solver:', m.error); } else if (m.card) RobotDD.fails = 0;

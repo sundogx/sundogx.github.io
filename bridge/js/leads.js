@@ -38,8 +38,11 @@ function leadShown(auction, seat, vul) {
   try { if (typeof shown === 'function') return shown(auction, seat, vul); } catch (e) { }
   return null;
 }
-function leadLimits(auction, seat, vul) {
-  const k = leadDD().ddAuctionLimits(auction, seat, vul);
+// X (test knob, off; ddView's opts.limx through leadView): js/ddplay.js's DD_LIMX limits for the lead too. Measured flat
+// (round 13 ddlim2, tests/ddacc-lim.js TO=1 on boards where X changes a limit: 6,000 held-out boards, 712 leads,
+// -0.031 +- 0.033 IMPs, +0.006 +- 0.007 tricks), so the lead keeps the plain limits.
+function leadLimits(auction, seat, vul, X) {
+  const k = leadDD().ddAuctionLimits(auction, seat, vul, true, false, X || {});
   const info = leadShown(auction, seat, vul);
   if (info) {
     if (info.ptsMax < 37) k.hcpMax = Math.min(k.hcpMax, info.ptsMax + (info.nt ? 0 : 1));
@@ -92,9 +95,11 @@ function leadFeatures(hand, s, auction, contract, seat, ctx) {
   return LEAD_FEATURES.map(n => f[n] || 0);
 }
 function leadHcp(cs) { return cs.reduce((a, c) => a + Math.max(0, rankOf(c) - 8), 0); }
-function leadContext(hand, auction, contract, seat) {
+// vul: the board's vulnerability, passed on to shown() (left out before round 14; no effect yet: shown() reads each call
+// from its table's ranges, and vulnerability only enters the hand tests; identical on 48,000 seat readings).
+function leadContext(hand, auction, contract, seat, vul) {
   const decl = contract.declarer, dummy = partnerOf(decl), partner = partnerOf(seat);
-  const pInfo = leadShown(auction, partner), dInfo = leadShown(auction, decl), mInfo = leadShown(auction, dummy);
+  const pInfo = leadShown(auction, partner, vul), dInfo = leadShown(auction, decl, vul), mInfo = leadShown(auction, dummy, vul);
   const pLen = {}, oLen = {}, bidSuits = new Set();
   for (const s of SUITS) {
     pLen[s] = pInfo && pInfo.len ? pInfo.len[s] || 0 : 0;
@@ -126,9 +131,9 @@ const LEAD_W = {
   S: [-0.01, 0.04, 0.1, 0.09, -0.06, 0.12, 0.02, 0.12, 0.01, -0.17, -0.03, -0.08, -0.03, 0.04, 0.13, -0.05, -0.07, -0.03, 0.02, -0.01, -0.05, 0, 0.04, 0.07, 0],
 };
 // Prior per suit in tricks (higher is a better lead). Returns { suit: value } for the suits the leader holds.
-function leadPrior(hand, auction, contract, seat, W) {
+function leadPrior(hand, auction, contract, seat, W, vul) {
   W = W || LEAD_W[contract.strain === 'N' ? 'N' : 'S'];
-  const ctx = leadContext(hand, auction, contract, seat), out = {};
+  const ctx = leadContext(hand, auction, contract, seat, vul), out = {};
   for (const s of SUITS) {
     if (!hand.some(c => c[0] === s)) continue;
     const f = leadFeatures(hand, s, auction, contract, seat, ctx);
@@ -138,8 +143,8 @@ function leadPrior(hand, auction, contract, seat, W) {
   return out;
 }
 // The heuristic robot's opening lead.
-function botLead(hand, auction, contract, seat) {
-  const p = leadPrior(hand, auction, contract, seat);
+function botLead(hand, auction, contract, seat, vul) {
+  const p = leadPrior(hand, auction, contract, seat, null, vul);
   let best = null;
   for (const s in p) if (best === null || p[s] > p[best]) best = s;
   return leadCardOf(hand.filter(c => c[0] === best), contract.strain);
@@ -164,10 +169,10 @@ function leadValues(view, cands, results, metric = LEAD_METRIC) {
 }
 // Adds what the lead needs to a robot's view (js/ddplay.js ddView calls it before the opening lead): the
 // auction limits for the sampler, and the prior. Done where the view is made, where js/bidding.js is loaded.
-function leadView(view, t) {
+function leadView(view, t, opts = {}) {
   const auction = t.auction || [];
-  for (const s of SEATS) if (!view.known[s]) view.limits[s] = leadLimits(auction, s, t.vul);
-  view.prior = leadPrior(view.known[view.seat], auction, t.contract, view.seat);
+  for (const s of SEATS) if (!view.known[s]) view.limits[s] = leadLimits(auction, s, t.vul, opts.limx);
+  view.prior = leadPrior(view.known[view.seat], auction, t.contract, view.seat, null, opts.leadNoVul ? undefined : t.vul); // leadNoVul: test knob, the pre-round-14 reading
   return view;
 }
 // view: ddView (with leadView). solve(job) -> Promise<{card: tricks}>. Returns { card, stats, samples, ms } or null.

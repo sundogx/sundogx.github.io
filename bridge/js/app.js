@@ -619,6 +619,7 @@ const againMark = h => h.replayOf ? `<span class="again" title="Board ${h.replay
 function renderTop() {
   const t = T, mine = mySeat(t);
   setText($('tName'), t.daily ? Daily.title(t) : t.name); /* feature: daily */
+  $('dailyLeave').classList.toggle('hidden', !t.daily); /* ux3: a direct way out of daily deals on phones, like the other practice screens */
   setText($('tCode'), t.local ? '' : (t.private ? 'Private, code ' : 'Code ') + t.id);
   $('lastTrickBtn').disabled = !(t.play && completedTricks(t.play).length);
   $('lastTrickBtn').classList.toggle('hidden', $('lastTrickBtn').disabled);
@@ -672,7 +673,7 @@ function render() {
 
 // ---------- modals ----------
 let modalReturn = null;
-function setBackgroundInert(on) { for (const id of ['home', 'tableView']) { const el = $(id); if (el) el.inert = on; } }
+function setBackgroundInert(on) { $('main').inert = on; } // ux3: all of <main>, so the practice, explorer and lead screens behind a dialog are inert too (they were focusable)
 function closeModal() {
   $('modalRoot').innerHTML = ''; openRecord = null; replayDraw = null; setBackgroundInert(false);
   const r = modalReturn; modalReturn = null;
@@ -1384,7 +1385,8 @@ $('roomBtn').addEventListener('click', () => {
   if (mySeat(T)) doAct('standUp');
   setTimeout(() => openOnline(code), 150);
 });
-$('soundBtn').addEventListener('click', () => { soundOn = !soundOn; $('soundBtn').textContent = soundOn ? 'Sound on' : 'Sound off'; $('soundBtn').setAttribute('aria-pressed', soundOn); if (soundOn) beep(); });
+$('dailyLeave').addEventListener('click', () => $('leaveBtn').click());
+$('soundBtn').addEventListener('click', () => { soundOn = !soundOn; $('soundBtn').textContent = soundOn ? 'Sound: on' : 'Sound: off'; $('soundBtn').setAttribute('aria-pressed', soundOn); if (soundOn) beep(); });
 $('chatSend').addEventListener('click', sendChat);
 $('chatInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 function sendChat() { let v = $('chatInput').value.trim(); if (!v) return; $('chatInput').value = ''; if (typeof ChatSym !== 'undefined') v = ChatSym.convert(v); /* feature: chatsym */ doAct('chat', v); }
@@ -1401,7 +1403,7 @@ function autoTab(t) {
   if (!tabPhaseKey || !tabPhaseKey.startsWith(t.id + ':' + t.board + ':')) tabAuto = true; // new board
   tabPhaseKey = key;
   if (!tabAuto) return;
-  const want = t.phase === 'auction' ? 'chat' : t.phase === 'play' ? 'auction' : null;
+  const want = t.phase === 'auction' && t.chat && t.chat.length ? 'chat' : t.phase === 'auction' || t.phase === 'play' ? 'auction' : null; // ux3: never open on an empty chat (owner: nothing shown when empty)
   if (want && currentTab() !== 'results') selectTab(want);
 }
 document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => { tabAuto = false; selectTab(b.dataset.tab); }));

@@ -374,7 +374,8 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 .bclk.over { color: var(--over); font-weight: 700; }
 .alertrow label.row { flex-wrap: nowrap; flex: none; }
 .topbar .more { display: contents; }
-#moreBtn, #sideBtn, .sidehead { display: none; }
+#moreBtn, #sideBtn, .sidehead, #dailyLeave { display: none; }
+@media (max-width: 560px) { #dailyLeave:not(.hidden) { display: inline-block; order: 1; } } /* ux3: after More, at the right end */
 @media (max-width: 560px) {
   .topbar { gap: 5px; }
   .topbar .btn.small { padding: 4px 7px; } /* Last trick, Undo, Claim, Hint, Chat and More fit one row */
@@ -382,7 +383,7 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
   #moreBtn { display: inline-block; }
   .topbar .more { display: none; }
   .topbar.open .more { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
-  #exLeave, #bpLeave, #fcLeave, #ltLeave { margin-left: auto; } /* ux2: the way out of a practice screen sits at the right end, where Options is on home, not between its controls */
+  #exLeave, #bpLeave, #fcLeave, #ltLeave, #dailyLeave { margin-left: auto; } /* ux2: the way out of a practice screen sits at the right end, where Options is on home, not between its controls */
 }
 .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .replay { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
@@ -556,6 +557,7 @@ table.daily-lb tr.you td { font-weight: 600; }
 /* feature: notify — your own away state */
 .awayme { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 8px; padding: 6px 10px; border: 1px solid var(--ink-soft, #888); border-radius: 6px; background: #fff; color: #222; font-size: 14px; }
 /* feature: notify — lobby filter */
+.modal .box select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; } /* ux3: Options menus styled like the explorer's (were the browser default); touch sizes below still apply */
 .lobbyf select { font: inherit; font-size: 13px; padding: 4px 6px; border: 1px solid #ccd3cf; border-radius: 6px; background: #fff; color: inherit; }
 
 /* feature: share */

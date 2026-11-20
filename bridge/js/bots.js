@@ -1164,8 +1164,10 @@ function sureTricks(t, claimer) {
 // see lie: it must hold for every way those cards could be split between the two hands it can't see (keeping
 // to suits they have shown out of), so the claim needs no finesse or guess. Unseen cards next to each other in
 // rank count as one group (only how many of a group each hand holds is varied). With more layouts than
-// maxLayouts, or past the node budget, the robot doesn't claim.
-function robotClaimCount(t, seat, maxNodes = CLAIM_NODES, maxLayouts = 120) {
+// maxLayouts, or past the node budget, the robot doesn't claim. known: the answer already worked out elsewhere (the
+// page's DD worker, js/dds-worker.js; the same function on the same position), returned as is.
+function robotClaimCount(t, seat, maxNodes = CLAIM_NODES, maxLayouts = 120, known = undefined) {
+  if (known !== undefined) return known;
   const play = t.play, c = t.contract;
   const tr = play.tricks[play.tricks.length - 1];
   if (!tr || tr.cards.length < 4) return null;
@@ -1215,6 +1217,13 @@ function robotClaimCount(t, seat, maxNodes = CLAIM_NODES, maxLayouts = 120) {
     if (r !== true) return null; // fails in some layout (or too big to tell): not obvious
   }
   return v;
+}
+
+// What robotClaimCount's answer depends on (the deal, the cards played, the contract, the seat, the budgets): the key
+// under which the page keeps the worker's answer (js/table.js robotClaim).
+function robotClaimKey(t, seat, maxNodes = CLAIM_NODES, maxLayouts = 120) {
+  return [SEATS.map(s => t.hands[s].join('')).join(','), t.play.tricks.map(tr => tr.leader + tr.cards.map(pc => pc.seat + pc.card).join('')).join('|'),
+    t.contract.level + t.contract.strain + t.contract.declarer, seat, maxNodes, maxLayouts].join(';');
 }
 
 // The conservative count used when the exact search is too big: winners that can't be lost (cards in the hand on
@@ -1295,4 +1304,4 @@ function simulateBoard(hands, dealer, vul) {
   const d = tricksWon(t.play, contract).decl;
   return { auction, contract, declTricks: d, scoreNS: scoreNS(contract, d, vul), tricks: t.play.tricks };
 }
-if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botEndStats: () => botEndStats, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : k === "lead" ? BOT_DLEAD_NAMES : k === "follow" ? BOT_FOLLOW_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount };
+if (typeof module !== 'undefined') module.exports = { simulateBoard, botCall, botPlay, botPlayOld, botWhyLast: () => botWhy, botEndStats: () => botEndStats, botFeatures, botFeatureNames: k => k === "switch" ? BOT_SWITCH_NAMES : k === "lead" ? BOT_DLEAD_NAMES : k === "follow" ? BOT_FOLLOW_NAMES : BOT_DISCARD_NAMES, sureTricks, exactTricks, shown, claimSolver, claimPos, claimHolds, claimAccept, claimTopTricks, robotClaimCount, robotClaimKey };

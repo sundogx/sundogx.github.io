@@ -16,8 +16,8 @@ if (typeof require !== 'undefined' && typeof botPlay === 'undefined') globalThis
 // minimum and maximum points and suit lengths, and whether the hand is balanced), plus a few limits shown()
 // doesn't give (ranges of the opening bids, a passed hand). vul: the board's vulnerability (some calls depend on it).
 // full === false: only the minimums from shown() (the earlier sampler, for comparisons in tests/playsim.js).
-// keep2C: a 2C opening raises the minimum to 22 but never lowers a higher one shown later (js/bots.js endgame's reading;
-// without it the minimum is set to 22, as the sampler has always done).
+// A 2C opening raises the minimum to 22 but never lowers a higher one shown later (2C-2D-3N shows 25-27; before round 14
+// the sampler set it to 22, a bug: only 2C...3N auctions change, 22 boards in 30,000). keep2C: unused now (it was this).
 // X (the play sampler's ddView passes DD_LIMX): closer to what the robots' bidding shows (round 12, scratch audit of
 // robot auctions): X.p6c a non-vulnerable 3C opening may hold six clubs (63% did, the limit said 7+); X.pre the most
 // points of a hand that passed throughout after partner's preempt or weak two (cap 7 before: real median 12, p98 16);
@@ -45,7 +45,7 @@ function ddAuctionLimits(auction, seat, vul, full = true, keep2C = false, X = {}
     if (c === 'P') k.hcpMax = Math.min(k.hcpMax, 12);
     else if (c === '1N') { k.hcpMin = Math.max(k.hcpMin, 15); k.hcpMax = Math.min(k.hcpMax, 17); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
     else if (c === '2N') { k.hcpMin = Math.max(k.hcpMin, 20); k.hcpMax = Math.min(k.hcpMax, 21); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
-    else if (c === '2C') k.hcpMin = X.c2 != null ? Math.max(k.hcpMin, X.c2) : keep2C ? Math.max(k.hcpMin, 22) : 22;
+    else if (c === '2C') k.hcpMin = Math.max(k.hcpMin, X.c2 != null ? X.c2 : 22); // never below what shown() read (2C-2D-3N: 25)
     else if (/^1[CDHS]$/.test(c)) { k.hcpMin = Math.max(k.hcpMin, 10); k.hcpMax = Math.min(k.hcpMax, 21); }
     else if (/^[23][DHS]$|^3C$/.test(c)) { k.hcpMax = Math.min(k.hcpMax, 11); k.lenMin[c[1]] = Math.max(k.lenMin[c[1]], c[0] === '2' || (X.p6c && c === '3C' && !isVul(vul, seat)) ? 6 : 7); }
   } else if (auction.filter(a => a.by === seat).every(a => a.call === 'P')) {
@@ -293,7 +293,7 @@ function ddConsistency(view, h, opts = {}, floor = 0) {
           // layout is a less likely lead (the robots lead by the solver plus the prior, people by rules like it)
           if (!ddLeadCards(rem, c.strain).includes(card)) w *= mLead;
           else {
-            const pr = leadPrior(rem, t.auction, c, seat), best = Math.max(...Object.values(pr));
+            const pr = leadPrior(rem, t.auction, c, seat, null, opts.leadNoVul ? undefined : t.vul), best = Math.max(...Object.values(pr));
             w *= Math.exp(-opts.leadBeta * (best - (pr[suitOf(card)] || 0)));
           }
         } else if (bot && !ddEqual(rem, gone, bot, card)) {
@@ -602,4 +602,4 @@ function ddDecide(view, results, weights, opts) {
   return r;
 }
 
-if (typeof module !== 'undefined') module.exports = { ddEnumerate, ddSeatPen, ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddTableRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };
+if (typeof module !== 'undefined') module.exports = { DD_LIMX, ddEnumerate, ddSeatPen, ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddTableRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };

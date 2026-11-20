@@ -224,6 +224,9 @@ function claimAnswer(t, by, n, maxNodes = CLAIM_NODES) {
   claimMemo.set(key, ok);
   return ok;
 }
+// robotClaimCount answers from the page's DD worker (js/dds-worker.js robotClaimPre, passed on by js/analysis.js): key -> n
+const robotClaimPre = new Map();
+function robotClaimNote(c) { if (!c || typeof c.key !== 'string') return; if (robotClaimPre.size >= 16) robotClaimPre.clear(); robotClaimPre.set(c.key, c.n); }
 // A robot on lead at the start of a trick claims when the rest is clear (robotClaimCount in js/bots.js: the
 // double-dummy result, and the same however the cards it can't see lie). Only for its own side's play: a
 // defender robot whose partner is a person leaves that to them; and not when time is up (the robots just finish)
@@ -236,7 +239,10 @@ function robotClaim(t) {
   const done = completedTricks(t.play).length, side = sideOf(by);
   const last = t.robotClaimAt && t.robotClaimAt.b === t.board && t.robotClaimAt.side === side ? t.robotClaimAt.d : -9;
   if (done < last + 2) return false;
-  const n = robotClaimCount(t, by, t.local ? ROBOT_CLAIM_NODES_PAGE : ROBOT_CLAIM_NODES);
+  const nodes = t.local ? ROBOT_CLAIM_NODES_PAGE : ROBOT_CLAIM_NODES;
+  let known; // the page's DD worker may have worked it out already (robotClaimNote), off the main thread
+  if (robotClaimPre.size) { const key = robotClaimKey(t, by, nodes); if (robotClaimPre.has(key)) known = robotClaimPre.get(key); }
+  const n = robotClaimCount(t, by, nodes, undefined, known);
   if (n == null) return false;
   t.robotClaimAt = { b: t.board, d: done, side };
   return A.claim(t, by, n, undefined, true) !== false;

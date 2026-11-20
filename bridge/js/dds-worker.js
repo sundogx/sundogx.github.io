@@ -2,7 +2,8 @@
 //  { k, h, st }               the hand record: one strain of one deal, each declarer's result as it is found
 //  { k, play: view, opts, table? }  a robot's card by double-dummy sampling (js/ddplay.js ddChoose); with table, the
 //                             worker works out opts.prefer (botPlay), says how long that took ({ k, preMs }) and
-//                             sends it back with the card ({ k, card, prefer })
+//                             sends it back with the card ({ k, card, prefer }); also the robot's claim at the start of
+//                             a trick ({ claim: { key, n } } on both messages, robotClaimPre), for js/table.js robotClaim
 //  { k, leadSamples: view, opts }  an opening lead: solver results on sampled layouts (js/leads.js leadSample),
 //                             streamed one by one ({ k, result }) and then all together ({ k, results })
 //  { k, playSamples: view, opts }  a share of the layouts of a card decision (js/ddplay.js ddDeals, ddSolveDeals),
@@ -13,6 +14,18 @@
 // The worker keeps one solver instance for all its solves (ddplay.js ddSolver; tests/ddtest.js checks reuse).
 importScripts('wasm/compiled.js', 'engine.js', 'bidding.js', 'leads.js', 'bots.js', 'ddplay.js'); // create_dds_module; rules helpers; bidding (what calls show); opening leads; the heuristic robot (the sampler's play model); the sampler
 
+// The claim a robot about to lead to a new trick would make (js/table.js robotClaim; the page skips its own search
+// when this answer is there), worked out here so the page's main thread doesn't block on it. seat: the robot's seat
+// (dummy's play is declarer's claim).
+function robotClaimPre(t, seat) {
+  try {
+    const tr = t.phase === 'play' && t.play.tricks[t.play.tricks.length - 1];
+    if (!tr || tr.cards.length < 4 || 13 - t.play.tricks.length < 2) return undefined;
+    const by = seat === partnerOf(t.contract.declarer) ? t.contract.declarer : seat;
+    const nodes = t.local ? ROBOT_CLAIM_NODES_PAGE : ROBOT_CLAIM_NODES, n = robotClaimCount(t, by, nodes);
+    return { key: robotClaimKey(t, by, nodes), n };
+  } catch (err) { return undefined; }
+}
 let modP = null, solver = null;
 const compiled = () => modP || (modP = fetch('wasm/compiled.wasm').then(r => { if (!r.ok) throw new Error('solver not found'); return r.arrayBuffer(); }).then(b => WebAssembly.compile(b)).catch(err => { modP = null; throw err; }));
 async function getSolver() {
@@ -72,13 +85,14 @@ self.onmessage = async e => {
   }
   if (m.play) { // robot card: { k, play: view (only what the robot may see), opts }
     const { k, play, table } = m;
-    let opts = m.opts || {}, prefer = null;
+    let opts = m.opts || {}, prefer = null, claim;
     try {
       // table: the page sent what botPlay needs instead of its card (js/analysis.js robotDDSolve): work it out here
-      if (table) { const t0 = ddNow(); prefer = botPlay(table, play.seat); opts = { ...opts, prefer }; self.postMessage({ k, preMs: ddNow() - t0 }); }
+      // (and the robot's claim, if it is about to lead to a new trick: robotClaimPre; its time counts as prefer's)
+      if (table) { const t0 = ddNow(); claim = robotClaimPre(table, play.seat); prefer = botPlay(table, play.seat); opts = { ...opts, prefer }; self.postMessage({ k, preMs: ddNow() - t0, claim }); }
       const r = await ddChoose(play, await getSolver(), opts);
-      self.postMessage({ k, card: r ? r.card : null, prefer, samples: r ? r.samples : 0, ms: r ? Math.round(r.ms) : 0 });
-    } catch (err) { self.postMessage({ k, card: null, prefer, error: String(err && err.message || err) }); }
+      self.postMessage({ k, card: r ? r.card : null, prefer, claim, samples: r ? r.samples : 0, ms: r ? Math.round(r.ms) : 0 });
+    } catch (err) { self.postMessage({ k, card: null, prefer, claim, error: String(err && err.message || err) }); }
     return;
   }
   const { k, h, st } = m;
