@@ -381,7 +381,21 @@ function robotDDDrop(failed) { // stop this worker; anything waiting gets the he
   RobotDD.wait.clear();
   robotDDDone();
 }
-function robotDDDone() { if (!ddRobotBusy()) setTimeout(pumpDD, 0); } // a robot decision ended: let the analysis go on
+function robotDDDone() { robotDDIdle(); if (!ddRobotBusy()) setTimeout(pumpDD, 0); } // a robot decision ended: let the analysis go on
+/* feature: perf */ // The robots' solver workers (each holds a solver's memory, 20-30 MB) are closed when no robot has used them for
+// a minute: the player went back to the home screen, another page, or is thinking. They are made again (and warmed
+// up during the next auction) when needed.
+const ROBOT_IDLE_MS = 60e3;
+let robotIdleTimer = 0;
+function robotDDIdle() {
+  clearTimeout(robotIdleTimer);
+  robotIdleTimer = setTimeout(() => {
+    robotIdleTimer = 0;
+    if (ddRobotBusy()) { robotDDIdle(); return; }
+    if (RobotDD.w) { try { RobotDD.w.terminate(); } catch (e) { } RobotDD.w = null; }
+    leadWorkersClose();
+  }, ROBOT_IDLE_MS);
+}
 function robotDDCard(t, seat) {
   // "Use BEN robots" (js/benbridge.js, practice only): BEN's card, else (no answer in time, error) the usual robot's
   const ben = typeof BenBridge !== 'undefined' ? BenBridge.card(t, seat) : null;
@@ -399,7 +413,10 @@ function robotDDCardStd(t, seat) {
   // prefer, the heuristic's card (it wins ties: sequence leads, signals), is worked out only where it is used, and
   // for the one-worker decisions (the endgame search makes it several milliseconds, more on a phone) in the worker;
   // when the solver gives no card, the decision resolves to prefer, so robotStep needn't work it out again
-  return robotDDSolve(view, null, lv, { hands: t.hands, play: t.play, contract: t.contract, auction: t.auction, vul: t.vul, local: t.local, phase: t.phase });
+  // ans: a robot opponent would answer this robot's claim (js/table.js resolveRobotClaim), so the worker works out that answer too
+  let ans = false;
+  try { const side = sideOf(controllerOf(t, seat)); ans = SEATS.some(s => sideOf(s) !== side && (occupant(t, controllerOf(t, s)) || {}).kind === 'robot'); } catch (e) { }
+  return robotDDSolve(view, null, lv, { hands: t.hands, play: t.play, contract: t.contract, auction: t.auction, vul: t.vul, local: t.local, phase: t.phase, ans });
 }
 // lv (feature: learn, the practice robot strength): overrides of K, MIN_K, BUDGET_MS, POOL (layouts dealt for the
 // play check), LEAD_K and LEAD_MS (the opening lead's layouts and budget); none = the settings above and below.
@@ -514,5 +531,6 @@ function robotDDWarm() {
   try {
     if (!RobotDD.w) robotDDWorker().postMessage({ warm: true });
     if (RobotDD.LEADS && !LeadDD.ws.length) for (const w of leadWorkers()) w.postMessage({ warm: true });
+    robotDDIdle();
   } catch (e) { }
 }

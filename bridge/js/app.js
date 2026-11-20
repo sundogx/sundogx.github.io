@@ -339,6 +339,8 @@ function trickBoxHTML(t) {
 }
 function vulText(v) { return v === 'None' ? 'Nobody vulnerable' : v === 'Both' ? 'Both vulnerable' : v === 'NS' ? 'N-S vulnerable' : 'E-W vulnerable'; }
 
+let agridEl = null;
+const agridObs = typeof ResizeObserver === 'function' ? new ResizeObserver(es => { for (const e of es) { const g = e.target; agridObs.unobserve(g); if (g === agridEl && g.isConnected) g.scrollTop = g.scrollHeight; } }) : null;
 function renderFelt() {
   const t = T, o = orient(t), mine = mySeat(t);
   const parts = []; feltG = null;
@@ -399,7 +401,9 @@ function renderFelt() {
   patchHTML($('felt'), parts);
   renderPlayInfo(t, t.phase === 'done' && drawerMode.matches && !t.masked && t.history.length ? `<div class="bwrap done">${resultBanner(t)}</div>` : '');
   fitTrick();
-  const g = $('felt').querySelector('.agrid'); if (g) g.scrollTop = g.scrollHeight; // a long auction scrolls; show the latest calls
+  const g = $('felt').querySelector('.agrid'); // a long auction scrolls; show the latest calls
+  /* feature: perf */ // a new grid scrolls once laid out (a ResizeObserver's first call, before the frame is painted), not by forcing a layout now
+  if (g && g !== agridEl && agridObs) { if (agridEl) agridObs.unobserve(agridEl); agridEl = g; agridObs.observe(g); } else if (g) g.scrollTop = g.scrollHeight;
   if (typeof Learn !== 'undefined') Learn.decorate(); /* feature: learn */
 }
 /* feature: perf */ // Redraw only the parts (one element each) whose HTML changed since the last time: a card played usually
@@ -416,14 +420,30 @@ function patchHTML(el, parts) {
   el._kids = [...el.children]; el._parts = el._kids.length === parts.length ? parts : null;
 }
 // Shrink the trick's cards when the middle of the table is too small for them, so they never cover the hands or plates.
+/* feature: perf */ // The middle's size and the trick's card size come from a ResizeObserver (read after the browser's own layout), so
+// drawing a card doesn't force a layout here; a new middle is measured the same way before the frame is painted, and the
+// cards are refitted then if its size differs from the one used.
+let fitSz = null, fitPc = null;
+const fitObs = typeof ResizeObserver === 'function' ? new ResizeObserver(() => {
+  if (!fitPc || !fitPc.isConnected) return;
+  const tr = fitPc.querySelector(':scope > .trick');
+  fitSz = { w: fitPc.clientWidth, h: fitPc.clientHeight, tw: 0, th: 0, tg: 0 };
+  if (tr) { const cs = getComputedStyle(tr), v = n => parseFloat(cs.getPropertyValue(n)) || 0; fitSz.tw = v('--tw'); fitSz.th = v('--th'); fitSz.tg = v('--tg'); fitSz.ok = true; }
+  if (tr) fitTrickTo(tr, fitSz);
+}) : null;
+function fitTrickTo(tr, z) {
+  if (!z.w || !z.tw || !z.th) return;
+  const k = Math.max(0.5, Math.min(1, (z.w - 2) / (2 * (z.tw + z.tg)), (z.h - 2) / (2 * z.th + 8))).toFixed(3);
+  if (tr.style.getPropertyValue('--tk') !== k) tr.style.setProperty('--tk', k);
+}
 function fitTrick() {
   const tr = $('felt').querySelector('.trick'), pc = tr && tr.parentElement;
-  if (!tr || !pc.clientWidth) return;
+  if (!tr) return;
+  if (fitObs && pc !== fitPc) { if (fitPc) fitObs.unobserve(fitPc); fitPc = pc; fitObs.observe(pc); }
+  if (fitObs && fitSz && fitSz.ok) { fitTrickTo(tr, fitSz); return; }
+  if (!pc.clientWidth) return;
   const cs = getComputedStyle(tr), v = n => parseFloat(cs.getPropertyValue(n)) || 0;
-  const tw = v('--tw'), th = v('--th'), tg = v('--tg');
-  if (!tw || !th) return;
-  const k = Math.max(0.5, Math.min(1, (pc.clientWidth - 2) / (2 * (tw + tg)), (pc.clientHeight - 2) / (2 * th + 8)));
-  tr.style.setProperty('--tk', k.toFixed(3));
+  fitTrickTo(tr, { w: pc.clientWidth, h: pc.clientHeight, tw: v('--tw'), th: v('--th'), tg: v('--tg') });
 }
 const TRICK_HOLD_MS = 1700; // a finished trick stays up this long (owner asked for +0.5 s, 2026-11-19)
 const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1;
@@ -469,6 +489,10 @@ const movesOK = t => !t.local && !t.match && isHost(t) && (t.phase === 'done' ||
 const phoneInfo = window.matchMedia('(max-width: 560px), (orientation: landscape) and (max-height: 520px)');
 const pinfoHTML = t => t.contract && t.phase !== 'auction' ? `<div class="pinfo"><p class="pc">${contractHTML(t.contract)}</p>${trickBoxHTML(t)}</div>` : '';
 function renderPlayInfo(t, banner) { setHTML($('playInfo'), !phoneInfo.matches || t.masked ? '' : banner || pinfoHTML(t)); }
+/* feature: perf */ // your hand's width from a ResizeObserver (read after the browser's own layout); if it changes, the hand is
+// drawn again before the frame is painted
+let handW = null, handWUsed = null;
+if (typeof ResizeObserver === 'function') new ResizeObserver(() => { handW = $('myHand').clientWidth; if (T && handW !== handWUsed) renderHand(); }).observe($('myHand'));
 function renderHand() {
   const t = T, el = $('myHand'), mine = mySeat(t);
   const seat = mine || orient(t).bottom; // spectators see the bottom seat here when allowed
@@ -476,7 +500,7 @@ function renderHand() {
   const cards = sortForHand(currentCards(t, seat)); /* feature: suitorder */
   const legal = mine ? myLegal(t, mine) : [];
   const myTurn = legal.length > 0;
-  const w = el.clientWidth || 360;
+  const w = (handW !== null ? handW : el.clientWidth) || 360; handWUsed = handW !== null ? handW : el.clientWidth; /* feature: perf: no forced layout */
   const cw = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cw')) || 64;
   const step = cards.length > 1 ? Math.min(cw * 0.5, (w - cw - 4) / (cards.length - 1)) : 0;
   // the bidding box below is as wide as a full 13-card hand
@@ -1454,7 +1478,7 @@ $('practiceBtn').addEventListener('click', () => startPractice(false));
 $('practiceNew').addEventListener('click', () => typeof PracticeModes !== 'undefined' ? PracticeModes.show() : startPractice(true)); /* feature: minibridge */
 async function api(path, body) {
   const r = await fetch(API_BASE + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
-  if (!r.ok) throw new Error('HTTP ' + r.status);
+  if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; try { e.serverMsg = (await r.json()).error; } catch (_) {} throw e; } /* the server's own message (e.g. the hourly table limit) reaches the toast */
   return r.json();
 }
 $('createBtn').addEventListener('click', async () => {
@@ -1463,7 +1487,7 @@ $('createBtn').addEventListener('click', async () => {
   try {
     const r = await api('/api/tables', { secret: me.secret, name: me.name, tableName: $('tableName').value.trim(), priv: $('privateChk').checked, match: $('matchChk').checked });
     openOnline(r.code);
-  } catch (e) { toast('Could not open the table. Check your connection and try again.'); }
+  } catch (e) { toast(e.status === 429 && e.serverMsg ? e.serverMsg : 'Could not open the table. Check your connection and try again.'); }
   finally { btn.disabled = false; }
 });
 $('joinCodeBtn').addEventListener('click', () => {

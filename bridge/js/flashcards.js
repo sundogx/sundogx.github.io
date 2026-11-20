@@ -176,7 +176,7 @@ function fcClick(e) {
   else if (d.fclevel) { FC.level = +d.fclevel; bxEl('fcBox').innerHTML = bxBoxHTML(FC.card.dealer, FC.card.prefix, FC.level, 'fc'); fcFocus('.st'); }
   else if (d.fccall) fcAnswer(d.fccall);
   else if (d.fcnext) fcNew();
-  else if (d.fcreset) { const topic = FC.stats.topic; localStorage.removeItem('bridge-fc'); FC.stats = fcLoad(); FC.stats.topic = topic; fcStore(); fcRender(); }
+  else if (d.fcreset) { const topic = FC.stats.topic; try { localStorage.removeItem('bridge-fc'); } catch (er) { } /* stab1: storage blocked threw here, and Reset did nothing */ FC.stats = fcLoad(); FC.stats.topic = topic; fcStore(); fcRender(); }
   else if (d.alert) { if (bxEl('explainPop')) hideExplain(); else showExplain(b, d.alert); }
   else return;
   e.stopPropagation();

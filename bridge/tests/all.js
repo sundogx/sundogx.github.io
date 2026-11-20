@@ -7,6 +7,9 @@ const TESTS = [
   ['test.js'], ['rubbertest.js'], ['minitest.js', '200'], ['ddtest.js', '200'], ['bidfuzz.js', '1000'], ['describe.js', '500'],
   ['rulesfuzz.js', '600'], ['sharetest.js'], ['workerbuild.js'], ['sim.js', { last: true }],
 ];
+// js/min/ (the minified copies the page loads) is committed, and later steps regenerate it, so check it first: a stale copy would ship old code.
+{ const c = require('child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'build.mjs'), '--check'], { cwd: path.join(__dirname, '..'), encoding: 'utf8' });
+  if (c.status !== 0) { process.stderr.write((c.stdout || '') + (c.stderr || '') + 'FAILED: js/min/ is stale. Run `node build.mjs` and commit js/min/.\n'); process.exit(1); } }
 const J = Math.max(1, +process.argv[2] || os.cpus().length);
 const res = TESTS.map(() => null);
 let next = 0, shown = 0, failed = 0;

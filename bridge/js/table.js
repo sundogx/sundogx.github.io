@@ -219,14 +219,21 @@ function claimAnswer(t, by, n, maxNodes = CLAIM_NODES) {
   const c = t.contract;
   const key = [playKey(t), SEATS.map(s => t.hands[s].join('')).join(''), c.strain + c.declarer, by + n, maxNodes].join('|');
   if (claimMemo.has(key)) return claimMemo.get(key);
-  const ok = claimAccept(t, by, n, maxNodes);
+  let ok; // the page's DD worker may have worked it out with the robot's claim (robotClaimNote), off the main thread
+  if (claimAnswerPre.size) { const ak = robotClaimKey(t, by, maxNodes) + ';' + n; if (claimAnswerPre.has(ak)) ok = claimAnswerPre.get(ak); }
+  if (ok === undefined) ok = claimAccept(t, by, n, maxNodes);
   if (claimMemo.size >= 64) claimMemo.clear();
   claimMemo.set(key, ok);
   return ok;
 }
 // robotClaimCount answers from the page's DD worker (js/dds-worker.js robotClaimPre, passed on by js/analysis.js): key -> n
-const robotClaimPre = new Map();
-function robotClaimNote(c) { if (!c || typeof c.key !== 'string') return; if (robotClaimPre.size >= 16) robotClaimPre.clear(); robotClaimPre.set(c.key, c.n); }
+// and claimAccept's answer to that claim, when a robot opponent will answer it: answer key -> true/false
+const robotClaimPre = new Map(), claimAnswerPre = new Map();
+function robotClaimNote(c) {
+  if (!c || typeof c.key !== 'string') return;
+  if (robotClaimPre.size >= 16) robotClaimPre.clear(); robotClaimPre.set(c.key, c.n);
+  if (typeof c.akey === 'string' && typeof c.ans === 'boolean') { if (claimAnswerPre.size >= 16) claimAnswerPre.clear(); claimAnswerPre.set(c.akey, c.ans); }
+}
 // A robot on lead at the start of a trick claims when the rest is clear (robotClaimCount in js/bots.js: the
 // double-dummy result, and the same however the cards it can't see lie). Only for its own side's play: a
 // defender robot whose partner is a person leaves that to them; and not when time is up (the robots just finish)

@@ -5,9 +5,9 @@
 // and takes over at once. Pages that were open keep being served from their old copy (and so do the workers they
 // start), are told a new version is ready and reload themselves at a safe moment (app.js, "feature: swreload");
 // the old copy is deleted once no page or worker uses it. The game server (/api) is never cached.
-const CACHE = 'bridge-v70';
-const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
-  'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/skip.js', 'js/leadtrainer.js', 'js/showpoints.js', 'js/autoplay.js', 'js/suitorder.js', 'js/played.js', 'js/share.js', 'js/notify.js', 'js/card.js', 'js/explorer.js', 'js/flashcards.js', 'js/bidpractice.js', 'js/daily.js', 'js/stats.js', 'js/leaks.js', 'js/chatsym.js', 'js/deals.js', 'js/playfrom.js', 'js/rubber.js', 'js/minibridge.js', 'js/learn.js', 'js/ux.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
+const CACHE = 'bridge-v71';
+// The page runs the minified copies in js/min/ (build.mjs); the solver workers load the source files they import. /* feature: perf8 */
+const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png', 'js/engine.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/dds-worker.js', 'js/min/engine.js', 'js/min/par.js', 'js/min/bidding.js', 'js/min/leads.js', 'js/min/bots.js', 'js/min/ddplay.js', 'js/min/table.js', 'js/min/net.js', 'js/min/analysis.js', 'js/min/benbridge.js', 'js/min/deals.js', 'js/min/stats.js', 'js/min/leaks.js', 'js/min/chatsym.js', 'js/min/daily.js', 'js/min/bidpractice.js', 'js/min/card.js', 'js/min/explorer.js', 'js/min/flashcards.js', 'js/min/notify.js', 'js/min/share.js', 'js/min/played.js', 'js/min/suitorder.js', 'js/min/autoplay.js', 'js/min/showpoints.js', 'js/min/skip.js', 'js/min/leadtrainer.js', 'js/min/playfrom.js', 'js/min/rubber.js', 'js/min/minibridge.js', 'js/min/learn.js', 'js/min/app.js', 'js/min/ux.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
 self.addEventListener('install', e => {
   // 'reload' skips the browser's HTTP cache, so a new version really fetches the new files
   // On a first visit (no older copy saved) the page has just downloaded these files, so the browser's own cache may

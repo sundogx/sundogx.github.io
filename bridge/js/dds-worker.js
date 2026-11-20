@@ -3,7 +3,8 @@
 //  { k, play: view, opts, table? }  a robot's card by double-dummy sampling (js/ddplay.js ddChoose); with table, the
 //                             worker works out opts.prefer (botPlay), says how long that took ({ k, preMs }) and
 //                             sends it back with the card ({ k, card, prefer }); also the robot's claim at the start of
-//                             a trick ({ claim: { key, n } } on both messages, robotClaimPre), for js/table.js robotClaim
+//                             a trick ({ claim: { key, n, akey?, ans? } } on both messages, robotClaimPre), for js/table.js robotClaim
+//                             and, when a robot opponent answers it (table.ans), that answer (js/table.js claimAnswer)
 //  { k, leadSamples: view, opts }  an opening lead: solver results on sampled layouts (js/leads.js leadSample),
 //                             streamed one by one ({ k, result }) and then all together ({ k, results })
 //  { k, playSamples: view, opts }  a share of the layouts of a card decision (js/ddplay.js ddDeals, ddSolveDeals),
@@ -23,7 +24,10 @@ function robotClaimPre(t, seat) {
     if (!tr || tr.cards.length < 4 || 13 - t.play.tricks.length < 2) return undefined;
     const by = seat === partnerOf(t.contract.declarer) ? t.contract.declarer : seat;
     const nodes = t.local ? ROBOT_CLAIM_NODES_PAGE : ROBOT_CLAIM_NODES, n = robotClaimCount(t, by, nodes);
-    return { key: robotClaimKey(t, by, nodes), n };
+    const r = { key: robotClaimKey(t, by, nodes), n };
+    // a robot opponent will answer that claim (t.ans, from the page): work out its answer too (js/table.js claimAnswer)
+    if (n != null && t.ans) { const an = t.local ? CLAIM_NODES_PAGE : CLAIM_NODES; r.akey = robotClaimKey(t, by, an) + ';' + n; r.ans = claimAccept(t, by, n, an); }
+    return r;
   } catch (err) { return undefined; }
 }
 let modP = null, solver = null;

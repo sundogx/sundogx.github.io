@@ -108,7 +108,13 @@ const handle = async (req, env) => {
       const name = cleanName(body.name);
       if (secret.length < 16 || !name) return json({ error: 'name required' }, 400); // checked first: a bad request doesn't use up the hourly allowance
       const ip = req.headers.get('cf-connecting-ip') || 'local';
-      if (!(await lobbyStub(env).allowCreate(ipGroup(ip)))) return json({ error: 'too many tables, try again later' }, 429);
+      const wait = await lobbyStub(env).allowCreate(ipGroup(ip)); // seconds until another table may be opened (0: now)
+      if (wait) {
+        const min = Math.max(1, Math.ceil(wait / 60));
+        const res = json({ error: `You have opened ${CREATE_PER_HOUR} tables in the last hour, the most from one address. You can open another in ${min} minute${min === 1 ? '' : 's'}, or join a table with its code now.`, retryAfter: wait }, 429);
+        res.headers.set('retry-after', String(wait));
+        return res;
+      }
       const uid = await idFromSecret(secret);
       const tableName = String(body.tableName || '').trim().slice(0, 30);
       const priv = !!body.priv;
@@ -194,6 +200,7 @@ const seatBlock = (t, uid, seat) => {
 };
 const markLeft = (t, uid, seat) => { if (live(t) && uid) t.left = { ...(t.left || {}), [uid]: seat }; };
 const MAX_REQUESTS = 20;
+const CREATE_PER_HOUR = 20; // new tables an hour from one address (Lobby.allowCreate)
 const MAX_SOCKETS = 80;    // connections per table (players, onlookers, and ones that haven't said hello yet)
 const MAX_ONLOOKERS = 60;  // onlookers' connections per table, so players can always get in
 const MAX_PER_IP = 12;     // connections per table from one address
@@ -555,7 +562,7 @@ export class TableRoom extends DurableObject {
   }
 
   async webSocketMessage(ws, raw) {
-    if (typeof raw !== 'string' || raw.length > MAX_MSG) return;
+    if (typeof raw !== 'string' || raw.length > MAX_MSG) { this.complain(ws, 'That message was too long, so it was ignored.'); return; }
     let m; try { m = JSON.parse(raw); } catch (e) { return; }
     if (!m || typeof m !== 'object') return;
     if (!this.t) { this.sendTo(ws, { type: 'notfound' }); try { ws.close(1000, 'not found'); } catch (e) { } return; }
@@ -606,7 +613,7 @@ export class TableRoom extends DurableObject {
     // rate limits per person and per connection (a new identity on the same connection gets no fresh allowance)
     const isChat = m.name === 'chat';
     // (and per address, more loosely, as friends at home share one: new identities are free to make)
-    if (!this.allow('u:' + u.uid, isChat) || (u.sid && !this.allow('s:' + u.sid, isChat)) || (u.ip && !this.allow('i:' + u.ip, isChat, 3))) { this.sendTo(ws, { type: 'error', msg: 'Slow down a little, then try again.' }); return; }
+    if (!this.allow('u:' + u.uid, isChat) || (u.sid && !this.allow('s:' + u.sid, isChat)) || (u.ip && !this.allow('i:' + u.ip, isChat, 3))) { this.complain(ws, 'Slow down a little, then try again.'); return; }
     if (m.name === 'close') { await this.closeTable(u.uid, ws); return; }
     const fn = typeof m.name === 'string' && Object.hasOwn(ACTIONS, m.name) ? ACTIONS[m.name] : null;
     if (!fn) return;
@@ -624,6 +631,13 @@ export class TableRoom extends DurableObject {
   async leftSocket(ws) {
     if (!this.t) return;
     const a = ws.deserializeAttachment() || {};
+    // it was asked for a robot's card (friends mode): no answer can come now, so the robot plays at its due time
+    // instead of waiting out THINK_MS (as dropStale does for a silent connection)
+    const th = a.th ? this.getThink() : null;
+    if (th && !th.done && th.nonce === a.th.nonce) {
+      th.done = true; th.card = null;
+      if (Date.now() >= th.due) await this.setAlarm(Date.now());
+    }
     G.setMe({ id: a.uid || '' });
     const seat = a.uid ? G.mySeat(this.t) : null;
     const stillHere = a.uid && this.ctx.getWebSockets().some(x => { if (x === ws || x.readyState !== 1) return false; const b = x.deserializeAttachment() || {}; return b.uid === a.uid && !this.stale(x, b); });
@@ -985,6 +999,16 @@ export class TableRoom extends DurableObject {
   }
 
   sendTo(ws, msg) { try { ws.send(JSON.stringify(msg)); } catch (e) { } }
+  // An error for a flood or an oversized message: at most one a second per connection, so a flood of
+  // messages doesn't turn into a flood of replies.
+  complain(ws, msg) {
+    const a = ws.deserializeAttachment() || {}, k = 'e:' + (a.sid || ''), now = Date.now();
+    this.errAt = this.errAt || new Map();
+    if (now - (this.errAt.get(k) || 0) < 1000) return;
+    if (this.errAt.size > 500) this.errAt.clear();
+    this.errAt.set(k, now);
+    this.sendTo(ws, { type: 'error', msg });
+  }
 
   broadcast(exclude) {
     if (!this.t) return;
@@ -1058,11 +1082,12 @@ function ipGroup(ip) {
 export class Lobby extends DurableObject {
   // At most 20 new tables an hour from one address. Kept in storage (under a hash of the address): the lobby
   // sleeps between requests, and a count kept only in memory would start again from zero each time.
+  // Returns 0 if allowed (and counts it), else the seconds until the oldest of the 20 is an hour old.
   async allowCreate(ip) {
-    if (ip === 'local' || ip === '127.0.0.1' || ip === '::1') return true; // local test server
-    const now = Date.now(), key = 'ip:' + (await idFromSecret('ip:' + ip));
+    if (ip === 'local' || ip === '127.0.0.1' || ip === '::1') return 0; // local test server
+    const key = 'ip:' + (await idFromSecret('ip:' + ip)), now = Date.now();
     const recent = ((await this.ctx.storage.get(key)) || []).filter(x => now - x < 3600e3);
-    if (recent.length >= 20) return false;
+    if (recent.length >= CREATE_PER_HOUR) return Math.max(1, Math.ceil((Math.min(...recent) + 3600e3 - now) / 1000));
     recent.push(now);
     await this.ctx.storage.put(key, recent);
     if (Math.random() < 0.05) { // now and then, forget addresses that made nothing in the last hour
@@ -1070,7 +1095,7 @@ export class Lobby extends DurableObject {
       const old = [...all].filter(([, v]) => !v.some(x => now - x < 3600e3)).map(([k]) => k).slice(0, 128);
       if (old.length) await this.ctx.storage.delete(old);
     }
-    return true;
+    return 0;
   }
   /* feature: daily (see dailyRoute) */
   async dailyPost(rec, ipKey) {

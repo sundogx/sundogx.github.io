@@ -102,7 +102,7 @@ if (STALE) {
 // ---------- 1b. a robot's move is due just as another duty comes up (a seated connection goes silent, or the
 // host's job passes): the alarm that handles that duty must still leave the robot's move planned
 // Alice (S, host) and Bob (N) with robots E and W. passOrBid: a pass, unless it would end the auction.
-const passOrBid = t => { const a = t.auction; return a.length >= 3 && a.slice(-3).every(x => x.call === 'P') && !a.some(x => x.call === '7NT') ? '7NT' : 'P'; };
+const passOrBid = t => { const a = t.auction; return a.length >= 3 && a.slice(-3).every(x => x.call === 'P') && !a.some(x => x.call === '7N') ? '7N' : 'P'; };
 async function robotTable() {
   const code = await open('Alice');
   const a = await client(code, 'Alice'), b = await client(code, 'Bob');
