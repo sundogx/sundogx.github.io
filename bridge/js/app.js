@@ -10,8 +10,9 @@ const setHTML = (el, v) => { if (el._html !== v || el.childNodes.length !== el._
 const Prefs = (() => {
   let p = {};
   try { p = JSON.parse(localStorage.getItem('bridge-prefs')) || {}; } catch (e) { }
+  if (!p.autoPlayOff) { delete p.autoPlay; p.autoPlayOff = 1; } // auto-play became off by default (owner, 2026-11-20): reset it once
   try { if (p.contrast === undefined && localStorage.getItem('bridge-contrast') === '1') p.contrast = true; } catch (e) { }
-  return Object.assign({ contrast: false, deck4: false, confirm: false, confirmBid: false, speed: 'normal', hint: false, autoNext: false, autoPlay: true /* feature: autoplay */ }, p);
+  return Object.assign({ contrast: false, deck4: false, confirm: false, confirmBid: false, speed: 'normal', hint: false, autoNext: false, autoPlay: false /* feature: autoplay; off by default */ }, p);
 })();
 function savePrefs() { try { localStorage.setItem('bridge-prefs', JSON.stringify(Prefs)); } catch (e) { } }
 function applyPrefs() {
@@ -94,7 +95,7 @@ function scheduleRobot() {
   const o = occupant(T, controllerOf(T, ts));
   if (!o || o.kind !== 'robot' || !amDriver(T)) return;
   const tr = T.play && T.play.tricks[T.play.tricks.length - 1];
-  const m = speedMult() * (dummyIdle(T) ? 0.5 : 1), pause = T.phase === 'auction' ? 500 * m : (tr && tr.cards.length === 4 ? trickHoldMs() + 300 * m : 550 * m);
+  const m = speedMult() * (dummyIdle(T) ? 0.5 : 1), pause = T.phase === 'auction' ? 500 * m : (tr && tr.cards.length === 4 ? trickHoldMs() + 300 * m : 900 * m); // a robot's card waits at least this long (raised from 550 ms, owner 2026-11-20)
   // card play: the solver thinks (in a worker, at most ~1.5 s) while the robot's usual pause runs
   const key = T.phase === 'play' ? playKey(T) : null;
   const hint = key ? robotDDCard(T, ts).then(card => card && { key, card }) : null;

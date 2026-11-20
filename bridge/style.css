@@ -108,9 +108,9 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 /* the table's height: as tall as the window allows while the hand and bidding box still fit below it */
 :root { --vh: 100vh; }
 @supports (height: 100dvh) { :root { --vh: 100dvh; } }
-/* in play (no bidding box) the table takes that room too, so the page keeps its height when the box goes */
-#tableView { --feltH: clamp(360px, calc(var(--vh) - 225px), 530px); }
-#tableView.bidding { --feltH: clamp(360px, calc(var(--vh) - 380px), 530px); }
+/* one table height for the auction and the play (room for the bidding box below it), so the table never changes
+   size during a board (owner, 2026-11-20) */
+#tableView, #tableView.bidding { --feltH: clamp(360px, calc(var(--vh) - 380px), 530px); }
 @media (min-width: 861px) {
   .side { height: var(--feltH); display: flex; flex-direction: column; box-sizing: border-box; }
   .side .pane { flex: 1; max-height: none; min-height: 0; }
@@ -418,8 +418,7 @@ ul.costs li { margin: 1px 0; }
 .modal .diagram .rows .rk { padding: 1px 2px; }
 
 @media (max-width: 560px) {
-  #tableView { --feltH: clamp(290px, calc(var(--vh) - 240px), 470px); }
-  #tableView.bidding { --feltH: clamp(290px, calc(var(--vh) - 390px), 470px); }
+  #tableView, #tableView.bidding { --feltH: clamp(290px, calc(var(--vh) - 390px), 470px); } /* same in auction and play */
   .felt { grid-template-columns: minmax(64px, .9fr) minmax(140px, 1.6fr) minmax(64px, .9fr); padding: 6px; border-width: 4px; height: var(--feltH); }
   /* the sidebar sits below the table: a Chat button (with the unread dot) takes you there */
   #sideBtn { display: inline-block; } .sb-long { display: none; } .sb-short { display: inline; }
