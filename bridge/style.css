@@ -681,3 +681,10 @@ fieldset.pm legend { font-weight: 600; margin-bottom: 6px; }
 .rsheet tr.rs-line td { border-top: 2px solid var(--ink); padding: 0; height: 2px; }
 .rsheet tr.rs-game td { border-bottom: 1px solid var(--line); }
 .rsheet tr.rs-tot td { border-top: 1px solid var(--ink-soft); font-weight: 700; padding-top: 4px; }
+/* feature: learn — tricks per card (double dummy): a small thin badge on each legal card, quieter where a card loses tricks */
+.ddn { position: absolute; left: 3px; bottom: 3px; min-width: 15px; padding: 0 2px; box-sizing: border-box; border: 1px solid #1f5fae; border-radius: 3px; background: #fff; color: #1f5fae; font: 600 11px/14px var(--sans); text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
+.ddn.lo { border-color: var(--card-line, #999); color: #777; }
+.dhand .ddn { left: 50%; top: 3px; bottom: auto; transform: translateX(-50%); }
+.rows .rk.play { position: relative; }
+.rows .ddn { position: static; display: inline-block; vertical-align: super; margin-left: 1px; min-width: 0; border: none; padding: 0; background: none; font-size: 9px; line-height: 1; }
+.reslist .aided { font-size: 11px; color: var(--ink-soft); margin-left: 4px; }

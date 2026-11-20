@@ -71,7 +71,7 @@ if (isMainThread) {
           const v0 = D.ddView(t, s, CUR);
           if (D.ddWorthIt(v0)) {
             const o0 = { ...CUR, prefer, rand: seededRand(seed + ':c:' + g + ':' + i) }, o1 = { ...merge(CUR, NEW), prefer, rand: seededRand(seed + ':c:' + g + ':' + i) };
-            const a = await D.ddChoose(v0, solve, o0), b = process.env.NEW ? await D.ddChoose(D.ddView(t, s, o1), solve, o1) : a;
+            const a = await D.ddChoose(v0, solve, o0), b = process.env.NEW ? (NEW.heur ? { card: prefer, ms: 0 } : await D.ddChoose(D.ddView(t, s, o1), solve, o1)) : a; // NEW='{"heur":1}': the heuristic card (Beginner, js/learn.js)
             if (a && b) {
               // the real deal, solved for the player to move: tricks for its side from here with each card
               const real = {}; for (const x of SEATS) real[x] = remainingHand(hands, t.play, x);

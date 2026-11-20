@@ -14,6 +14,7 @@
 //   nlead.X  only the opening lead with X                             nplay.X defenders after the lead with X
 // where X names an entry of the JSON in the environment variable NEW, e.g.
 //   NEW='{"w":{"pool":96},"imp":{"agg":"imp"}}' node tests/playsim.js 300 20 ndecl.w,ndef.w,nlead.imp
+// (an X of {"heur":1} is the heuristic robot, botPlay/botLead: the Beginner strength in js/learn.js)
 // The base ("current") settings are the page's (RobotDD in js/analysis.js, without its time budget); CUR_JSON replaces
 // them, e.g. CUR_JSON='{…,"limits":"min"}' for the earlier auction limits. Options of X apply to the side's own settings too.
 // W (4th argument) workers; seed (5th): use a fresh seed for held-out numbers.
@@ -77,7 +78,7 @@ if (isMainThread) {
       const prefer = B.botPlay(t, s);
       let card = prefer;
       const u = useDD(s, i);
-      if (u) {
+      if (u && !u.heur) { // an X with "heur": 1 plays the heuristic card (the Beginner robot strength, js/learn.js)
         const o = merge({ k: K, prefer, rand, ...extra }, typeof u === 'object' ? u : null);
         const r = await D.ddChoose(D.ddView(t, s, o), solve, o);
         if (r) { card = r.card; if (!(u === true && extra === CUR)) { dec++; ms += r.ms; } } // n-variants: time only the decisions with the new options

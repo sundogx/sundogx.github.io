@@ -185,6 +185,24 @@ Home page > **New practice** chooses the game and the scoring for a fresh practi
 - **Rubber** and **Chicago** scoring: a score sheet (We = N-S, They = E-W) at the top of Results, above and below the line, with each game ruled off; the boards' dealer and vulnerability follow the rubber (a side with a game is vulnerable) or the four-deal Chicago cycle (none, dealer's side, dealer's side, both; dealers N, E, S, W; a passed-out deal is dealt again by the same dealer). Rubber: 700/500 rubber bonus, and an unfinished rubber's 300/100 shown as "if stopped now". Chicago: 300/500 for each game at once, 100 for a part-score on deal 4 that doesn't make game. Honours (four or five trump honours in one hand, or four aces at notrump) are an option. Duplicate scoring and the IMP comparison with the robots stay as they were alongside.
 - Practice only. Online tables would need the log of boards and the dealer/vulnerability set-up in `js/table.js`'s `startBoard`/`finishBoard` (so the server runs it), MiniBridge's extra phase and declarer's choice as a server action (validated like a call), and the sheet sent to every seat.
 
+### Learning mode and robot strength (`js/learn.js`)
+
+Practice tables only (not online tables or the daily deals). All are in Options.
+- **Show all hands** (off by default): every hand is face up during the play.
+- **Show tricks per card** (off by default): on your turn, and on dummy's when you declare, each card you can play gets a small badge. It shows how many tricks your side takes in the whole board, double dummy, if you play that card. Cards that lose a trick have a grey badge. Each position is solved once, in a worker of its own (the same few lines as the play review), and it waits while a robot is thinking.
+- Boards played with either aid on are saved with `aided: true` in their record, and History marks them "aided".
+- **Robot strength** (Strong by default): sets how the practice robots play their cards. Bidding is the same at every level.
+  - Beginner plays heuristic cards only (`botPlay`, `botLead`).
+  - Club samples 4 layouts, with no reading of the cards played so far, an 0.8 s budget, and 12 layouts for the opening lead.
+  - Strong is the usual setting: 24 layouts (96), 1.5 s, and 48 for the lead.
+  - Expert samples 48 layouts (192), with a 3 s budget, and 96 for the lead in 3 s.
+  - Measured with `tests/ddacc.js` over 200 boards against Strong. The figures are double-dummy cost per decision; negative means weaker.
+    - Beginner: declarer −0.14 IMPs (−0.053 tricks), defence −0.14 (−0.030).
+    - Club: declarer −0.03 (−0.011), defence −0.09 (−0.012).
+    - Expert: declarer ±0.00, defence +0.015 (+0.006), lead +0.07 ± 0.07, at twice the time.
+    - Expert's gain over Strong is small, because Strong already loses little.
+  - `robotDDCardStd` in `js/analysis.js` reads the level through `Learn.robotLevel` and passes it on as parameters; `js/ddplay.js` is unchanged. Hints, online robots and friends-mode solving keep the usual settings.
+
 ## BEN robots (option)
 
 **Use BEN robots** (Options, off by default, practice tables only) has the practice robots bid, lead and play with BEN (github.com/lorserker/ben, by Lorand Dali and Thorvald Aagaard, GPL-3.0). BEN's neural networks run in the browser in a dedicated worker, `ben/ben-worker.js`.

@@ -371,27 +371,33 @@ function robotDDCard(t, seat) {
   return robotDDCardStd(t, seat);
 }
 function robotDDCardStd(t, seat) {
-  let view, prefer;
+  let view, prefer, lv;
   try {
+    lv = typeof Learn !== 'undefined' ? Learn.robotLevel(t, seat) : null; /* feature: learn: practice robot strength */
+    if (lv && lv.heuristic) return Promise.resolve(null); // Beginner: the heuristic card (botPlay, botLead)
     if (typeof ddView !== 'function') return Promise.resolve(null);
     view = ddView(t, seat);
     prefer = botPlay(t, seat); // the heuristic's card wins ties (sequence leads, signals)
   } catch (e) { console.error(e); return Promise.resolve(null); }
-  return robotDDSolve(view, prefer);
+  return robotDDSolve(view, prefer, lv);
 }
+// lv (feature: learn, the practice robot strength): overrides of K, MIN_K, BUDGET_MS, POOL (layouts dealt for the
+// play check), LEAD_K and LEAD_MS (the opening lead's layouts and budget); none = the settings above and below.
+const robotDDParams = lv => ({ K: RobotDD.K, MIN_K: RobotDD.MIN_K, BUDGET_MS: RobotDD.BUDGET_MS, POOL: null, LEAD_K: LeadDD.K, LEAD_MS: LeadDD.BUDGET_MS, ...(lv || {}) });
 // The options of a robot's card decision (js/ddplay.js ddChoose).
-function robotDDOpts(prefer) {
-  return { k: RobotDD.K, minK: RobotDD.MIN_K, ms: RobotDD.BUDGET_MS, hardMs: RobotDD.BUDGET_MS + 400, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: RobotDD.DECL, defender: RobotDD.DEF };
+function robotDDOpts(prefer, lv) {
+  const p = robotDDParams(lv), side = o => p.POOL != null ? { ...o, pool: p.POOL } : o; // POOL 0: no play check
+  return { k: p.K, minK: p.MIN_K, ms: p.BUDGET_MS, hardMs: p.BUDGET_MS + 400, prefer, lead: 'conv', leadTol: RobotDD.LEAD_TOL, declarer: side(RobotDD.DECL), defender: side(RobotDD.DEF) };
 }
 // Solve a robot's view (from ddView). Also used for online tables: the server sends a robot's view to a
 // player's browser to work out, since the solver needs more CPU time than the server's free plan allows.
-function robotDDSolve(view, prefer) {
+function robotDDSolve(view, prefer, lv) {
   if (RobotDD.fails >= 3 || typeof Worker === 'undefined' || typeof ddWorthIt !== 'function') return Promise.resolve(null);
   try {
     if (!ddWorthIt(view)) return Promise.resolve(null);
     if (!RobotDD.LEADS && !view.tricks.length) return Promise.resolve(null);
-    if (!view.tricks.length && view.prior && typeof leadPick === 'function') return robotDDLead(view);
-    if (view.tricks.length <= RobotDD.SPLIT_TRICKS && LeadDD.ws.length > 1 && typeof ddDecide === 'function') return robotDDSplit(view, prefer);
+    if (!view.tricks.length && view.prior && typeof leadPick === 'function') return robotDDLead(view, lv);
+    if (view.tricks.length <= RobotDD.SPLIT_TRICKS && LeadDD.ws.length > 1 && typeof ddDecide === 'function') return robotDDSplit(view, prefer, lv);
     leadWorkersClose(); // past the first tricks: the helper workers aren't needed until the next board
   } catch (e) { console.error(e); return Promise.resolve(null); }
   const k = ++RobotDD.n;
@@ -401,9 +407,9 @@ function robotDDSolve(view, prefer) {
       RobotDD.wait.delete(k); res(null);
       const w = RobotDD.w;
       if (w && [...w.busy.values()].some(t0 => Date.now() - t0 > 10e3)) robotDDDrop(false); else robotDDDone();
-    }, RobotDD.BUDGET_MS + 500);
+    }, robotDDParams(lv).BUDGET_MS + 500);
     RobotDD.wait.set(k, card => { clearTimeout(timer); res(card); });
-    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: robotDDOpts(prefer) }); }
+    try { const w = robotDDWorker(); w.busy.set(k, Date.now()); w.postMessage({ k, play: view, opts: robotDDOpts(prefer, lv) }); }
     catch (e) { RobotDD.wait.delete(k); clearTimeout(timer); robotDDDrop(true); res(null); }
   });
 }
@@ -425,19 +431,19 @@ function leadWorkers() {
   return LeadDD.ws;
 }
 function leadWorkersClose() { if (LeadDD.wait.size) return; for (const w of LeadDD.ws) try { w.terminate(); } catch (e) { } LeadDD.ws = []; }
-function robotDDLead(view) {
+function robotDDLead(view, lv) {
   let ws;
   try { ws = leadWorkers(); } catch (e) { return Promise.resolve(null); }
-  const per = Math.ceil(LeadDD.K / ws.length);
+  const p = robotDDParams(lv), per = Math.ceil(p.LEAD_K / ws.length);
   const parts = ws.map(w => new Promise(res => {
     const k = ++LeadDD.n, got = [];
     const end = r => { clearTimeout(timer); LeadDD.wait.delete(k); res(r); };
-    const timer = setTimeout(() => end(got), LeadDD.BUDGET_MS + 500); // late: keep what has arrived
+    const timer = setTimeout(() => end(got), p.LEAD_MS + 500); // late: keep what has arrived
     LeadDD.wait.set(k, m => {
       if (m.result) got.push(m.result);
       else if (m.results || m.error) end(m.results || got);
     });
-    try { w.postMessage({ k, leadSamples: view, opts: { k: per, minK: 2, ms: LeadDD.BUDGET_MS } }); } catch (e) { end(got); }
+    try { w.postMessage({ k, leadSamples: view, opts: { k: per, minK: 2, ms: p.LEAD_MS } }); } catch (e) { end(got); }
   }));
   return Promise.all(parts).then(rs => {
     if (!RobotDD.SPLIT_TRICKS) leadWorkersClose(); // else kept for the first tricks (robotDDSplit)
@@ -451,14 +457,14 @@ function robotDDLead(view) {
 // phone), so these decisions are split between the lead's workers, kept open until then: each deals its share of the
 // layouts (and of the pool for the play check), solves them and streams the results back with their weights. The page
 // pools them and decides (ddDecide), the same way ddChoose does in one worker.
-function robotDDSplit(view, prefer) {
+function robotDDSplit(view, prefer, lv) {
   const ws = LeadDD.ws.slice();
-  const o = { ...ddOpts(view, robotDDOpts(prefer)), declarer: null, defender: null };
+  const o = { ...ddOpts(view, robotDDOpts(prefer, lv)), declarer: null, defender: null };
   const per = Math.ceil(o.k / ws.length), pool = o.pool ? Math.ceil(o.pool * per / o.k) : 0;
   const parts = ws.map(w => new Promise(res => {
     const k = ++LeadDD.n, got = [], wts = [];
     const end = () => { clearTimeout(timer); LeadDD.wait.delete(k); res({ got, wts }); };
-    const timer = setTimeout(end, RobotDD.BUDGET_MS + 500); // late: keep what has arrived
+    const timer = setTimeout(end, robotDDParams(lv).BUDGET_MS + 500); // late: keep what has arrived
     LeadDD.wait.set(k, m => {
       if (m.result) { got.push(m.result); wts.push(m.weight); }
       else if (m.done || m.error) end();

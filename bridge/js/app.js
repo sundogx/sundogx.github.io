@@ -202,7 +202,7 @@ function seatBlock(t, seat, where) {
     const side = where !== 'top', g = feltGeom(), cwid = cssPx('--cw', 64);
     // room for this hand: its own column at the sides; across the top, the width between the corners
     const room = side ? g.colW : g.topW;
-    if (canSee(t, seat) || (typeof Mini !== 'undefined' && Mini.faceUp(t, seat))) { /* feature: minibridge */
+    if (canSee(t, seat) || (typeof Mini !== 'undefined' && Mini.faceUp(t, seat)) || (typeof Learn !== 'undefined' && Learn.showAll(t))) { /* feature: minibridge, learn */
       // a dummy across the top leaves the middle ~200px for the trick; at the sides it sits in the middle row
       const budget = where === 'top' ? g.h - 300 : g.h - 216;
       const cards = currentCards(t, seat), longest = Math.max(0, ...UI_SUITS.map(s => cards.filter(c => suitOf(c) === s).length));
@@ -393,6 +393,7 @@ function renderFelt() {
   renderPlayInfo(t, t.phase === 'done' && drawerMode.matches && !t.masked && t.history.length ? `<div class="bwrap done">${resultBanner(t)}</div>` : '');
   fitTrick();
   const g = $('felt').querySelector('.agrid'); if (g) g.scrollTop = g.scrollHeight; // a long auction scrolls; show the latest calls
+  if (typeof Learn !== 'undefined') Learn.decorate(); /* feature: learn */
 }
 // Shrink the trick's cards when the middle of the table is too small for them, so they never cover the hands or plates.
 function fitTrick() {
@@ -461,6 +462,7 @@ function renderHand() {
   // the bidding box below is as wide as a full 13-card hand
   document.documentElement.style.setProperty('--handW', Math.round(cw + 12 * Math.min(cw * 0.5, (w - cw - 4) / 12)) + 'px');
   el.innerHTML = `<div class="fan">${cards.map((c, i) => cardHTML(c, (myTurn ? (legal.includes(c) ? 'legal' : 'dim') : '') + (legal.includes(c) && c === selCard ? ' sel' : '') + (legal.includes(c) && isHint(c) ? ' hint' : ''), `style="margin-left:${i ? step - cw : 0}px" ${legal.includes(c) ? `data-play="${c}" data-seat="${seat}"` : 'tabindex="-1"'}`)).join('')}</div>`;
+  if (typeof Learn !== 'undefined') Learn.decorate(); /* feature: learn */
 }
 const STRAIN_WORD = { C: 'clubs', D: 'diamonds', H: 'hearts', S: 'spades', N: 'notrump' };
 let bidFocus = null; // the bidding-box button that last had the focus
@@ -637,6 +639,7 @@ function render() {
   if (typeof PlayFrom !== 'undefined') { PlayFrom.render(T); if (PlayFrom.onRender(T)) return; } /* feature: playfrom */
   scheduleRobot();
   autoNext(T); savePractice();
+  if (typeof Learn !== 'undefined') Learn.onRender(T); /* feature: learn (before Stats.note: marks aided boards) */
   if (typeof Stats !== 'undefined' && !T.whatIf) Stats.note(T); /* feature: stats; playfrom: what-if boards aren't kept */
   if (typeof Skip !== 'undefined') Skip.render(T); /* feature: skip */
   if (typeof LeadTrainer !== 'undefined') LeadTrainer.render(T); /* feature: leadtrainer */
@@ -1097,6 +1100,7 @@ function showOptions() {
     ${opt('autoNext', 'Next board automatically in practice', 'The next board starts a few seconds after a board ends, unless a window such as the hand record is open.')}
     ${typeof ShowPoints !== 'undefined' ? ShowPoints.optionsHTML(opt) : '' /* feature: showpoints */}
     ${typeof ChatSym !== 'undefined' ? ChatSym.optionsHTML() : '' /* feature: chatsym */}
+    ${typeof Learn !== 'undefined' ? Learn.optionsHTML(opt) : '' /* feature: learn */}
     ${typeof BenBridge !== 'undefined' && (!T || T.local) ? BenBridge.optionsHTML() : ''}
     ${typeof dealsOptionsHTML === 'function' ? dealsOptionsHTML() : ''}${'' /* feature: deals */}
     ${typeof PlayFrom !== 'undefined' ? PlayFrom.optionsHTML() : '' /* feature: playfrom */}
@@ -1116,6 +1120,7 @@ function showOptions() {
   $('optSpeed').addEventListener('change', e => { Prefs.speed = e.target.value; savePrefs(); });
   $('optSuitOrder').addEventListener('change', e => { Prefs.suitOrder = e.target.value; savePrefs(); if (T) render(); }); /* feature: suitorder */
   if (typeof BenBridge !== 'undefined') BenBridge.wireOptions(m);
+  if (typeof Learn !== 'undefined') Learn.wireOptions(m); /* feature: learn */
   if (typeof dealsOptionsWire === 'function') dealsOptionsWire(m); /* feature: deals */
   if (typeof PlayFrom !== 'undefined') PlayFrom.optionsWire(m); /* feature: playfrom */
 }
