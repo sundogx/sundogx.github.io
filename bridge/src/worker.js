@@ -22,6 +22,24 @@ const histSig = h => h.length + ':' + (h.length ? h[h.length - 1].board : 0);
 const json = (obj, status = 200) => new Response(JSON.stringify(obj), {
   status, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
 });
+// The JSON body of a request, read only up to max bytes (a body sent without a length could otherwise be huge):
+// the parsed value, or null for too large or not JSON.
+async function readJson(req, max = 4000) {
+  if (Number(req.headers.get('content-length')) > max) return null;
+  if (!req.body) return null;
+  const reader = req.body.getReader(), parts = [];
+  let n = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.byteLength;
+    if (n <= max) parts.push(value); // past max the rest is read and dropped (answering before the body is in upsets some clients)
+  }
+  if (n > max) return null;
+  const buf = new Uint8Array(n); let o = 0;
+  for (const p of parts) { buf.set(p, o); o += p.byteLength; }
+  try { return JSON.parse(new TextDecoder().decode(buf)); } catch (e) { return null; }
+}
 const cleanName = v => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, 20);
 
 async function idFromSecret(secret) {
@@ -68,7 +86,7 @@ const handle = async (req, env) => {
     if (path === '/api/admin/purge' && req.method === 'POST') {
       const tok = env.ADMIN_TOKEN, got = (req.headers.get('authorization') || '').replace(/^Bearer /, '');
       if (!tok || got.length !== tok.length || got !== tok) return new Response('Not found', { status: 404 });
-      let body; try { body = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
+      const body = await readJson(req, 64000);
       if (!body || typeof body !== 'object' || (body.ids != null && !Array.isArray(body.ids)) || (body.codes != null && !Array.isArray(body.codes))) return json({ error: 'bad request' }, 400);
       const why = 'The site owner closed this table.';
       // (idFromString throws on a malformed id: that counts as one failure, not a crash of the whole request)
@@ -84,8 +102,7 @@ const handle = async (req, env) => {
     }
 
     if (path === '/api/tables' && req.method === 'POST') {
-      let body;
-      try { body = await req.json(); } catch (e) { return json({ error: 'bad request' }, 400); }
+      const body = await readJson(req);
       if (!body || typeof body !== 'object') return json({ error: 'bad request' }, 400);
       const secret = String(body.secret || '');
       const name = cleanName(body.name);
@@ -132,6 +149,7 @@ const handle = async (req, env) => {
       let t;
       try { t = await make(() => {
         const t = G.newTable({ name: tableName, priv });
+        t.host = t.createdBy = uid; // (G's current person may have changed during the await of an earlier try)
         t.seats.S = { kind: 'human', id: uid, name };
         G.sysMsg(t, `${name} opened the table`);
         return t;
@@ -169,7 +187,9 @@ const seatBlock = (t, uid, seat) => {
   const prev = t.left && Object.hasOwn(t.left, uid) ? t.left[uid] : null;
   if (prev) return prev === seat ? null : 'A board is in progress. You can only sit in your own seat until it ends.';
   // never seated this board: anyone who could watch all four hands waits for the next board
-  if (!mine && t.kibSee !== false) return 'Onlookers can see every hand, so you can sit down when this board ends.';
+  // (kibSeen: onlookers saw hands this board anyway: the host turned that off mid-board, or in friends mode a
+  // robot's cards went to an onlooker's browser)
+  if (!mine && (t.kibSee !== false || t.kibSeen === t.board)) return 'Onlookers can see every hand, so you can sit down when this board ends.';
   return null;
 };
 const markLeft = (t, uid, seat) => { if (live(t) && uid) t.left = { ...(t.left || {}), [uid]: seat }; };
@@ -234,6 +254,7 @@ const ACTIONS = {
     // friends mode hands the robots' cards to a player's browser: never at a public table, where that could be a stranger's
     if (!t.private && 'friends' in p) { delete p.friends; if (!Object.keys(p).length) return G.fail('Friends mode is only for private tables'); }
     if (!Object.keys(p).length) return false;
+    if (live(t) && t.kibSee !== false && p.kibSee === false) t.kibSeen = t.board;
     const r = A.settings(t, p);
     if (r !== false && 'undoAsk' in p) G.sysMsg(t, p.undoAsk ? 'Undo now needs the opponents\' agreement' : 'Undo no longer needs the opponents\' agreement');
     return r;
@@ -387,7 +408,7 @@ function tidyPresence(t) {
     // (a robot declarer must not accept its own claim for a human dummy)
     const ctrl = sameSideSeat(s, c.by) ? s : G.controllerOf(t, s), o = t.seats[ctrl];
     if ((t.subs[ctrl] || (o && o.kind === 'robot')) && !c.acc[s] && t.claim) {
-      const ok = G.claimAccept(t, c.by, c.tricks);
+      const ok = G.claimAnswer(t, c.by, c.tricks);
       G.setMe({ id: '' });
       A.respond(t, s, ok);
       if (!ok) t.chat[t.chat.length - 1].text = `The robot ${t.subs[ctrl] ? 'playing for' : 'at'} ${G.SEAT_NAME[s]} rejected the claim. Play continues.`;
@@ -511,6 +532,8 @@ export class TableRoom extends DurableObject {
     }
     if (socks.length >= MAX_SOCKETS) return new Response('This table is full of onlookers. Try again later.', { status: 429 });
     const ip = req.headers.get('cf-connecting-ip') || '';
+    // new connections from one address: 10 at once, then 5 a second (each one that says hello updates everyone)
+    if (ip && !this.allow('c:' + ip, false, 0.5)) return new Response('Too many connections from your address. Try again later.', { status: 429 });
     if (ip && socks.filter(w => (w.deserializeAttachment() || {}).ip === ip).length >= MAX_PER_IP) return new Response('Too many connections from your address. Try again later.', { status: 429 });
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -539,8 +562,9 @@ export class TableRoom extends DurableObject {
         const kibs = this.ctx.getWebSockets().filter(w => { if (w === ws) return false; const a = w.deserializeAttachment() || {}; return a.uid && !seated.has(a.uid); }).length;
         if (kibs >= MAX_ONLOOKERS) { this.sendTo(ws, { type: 'error', msg: 'This table is full of onlookers. Try again later.' }); try { ws.close(1008, 'full'); } catch (e) { } return; }
       }
-      if (prev.uid && prev.uid !== att.uid) { att.hl = 0; att.ol = 0; att.cl = 0; } // a new identity starts its sync from scratch
-      else { att.hl = prev.hl || 0; att.hb = prev.hb; att.ol = prev.ol || 0; att.ob = prev.ob; att.cl = prev.cl || 0; }
+      const cur = ws.deserializeAttachment() || {}; // (read again: a broadcast during the hash may have moved this connection's sync on)
+      if (cur.uid && cur.uid !== att.uid) { att.hl = 0; att.ol = 0; att.cl = 0; } // a new identity starts its sync from scratch
+      else { att.hl = cur.hl || 0; att.hb = cur.hb; att.ol = cur.ol || 0; att.ob = cur.ob; att.cl = cur.cl || 0; }
       ws.serializeAttachment(att);
       G.setMe({ id: att.uid });
       const seat = G.mySeat(this.t);
@@ -595,7 +619,7 @@ export class TableRoom extends DurableObject {
       await this.apply(a, t => { t.away = { ...(t.away || {}), [seat]: Date.now() }; }, null, ws);
     } else if (a.uid && !stillHere && this.t.requests && this.t.requests[a.uid]) {
       await this.apply(a, t => { delete t.requests[a.uid]; }, null, ws); // left before the host answered
-    } else this.broadcast(ws);
+    } else if (a.uid) this.broadcast(ws); // (a connection that never said hello changes nothing anyone sees)
     this.reportLobby();
   }
 
@@ -751,6 +775,8 @@ export class TableRoom extends DurableObject {
     if (!pool.length) return;
     const ws = pool[this.thinkN % pool.length];
     const key = G.playKey(t), a = ws.deserializeAttachment() || {};
+    // an onlooker who is shown a robot's cards may not then sit down during this board (seatBlock); kept with the next move
+    if (!seated.has(a.uid)) t.kibSeen = t.board;
     // Only the browser asked may answer: the position (playKey) is public, so the reply must carry this
     // random nonce (sent only to that browser, as part of the key it echoes) and come from the same person.
     this.think = { key, nonce: hex(12), uid: a.uid, at: Date.now(), due, done: false, card: null };
@@ -869,6 +895,8 @@ export class TableRoom extends DurableObject {
     }
     if (!onlooker) v.chat = v.chat.filter(m => !m.kib);
     else if (t.match) v.chat = v.chat.filter(m => !m.res); // onlookers get the result once both rooms have played (announceBoth)
+    // nor the players' talk and the claims during a board the other room hasn't played (only other onlookers' lines)
+    if (hideBoard) v.chat = v.chat.filter(m => m.kib || m.ts < t.boardStart);
     if (t.host !== uid) delete v.requests; // only the host sees who asked for a seat
     // finished boards this viewer may see: in a team match, onlookers only get boards both rooms have played
     const hist = t.match && onlooker ? history.filter(h => otherHas(h.board)) : history;
@@ -904,22 +932,25 @@ export class TableRoom extends DurableObject {
       if (!role) roles.set(a.uid, role = this.roleOf(a.uid));
       if (!cache.has(role)) {
         const { v, hist, other } = this.viewFor(a.uid), chat = v.chat; delete v.chat;
-        cache.set(role, { head: JSON.stringify({ type: 'state', t: v, watchers: viewers.size, now }).slice(0, -1), chat, hist, other });
+        cache.set(role, { head: JSON.stringify({ type: 'state', t: v, watchers: viewers.size, now }).slice(0, -1), chat, hist, other, hj: new Map(), oj: null, cj: new Map() });
       }
       const c = cache.get(role), H = c.hist;
-      const cl = a.cl || 0, newChat = c.chat.filter(m => !m.n || m.n > cl);
-      let extra = `,"chat":${JSON.stringify(newChat)},"chatFull":${cl ? 'false' : 'true'}`;
+      const cl = a.cl || 0;
+      if (!c.cj.has(cl)) c.cj.set(cl, JSON.stringify(c.chat.filter(m => !m.n || m.n > cl)));
+      let extra = `,"chat":${c.cj.get(cl)},"chatFull":${cl ? 'false' : 'true'}`;
       const lastN = c.chat.length ? (c.chat[c.chat.length - 1].n || 0) : cl;
       const hl = a.hl || 0, hb = H.length ? H[H.length - 1].board : 0;
       const histChanged = hl !== H.length || (a.hb ?? 0) !== hb;
       if (histChanged) {
         // send only the new boards if this connection's copy still lines up; otherwise resend them all
         const from = hl && hl <= H.length && H[hl - 1].board === a.hb ? hl : 0;
-        extra += `,"histFrom":${from},"hist":${JSON.stringify(H.slice(from))}`;
+        // (the JSON of the boards is worked out once per role and starting board, not per connection: it can be ~200 KB)
+        if (!c.hj.has(from)) c.hj.set(from, JSON.stringify(H.slice(from)));
+        extra += `,"histFrom":${from},"hist":${c.hj.get(from)}`;
       }
       const ov = c.other, ob = ov && ov.length ? ov[ov.length - 1].board : 0;
       const otherChanged = !!ov && ((a.ol || 0) !== ov.length || (a.ob ?? 0) !== ob);
-      if (otherChanged) extra += `,"other":${JSON.stringify(ov)}`;
+      if (otherChanged) extra += `,"other":${c.oj ??= JSON.stringify(ov)}`;
       try {
         ws.send(c.head + extra + '}');
         if (histChanged || otherChanged || lastN !== cl) ws.serializeAttachment({ ...a, hl: H.length, hb, ol: ov ? ov.length : 0, ob, cl: lastN });
@@ -1071,7 +1102,7 @@ async function dailyRoute(req, env, path) {
   }
   if (req.method !== 'POST' || path !== '/api/daily') return json({ error: 'not found' }, 404);
   if (Number(req.headers.get('content-length')) > DAILY_MAX_BODY) return json({ error: 'too large' }, 413);
-  let b; try { const txt = await req.text(); if (txt.length > DAILY_MAX_BODY) return json({ error: 'too large' }, 413); b = JSON.parse(txt); } catch (e) { return json({ error: 'bad request' }, 400); }
+  const b = await readJson(req, DAILY_MAX_BODY);
   if (!b || typeof b !== 'object' || Array.isArray(b)) return json({ error: 'bad request' }, 400);
   // today, or yesterday for a board started before midnight UTC
   const date = String(b.date || '');

@@ -205,12 +205,24 @@ function resolveRobotClaim(t) {
     // the claimer's partner answers for themself (a robot declarer controls dummy, but a person at dummy decides)
     const o = occupant(t, sameSide(s, c.by) ? s : controllerOf(t, s));
     if (o && o.kind === 'robot') {
-      if (ok === null) ok = claimAccept(t, c.by, c.tricks, t.local ? CLAIM_NODES_PAGE : CLAIM_NODES);
+      if (ok === null) ok = claimAnswer(t, c.by, c.tricks, t.local ? CLAIM_NODES_PAGE : CLAIM_NODES);
       if (!ok) { sysMsg(t, `Robot ${SEAT_NAME[s]} rejected the claim. Play continues.`); t.claim = null; return; }
       c.acc[s] = true;
     }
   }
   checkClaim(t);
+}
+// claimAccept, remembered: the answer depends only on the position, so a claim made again and again (a person
+// claiming, being turned down and claiming again, perhaps on purpose to load the server) costs one search.
+const claimMemo = new Map();
+function claimAnswer(t, by, n, maxNodes = CLAIM_NODES) {
+  const c = t.contract;
+  const key = [playKey(t), SEATS.map(s => t.hands[s].join('')).join(''), c.strain + c.declarer, by + n, maxNodes].join('|');
+  if (claimMemo.has(key)) return claimMemo.get(key);
+  const ok = claimAccept(t, by, n, maxNodes);
+  if (claimMemo.size >= 64) claimMemo.clear();
+  claimMemo.set(key, ok);
+  return ok;
 }
 // A robot on lead at the start of a trick claims when the rest is clear (robotClaimCount in js/bots.js: the
 // double-dummy result, and the same however the cards it can't see lie). Only for its own side's play: a
