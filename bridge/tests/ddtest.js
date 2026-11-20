@@ -118,6 +118,13 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
         // everyone here plays botPlay, the play model of ddConsistency, so the real layout fits the play perfectly
         const real = {}; for (const x of SEATS) real[x] = remainingHand(hands, t.play, x);
         check(D.ddConsistency(v, real) === 1, 'real layout does not fit the play');
+        // the play check's shortcuts (a layout checked once, all-equal choices skipped, stopping below the k-th best
+        // weight) choose the same layouts with the same weights as checking every layout to the end
+        if (i) {
+          const o = { k: 12, pool: 48, weigh: 1, wOpp: 0.8, wPart: 0.8 };
+          const a = D.ddDeals(v, { ...o, rand: seededRand('dl' + g + i) }), b = D.ddDeals(v, { ...o, memo: false, skipEq: false, floor: false, rand: seededRand('dl' + g + i) });
+          check(JSON.stringify(a) === JSON.stringify(b), 'play-check shortcuts changed the layouts');
+        }
         for (const h of D.ddSample(v, 5, seededRand('s' + g + i))) {
           const all = SEATS.flatMap(x => h[x]), played = [...playedCards(t.play)];
           check(new Set(all.concat(played)).size === 52 && all.length + played.length === 52, 'not a deck');

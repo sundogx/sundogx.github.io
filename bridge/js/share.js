@@ -117,7 +117,7 @@ function parsePBN(text, pick = 0) { // pick: which of the boards that have a dea
     s = nextSeat(s);
   }
   fillFourth(hands);
-  const board = parseInt(tags.board, 10) || 1;
+  let board = parseInt(tags.board, 10); if (!(board >= 1 && board <= 9999)) board = 1; // 0, negative or huge: board 1
   const dealer = /^[NESW]$/i.test(tags.dealer || '') ? tags.dealer.toUpperCase() : boardDealer(board);
   const vul = { none: 'None', love: 'None', '-': 'None', ns: 'NS', ew: 'EW', all: 'Both', both: 'Both' }[(tags.vulnerable || '').toLowerCase()] || boardVul(board);
   const calls = [];

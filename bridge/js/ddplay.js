@@ -126,13 +126,19 @@ function ddClasses(view, legal) {
 }
 
 // ---- Sampling the unseen cards ----
-function ddShuffle(a, rand) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
-// Returns up to k full layouts {N,E,S,W: remaining cards}, best fits to the auction first.
-// pens (optional array) receives each returned layout's distance from the auction (0 = fits).
-// opts.stop: stop dealing early when few layouts fit the auction (the remaining tries would mostly add spares).
-// opts.relax (a fraction, e.g. 0.05): a hidden player whose limits fewer than this share of the layouts meet has them
-// ignored when ranking the spares (the auction must have been misread, or a human bid oddly).
-function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null, opts = {}) {
+// How far a hidden hand (its full 13 cards: held plus played) is from what the auction showed (0 = fits).
+function ddSeatPen(lim, full) {
+  if (!lim) return 0;
+  let p = 0;
+  const pts = hcp(full), L = suitLengths(full);
+  if (pts < lim.hcpMin) p += lim.hcpMin - pts;
+  if (pts > lim.hcpMax) p += pts - lim.hcpMax;
+  for (const su of SUITS) { if (L[su] < lim.lenMin[su]) p += 2 * (lim.lenMin[su] - L[su]); if (L[su] > lim.lenMax[su]) p += 2 * (L[su] - lim.lenMax[su]); }
+  if (lim.bal && SUITS.some(su => L[su] < 2)) p += 2; // a singleton or void in a hand that showed a (semi-)balanced one
+  return p;
+}
+// The unseen cards, who may hold them (voids shown) and how many each hidden player holds.
+function ddUnseen(view) {
   const played = ddPlayedSet(view), seen = new Set(played);
   for (const s in view.known) view.known[s].forEach(x => seen.add(x));
   const unseen = [];
@@ -141,25 +147,61 @@ function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null, opts =
   const playedBy = {}, voids = {};
   for (const s of SEATS) { playedBy[s] = []; voids[s] = new Set(); }
   for (const tr of view.tricks) {
-    if (!tr.cards.length) continue; // a trick not yet started
+    if (!tr.cards.length) continue;
     const led = suitOf(tr.cards[0].card);
     for (const pc of tr.cards) { playedBy[pc.seat].push(pc.card); if (suitOf(pc.card) !== led) voids[pc.seat].add(led); }
   }
-  const need = {}; let total = 0;
-  for (const s of hidden) { need[s] = 13 - playedBy[s].length; total += need[s]; }
+  const need = {};
+  for (const s of hidden) need[s] = 13 - playedBy[s].length;
+  return { unseen, hidden, playedBy, voids, need };
+}
+function ddBinom(n, r) { if (r < 0 || r > n) return 0; let x = 1; for (let i = 1; i <= r; i++) x = x * (n - r + i) / i; return Math.round(x); }
+// Every layout of the unseen cards when there are at most max of them (two hidden hands, after the lead), else null.
+// pens receives each layout's distance from the auction, as in ddSample (opts.relax applies the same way).
+function ddEnumerate(view, max, pens, opts = {}) {
+  const { unseen, hidden, playedBy, voids, need } = ddUnseen(view);
+  if (hidden.length !== 2) return null;
+  const [A, B] = hidden, base = { [A]: [], [B]: [] }, free = [];
+  for (const x of unseen) {
+    const a = !voids[A].has(suitOf(x)), b = !voids[B].has(suitOf(x));
+    if (a && b) free.push(x); else if (a) base[A].push(x); else if (b) base[B].push(x); else return null;
+  }
+  const r = need[A] - base[A].length;
+  if (r < 0 || r > free.length || free.length - r !== need[B] - base[B].length) return null;
+  if (ddBinom(free.length, r) > max) return null;
+  const out = [], ps = [], fits = { [A]: 0, [B]: 0 };
+  const pick = [];
+  const rec = (i, left) => {
+    if (left === 0) {
+      const set = new Set(pick), h = { [A]: base[A].concat(pick), [B]: base[B].concat(free.filter(x => !set.has(x))) };
+      const pa = ddSeatPen(view.limits[A], h[A].concat(playedBy[A])), pb = ddSeatPen(view.limits[B], h[B].concat(playedBy[B]));
+      if (!pa) fits[A]++; if (!pb) fits[B]++;
+      for (const s in view.known) h[s] = view.known[s].slice();
+      out.push(h); ps.push({ [A]: pa, [B]: pb });
+      return;
+    }
+    if (free.length - i < left) return;
+    pick.push(free[i]); rec(i + 1, left - 1); pick.pop();
+    rec(i + 1, left);
+  };
+  rec(0, r);
+  const drop = opts.relax ? hidden.filter(s => fits[s] < out.length * opts.relax) : [];
+  for (const p of ps) pens.push(p[A] + p[B] - drop.reduce((t, s) => t + p[s], 0));
+  return out;
+}
+function ddShuffle(a, rand) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+// Returns up to k full layouts {N,E,S,W: remaining cards}, best fits to the auction first.
+// pens (optional array) receives each returned layout's distance from the auction (0 = fits).
+// opts.stop: stop dealing early when few layouts fit the auction (the remaining tries would mostly add spares).
+// opts.relax (a fraction, e.g. 0.05): a hidden player whose limits fewer than this share of the layouts meet has them
+// ignored when ranking the spares (the auction must have been misread, or a human bid oddly).
+function ddSample(view, k, rand = Math.random, maxTries = 0, pens = null, opts = {}) {
+  const { unseen, hidden, playedBy, voids, need } = ddUnseen(view);
+  let total = 0;
+  for (const s of hidden) total += need[s];
   if (total !== unseen.length) throw new Error('ddSample: card count mismatch');
   const allowed = x => hidden.filter(s => !voids[s].has(suitOf(x)));
-  const seatPen = (s, h) => { // how far a hidden hand is from what the auction showed
-    const lim = view.limits[s]; if (!lim) return 0;
-    let p = 0;
-    const full = h[s].concat(playedBy[s]);
-    const pts = hcp(full), L = suitLengths(full);
-    if (pts < lim.hcpMin) p += lim.hcpMin - pts;
-    if (pts > lim.hcpMax) p += pts - lim.hcpMax;
-    for (const su of SUITS) { if (L[su] < lim.lenMin[su]) p += 2 * (lim.lenMin[su] - L[su]); if (L[su] > lim.lenMax[su]) p += 2 * (L[su] - lim.lenMax[su]); }
-    if (lim.bal && SUITS.some(su => L[su] < 2)) p += 2; // a singleton or void in a hand that showed a (semi-)balanced one
-    return p;
-  };
+  const seatPen = (s, h) => ddSeatPen(view.limits[s], h[s].concat(playedBy[s]));
   const tries = maxTries || Math.max(200, 60 * k);
   const good = [], spare = [], fits = {};
   hidden.forEach(s => { fits[s] = 0; });
@@ -213,7 +255,8 @@ function ddEqual(hand, gone, a, b) { // a and b equal for whoever holds `hand` (
   for (let r = lo + 1; r < hi; r++) { const y = s + RANKS[r]; if (!gone.has(y) && !hand.includes(y)) return false; }
   return true;
 }
-function ddConsistency(view, h, opts = {}) {
+// floor: stop as soon as the weight falls below it (the caller only needs to know it is below; see ddDeals).
+function ddConsistency(view, h, opts = {}, floor = 0) {
   if (typeof botPlay !== 'function' || !view.tricks.length) return 1;
   const me = view.seat, c = view.contract, decl = c.declarer, dummy = partnerOf(decl);
   const onDecl = sameSide(me, decl);
@@ -230,13 +273,23 @@ function ddConsistency(view, h, opts = {}) {
     const chooser = seat === dummy ? decl : seat;
     if (chooser !== me && !(onDecl && sameSide(chooser, me))) {
       const legal = legalPlays(full, t.play, c, seat);
-      if (legal.length > 1) {
+      const rem = legal.length > 1 ? remainingHand(full, t.play, seat) : null;
+      // all the legal cards equal (e.g. two low cards with the ones between them played): any choice fits
+      if (legal.length > 1 && !(!first && opts.skipEq !== false && legal.every(x => ddEqual(rem, gone, legal[0], x)))) {
         let bot = null;
         try { bot = botPlay(t, seat); } catch (e) { bot = null; }
-        const rem = remainingHand(full, t.play, seat);
-        if (bot && !ddEqual(rem, gone, bot, card)) {
+        if (first && opts.leadBeta && typeof leadPrior === 'function') {
+          // the opening lead, read softly by the lead prior (js/leads.js): a suit the prior rates worse in this
+          // layout is a less likely lead (the robots lead by the solver plus the prior, people by rules like it)
+          if (!ddLeadCards(rem, c.strain).includes(card)) w *= mLead;
+          else {
+            const pr = leadPrior(rem, t.auction, c, seat), best = Math.max(...Object.values(pr));
+            w *= Math.exp(-opts.leadBeta * (best - (pr[suitOf(card)] || 0)));
+          }
+        } else if (bot && !ddEqual(rem, gone, bot, card)) {
           if (first) w *= ddLeadCards(rem, c.strain).includes(card) ? mLeadSuit : mLead;
           else w *= sameSide(chooser, me) ? mPart : mOpp;
+          if (w < floor) return w;
         }
       }
     }
@@ -341,6 +394,8 @@ function ddPick(view, legal, results, prefer, opts = {}) {
     });
     return { card, score: wt ? sc / wt : -1e9, tricks: wt ? tk / wt : 0, n };
   });
+  // opts.trW (test knob, off): points added per average trick, a steadier estimate than the score on ~24 layouts
+  if (opts.trW) stats.forEach(a => { if (a.n) a.score += opts.trW * a.tricks; });
   if (opts.agg === 'impref' && stats.length > 1) {
     // IMPs against a reference result: on each layout, the best any candidate card achieves (what the other table's
     // declarer or defenders could do), scaled x10 like 'imp'. Concave in points, so it values safety the way IMPs do.
@@ -437,31 +492,54 @@ function ddDeals(view, opts, t0 = ddNow()) {
   const k = opts.k || 20, budget = opts.ms || Infinity, rand = opts.rand || Math.random;
   if (!(opts.pool > k && view.tricks.length && typeof botPlay === 'function')) return { deals: ddSample(view, k, rand, 0, null, opts), weights: null };
   // BEN-style: deal a larger pool, weight each layout by how well it explains the play so far, solve the best k
-  const pens = [], pool = ddSample(view, opts.pool, rand, 0, pens, opts);
+  // opts.exact: late in the play, when there are at most that many layouts, take every one of them instead
+  // (opts.exactK: solve the best exactK of them, default all)
+  let pens = [], pool = opts.exact ? ddEnumerate(view, opts.exact, pens, opts) : null;
+  if (pool) {
+    const ws = pool.map((h, i) => ddConsistency(view, h, opts) * Math.pow(opts.penBase != null ? opts.penBase : 0.7, pens[i]));
+    const order = pool.map((h, i) => i).sort((a, b) => ws[b] - ws[a]).slice(0, opts.exactK || pool.length);
+    return { deals: order.map(i => pool[i]), weights: order.map(i => ws[i]), exact: true };
+  }
+  pens = []; pool = ddSample(view, opts.pool, rand, 0, pens, opts);
   // the play check costs time on every layout: on a slow device score only as many as fit in a share of the budget
   const consMs = opts.consMs != null ? opts.consMs : budget * 0.3, pb = opts.penBase != null ? opts.penBase : 0.7;
-  const ws = [];
+  // late in the play the same layout is often dealt several times: its check is done once (opts.memo false: every time)
+  // A layout whose weight falls below the k-th best so far can't be among the k solved (that only rises, and ties go
+  // to the earlier layout), so its check stops there (opts.floor false: check every layout to the end).
+  const ws = [], memo = opts.memo === false ? null : new Map(), top = [], cut = opts.floor !== false && !opts.exact;
   for (let i = 0; i < pool.length; i++) {
     if (i >= k && ddNow() - t0 > consMs) { pool.length = i; break; }
-    ws.push(ddConsistency(view, pool[i], opts) * Math.pow(pb, pens[i] || 0));
+    const key = memo && ddKey(pool[i]), pf = Math.pow(pb, pens[i] || 0);
+    const floor = cut && top.length >= k ? top[k - 1] / pf : 0;
+    let w = memo ? memo.get(key) : undefined;
+    if (w === undefined) { w = ddConsistency(view, pool[i], opts, floor); if (memo) memo.set(key, w); }
+    w *= pf; ws.push(w);
+    if (cut && (top.length < k || w > top[k - 1])) { // the k best weights so far, highest first
+      let j = Math.min(top.length, k - 1);
+      while (j > 0 && top[j - 1] < w) { top[j] = top[j - 1]; j--; }
+      top[j] = w; if (top.length > k) top.length = k;
+    }
   }
   const order = pool.map((h, i) => i).sort((a, b) => ws[b] - ws[a]); // stable: ties keep the sampler's order
   return { deals: order.slice(0, k).map(i => pool[i]), weights: opts.weigh ? order.slice(0, k).map(i => ws[i]) : null };
 }
+function ddKey(h) { return SEATS.map(s => h[s].slice().sort().join('')).join('|'); }
 // Solves the layouts in order until the budget: stops before a solve that would probably end past opts.ms, once it
 // has opts.minK. Returns the results ({card: tricks} per layout), or null when minK can't be reached by opts.hardMs.
 // onResult(r, i) is called after each solve.
 async function ddSolveDeals(view, deals, solve, opts, t0 = ddNow(), onResult = null) {
   const minK = Math.min(opts.k || 20, opts.minK || 6, deals.length), budget = opts.ms || Infinity, hardMs = opts.hardMs || Infinity;
-  const results = [];
-  let solving = 0;
+  const results = [], seen = opts.memo === false ? null : new Map(); // a layout dealt twice is solved once
+  let solving = 0, solved = 0;
   for (const h of deals) {
-    const t = ddNow();
-    if (results.length >= minK && t - t0 + (results.length ? solving / results.length : 0) > budget) break;
+    const t = ddNow(), key = seen && ddKey(h);
+    if (seen && seen.has(key)) { const r = seen.get(key); results.push(r); if (onResult) onResult(r, results.length - 1); continue; }
+    if (results.length >= minK && t - t0 + (solved ? solving / solved : 0) > budget) break;
     // too slow to reach minK before the caller stops waiting: give up now and free the worker for the next card
-    if (results.length && results.length < minK && t - t0 + (minK - results.length) * solving / results.length > hardMs) return null;
+    if (solved && results.length < minK && t - t0 + (minK - results.length) * solving / solved > hardMs) return null;
     const r = await solve(ddJob(view, h));
-    solving += ddNow() - t;
+    solving += ddNow() - t; solved++;
+    if (seen) seen.set(key, r);
     results.push(r);
     if (onResult) onResult(r, results.length - 1);
   }
@@ -486,4 +564,4 @@ function ddDecide(view, results, weights, opts) {
   return r;
 }
 
-if (typeof module !== 'undefined') module.exports = { ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };
+if (typeof module !== 'undefined') module.exports = { ddEnumerate, ddSeatPen, ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };
