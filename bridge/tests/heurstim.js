@@ -11,6 +11,7 @@
 //         rule in botPlay that chose the card, from botWhyLast() in js/bots.js).
 // OLDEXP=a,b: experiments on for the old heuristic (BASE=js/bots.js NEWEXP=a,b OLDEXP=a measures b on top of a).
 // NEWOFF=a,b sets globalThis.BOT_OFF (the features switched off) for the new heuristic only, e.g. NEWOFF=fin,hold.
+// LOCAL=1: the tables are the page's (t.local: js/bots.js uses its page budgets).
 // OVER=k: every contract is doubled and its level set so declarer needs k tricks more than double dummy (an overbid
 // doubled; the auction stays the robots' own).
 // BASE=path compares against another copy of bots.js instead of the frozen fixture; NEW=path replaces js/bots.js.
@@ -70,6 +71,7 @@ if (isMainThread) {
   let solve = null;
   const playOut = (hands, auction, ct, vul, pick) => {
     const t = { hands, auction, contract: ct, vul, play: { tricks: [] } };
+    if (process.env.LOCAL) t.local = true; // a table in the page (the robots' page budgets)
     for (let i = 0; i < 52; i++) {
       const s = playTurn(t.play, ct);
       const card = pick(s)(t, s);

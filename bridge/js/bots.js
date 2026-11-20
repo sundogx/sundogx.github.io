@@ -156,8 +156,11 @@ function botPlay(t, seat, want) {
 // to the suits each hand has shown out of), solve each layout double dummy (claimSolver) after each candidate card,
 // and play the card with the best total score over the layouts; the heuristic's card unless another scores higher.
 // Up to END_LAYOUTS layouts within END_NODES search nodes (about 0.3-0.4 microseconds each; the server has 10 ms of
-// CPU for a request), more in the page; with fewer than 4 layouts solved, the heuristic's card.
+// CPU for a request), more in the page; with fewer than 4 layouts solved, the heuristic's card. (round 12: in the page
+// 9 cards / 16 layouts / 150000 nodes gained +0.3 IMPs a board with botPlay's own card, but nothing in the page's real
+// pipeline, where the DD sampler plays and botPlay only breaks ties; not worth 25-40 ms of main thread a card.)
 const END_TRICKS = 7, END_LAYOUTS = 24, END_NODES = 5000, END_NODES_PAGE = 30000, END_POOL = 96;
+const END_TRICKS_PAGE = 7, END_LAYOUTS_PAGE = 24; // (round 12) the page's limits (globals END_PT, END_PN, END_PL: harness knobs)
 let botEndStats = { calls: 0, over: 0, nodes: 0, lays: 0 };
 // What a hidden hand's calls showed, as limits for the endgame's layouts: js/ddplay.js ddAuctionLimits (shown() from
 // js/bidding.js, plus the ranges of opening bids and a passed hand), with a 2C opener's minimum never lowered.
@@ -176,7 +179,7 @@ function botEndgame(t, seat, rc) {
   const play = t.play, c = t.contract, hands = t.hands;
   const my = remainingHand(hands, play, seat);
   const left = my.length;
-  if (left > (+globalThis.END_TRICKS || END_TRICKS) || left < 2) return null;
+  if (left > (t.local ? +globalThis.END_PT || END_TRICKS_PAGE : +globalThis.END_TRICKS || END_TRICKS) || left < 2) return null;
   const legal = legalPlays(hands, play, c, seat);
   if (legal.length < 2) return null;
   const decl = c.declarer, dummy = partnerOf(decl), onDecl = sameSide(seat, decl);
@@ -205,7 +208,8 @@ function botEndgame(t, seat, rc) {
   // so far), so positions that look the same to it sample the same layouts
   const rand = seededRand(seat + ':' + SEATS.map(s => visible.has(s) ? rem[s].join('') : '').join('|') + ':' + pool.join('') + ':' + play.tricks.map(x => x.cards.map(pc => pc.card).join('')).join(''));
   const side = SEATS.indexOf(seat) & 1, need = c.level + 6;
-  const sc = cands.map(() => 0), L = +globalThis.END_LAYOUTS || END_LAYOUTS, budget = +globalThis.END_NODES || (t.local ? END_NODES_PAGE : END_NODES);
+  const sc = cands.map(() => 0), L = +globalThis.END_LAYOUTS || (t.local ? +globalThis.END_PL || END_LAYOUTS_PAGE : END_LAYOUTS);
+  const budget = +globalThis.END_NODES || (t.local ? +globalThis.END_PN || END_NODES_PAGE : END_NODES);
   let nodes = 0, n = 0;
   botEndStats.calls++;
   const ri = Math.max(0, cands.indexOf(rc));
@@ -260,6 +264,16 @@ function botEndgame(t, seat, rc) {
   // (round 11) the solves of this decision share one transposition table (the same side and trumps: a position's
   // bounds hold whatever layout it came from), so more layouts fit in the budget; BOT_OFF ett: off
   const ttShare = OFF('ett') ? null : {};
+  // (round 12) the tricks after a card, as win() steps up or down from a guess (the heuristic card's count on the
+  // last layout, or this layout's for the other cards): a binary search costs log2(tricks left) solves; BOT_OFF evs
+  const step = !OFF('evs');
+  let guess = -1;
+  const stepVal = (S, v, got) => {
+    let r = S.win(v - got);
+    if (r) { while (r === true && v - got < left) { r = S.win(v + 1 - got); if (r) v++; } if (r === false) r = true; }
+    else { while (r === false && v > got) { v--; r = S.win(v - got); } }
+    return r === null ? null : v;
+  };
   for (let k = 0; k < L && nodes < budget; k++) {
     const h = lays ? lays[k] : deal1();
     if (!h) return null;
@@ -273,13 +287,8 @@ function botEndgame(t, seat, rc) {
       h2[P.i] &= ~P.bit;
       const S = claimSolver({ h: h2, trump: P.trump, leader: P.leader, cur: P.cur }, side, Math.max(1, budget - nodes), ttShare);
       let v;
-      if (i === ri) { v = S.value(); if (v !== null) v += got; }
-      else { // up or down from the heuristic card's count, one trick at a time
-        v = base; let r = S.win(v - got);
-        if (r) { while (r === true && v - got < left) { r = S.win(v + 1 - got); if (r) v++; } if (r === false) r = true; }
-        else { while (r === false && v > got) { v--; r = S.win(v - got); } }
-        if (r === null) v = null;
-      }
+      if (i === ri) { if (step && guess >= got) v = stepVal(S, Math.min(guess, got + left), got); else { v = S.value(); if (v !== null) v += got; } if (v !== null) guess = v; }
+      else v = stepVal(S, base, got); // up or down from the heuristic card's count, one trick at a time
       nodes += S.nodes();
       if (v === null) { ok = false; break; }
       val[i] = v;
