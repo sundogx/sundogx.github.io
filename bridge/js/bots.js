@@ -137,6 +137,10 @@ function seatShown(auction, vul, who) {
   return m[who];
 }
 function botFeatures(t, seat, kind) { const r = botPlay(t, seat, kind); return r && r.opts ? r : null; }
+const BP_SUIT_IX = { S: 0, H: 1, D: 2, C: 3 }, BP_CH = new Int8Array(128).fill(-1);
+'SHDC'.split('').forEach((x, i) => { BP_CH[x.charCodeAt(0)] = 13 * i; }); RANKS.split('').forEach((x, i) => { BP_CH[x.charCodeAt(0)] = i; }); // (no suit letter is a rank)
+const BP_IX = x => BP_CH[x.charCodeAt(0)] + BP_CH[x.charCodeAt(1)]; // a card's index, suit * 13 + rank (0..51)
+const bpDot = (f, W) => { let a = 0; for (let i = 0; i < f.length; i++) a += f[i] * W[i]; return a; }; // = f.reduce((a, x, i) => a + x * W[i], 0)
 let botWhy = ''; // which rule chose the last card (tests/heurstim.js leak report)
 const R = (why, card) => { botWhy = why; return card; };
 function botPlay(t, seat, want) {
@@ -153,8 +157,47 @@ function botPlay(t, seat, want) {
 // and play the card with the best total score over the layouts; the heuristic's card unless another scores higher.
 // Up to END_LAYOUTS layouts within END_NODES search nodes (about 0.3-0.4 microseconds each; the server has 10 ms of
 // CPU for a request), more in the page; with fewer than 4 layouts solved, the heuristic's card.
-const END_TRICKS = 7, END_LAYOUTS = 24, END_NODES = 5000, END_NODES_PAGE = 30000;
-let botEndStats = { calls: 0, over: 0, nodes: 0 };
+const END_TRICKS = 7, END_LAYOUTS = 24, END_NODES = 5000, END_NODES_PAGE = 30000, END_POOL = 96;
+let botEndStats = { calls: 0, over: 0, nodes: 0, lays: 0 };
+// What a hidden hand's calls showed, as limits for the endgame's layouts (the same reading as js/ddplay.js
+// ddAuctionLimits: shown() from js/bidding.js, plus the ranges of opening bids and a passed hand).
+const endLimCache = new Map();
+function endLimits(auction, seat, vul) {
+  const key = (vul || '') + ':' + seat + ':' + auction.map(a => a.by + a.call).join(' ') + ':' + JSON.stringify([globalThis.BID_OFF, globalThis.BID_K]); // (the bidding's test knobs too)
+  let k = endLimCache.get(key);
+  if (!k) { k = endLimits0(auction, seat, vul); if (endLimCache.size > 64) endLimCache.clear(); endLimCache.set(key, k); }
+  return k;
+}
+function endLimits0(auction, seat, vul) {
+  const k = { hcpMin: 0, hcpMax: 37, lenMin: { S: 0, H: 0, D: 0, C: 0 }, lenMax: { S: 13, H: 13, D: 13, C: 13 }, bal: false };
+  let info = null;
+  try { if (typeof shown === 'function') info = shown(auction, seat, vul); } catch (e) { info = null; }
+  if (info) {
+    if (info.pts > 0) k.hcpMin = Math.max(0, info.pts - (info.nt ? 0 : 2));
+    if (info.len) for (const s of SUITS) k.lenMin[s] = Math.max(k.lenMin[s], info.len[s] || 0);
+    if (info.ptsMax < 37) k.hcpMax = Math.min(37, info.ptsMax + (info.nt ? 0 : 1));
+    if (info.maxLen) for (const s of SUITS) if (info.maxLen[s] < 13) k.lenMax[s] = info.maxLen[s];
+    try { const metas = auctionMetas(auction, vul); k.bal = auction.some((a, i) => a.by === seat && metas[i] && metas[i].bal); } catch (e) { /* none */ }
+  }
+  const i0 = auction.findIndex(a => a.by === seat);
+  if (i0 < 0) return k;
+  const first = auction[i0], before = auction.slice(0, i0);
+  if (!before.some(a => bidValue(a.call) >= 0)) { // the seat had the chance to open
+    const c = first.call;
+    if (c === 'P') k.hcpMax = Math.min(k.hcpMax, 12);
+    else if (c === '1N') { k.hcpMin = Math.max(k.hcpMin, 15); k.hcpMax = Math.min(k.hcpMax, 17); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
+    else if (c === '2N') { k.hcpMin = Math.max(k.hcpMin, 20); k.hcpMax = Math.min(k.hcpMax, 21); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
+    else if (c === '2C') k.hcpMin = Math.max(k.hcpMin, 22);
+    else if (/^1[CDHS]$/.test(c)) { k.hcpMin = Math.max(k.hcpMin, 10); k.hcpMax = Math.min(k.hcpMax, 21); }
+    else if (/^[23][DHS]$|^3C$/.test(c)) { k.hcpMax = Math.min(k.hcpMax, 11); k.lenMin[c[1]] = Math.max(k.lenMin[c[1]], c[0] === '2' ? 6 : 7); }
+  } else if (auction.every(a => a.by !== seat || a.call === 'P')) { // never bid
+    const opener = before.find(a => bidValue(a.call) >= 0);
+    k.hcpMax = Math.min(k.hcpMax, opener && sameSide(opener.by, seat) ? 7 : 17);
+  }
+  if (k.hcpMax < k.hcpMin) k.hcpMax = k.hcpMin;
+  for (const s of SUITS) if (k.lenMax[s] < k.lenMin[s]) k.lenMax[s] = k.lenMin[s];
+  return k;
+}
 function botEndgame(t, seat, rc) {
   const play = t.play, c = t.contract, hands = t.hands;
   const my = remainingHand(hands, play, seat);
@@ -192,24 +235,69 @@ function botEndgame(t, seat, rc) {
   let nodes = 0, n = 0;
   botEndStats.calls++;
   const ri = Math.max(0, cands.indexOf(rc));
-  for (let k = 0; k < L && nodes < budget; k++) {
-    // a random layout: cards of a suit one hand has shown out of go to the other, the rest at random
+  // the same for every layout (worked out once): each candidate's play, the tricks the side has after it and the
+  // position's trick in progress; the visible hands' cards as masks (claimPos)
+  const pre = cands.map(x => {
+    const p2 = { tricks: play.tricks.map(tr => ({ leader: tr.leader, cards: tr.cards.slice() })) };
+    applyPlay(p2, c, seat, x);
+    const tw = tricksWon(p2, c), q = claimPos({ play: p2, contract: c }, { ...rem, [seat]: rem[seat].filter(y => y !== x) });
+    return { got: sameSide(seat, decl) ? tw.decl : tw.def, trump: q.trump, leader: q.leader, cur: q.cur, i: SEATS.indexOf(seat) * 4 + CL_SUIT[x[0]], bit: 1 << rankOf(x) };
+  });
+  const hv = new Array(16).fill(0), hid = hidden.map(s => SEATS.indexOf(s) * 4);
+  for (let i = 0; i < 4; i++) if (visible.has(SEATS[i])) for (const x of rem[SEATS[i]]) hv[i * 4 + CL_SUIT[x[0]]] |= 1 << rankOf(x);
+  // a random layout: cards of a suit one hand has shown out of go to the other, the rest at random
+  const deal1 = () => {
     const h = { [hidden[0]]: [], [hidden[1]]: [] }, free = [];
     for (const x of pool) { if (out[hidden[0]].has(x[0])) h[hidden[1]].push(x); else if (out[hidden[1]].has(x[0])) h[hidden[0]].push(x); else free.push(x); }
     if (h[hidden[0]].length > n0 || h[hidden[1]].length > n1) return null;
     for (let i = free.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); const z = free[i]; free[i] = free[j]; free[j] = z; }
     for (const x of free) (h[hidden[0]].length < n0 ? h[hidden[0]] : h[hidden[1]]).push(x);
-    const lay = { ...rem, ...h };
+    return h;
+  };
+  // (round 11) deal a pool of END_POOL layouts and solve the ones that fit the auction best first (what each hidden
+  // hand's calls showed, its whole 13 cards: held in the layout plus played; js/ddplay.js ddSeatPen); BOT_OFF eauc: off
+  let lays = null;
+  if (!OFF('eauc')) {
+    const P = +globalThis.END_POOL || END_POOL, pens = [], lims = hidden.map(w => endLimits(t.auction || [], w, t.vul));
+    // each hidden hand's points and suit lengths: the cards it played, plus (per layout) the cards it holds; the second
+    // hand holds the rest of the pool
+    const HV = { A: 4, K: 3, Q: 2, J: 1 }, SI = CL_SUIT, base = [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]];
+    for (const tr of play.tricks) for (const pc of tr.cards) { const j = hidden.indexOf(pc.seat); if (j >= 0) { base[j][4] += HV[pc.card[1]] || 0; base[j][SI[pc.card[0]]]++; } }
+    for (const x of pool) { base[1][4] += HV[x[1]] || 0; base[1][SI[x[0]]]++; }
+    const pen1 = (lim, pts, l) => {
+      let p = 0;
+      if (pts < lim.hcpMin) p += lim.hcpMin - pts;
+      if (pts > lim.hcpMax) p += pts - lim.hcpMax;
+      let short = false;
+      for (let i = 0; i < 4; i++) { const su = SUITS[i], n = l[i]; if (n < lim.lenMin[su]) p += 2 * (lim.lenMin[su] - n); if (n > lim.lenMax[su]) p += 2 * (n - lim.lenMax[su]); if (n < 2) short = true; }
+      return lim.bal && short ? p + 2 : p;
+    };
+    const a0 = [0, 0, 0, 0, 0], a1 = [0, 0, 0, 0, 0];
+    lays = [];
+    for (let k = 0; k < P; k++) {
+      const h = deal1(); if (!h) return null;
+      for (let i = 0; i < 5; i++) { a0[i] = base[0][i]; a1[i] = base[1][i]; }
+      for (const x of h[hidden[0]]) { const v = HV[x[1]] || 0, i = SI[x[0]]; a0[4] += v; a0[i]++; a1[4] -= v; a1[i]--; }
+      lays.push(h); pens.push(pen1(lims[0], a0[4], a0) + pen1(lims[1], a1[4], a1));
+    }
+    const o = lays.map((h, i) => i).sort((a, b) => pens[a] - pens[b]); // stable: equal fits keep the dealt order
+    lays = o.map(i => lays[i]);
+  }
+  // (round 11) the solves of this decision share one transposition table (the same side and trumps: a position's
+  // bounds hold whatever layout it came from), so more layouts fit in the budget; BOT_OFF ett: off
+  const ttShare = OFF('ett') ? null : {};
+  for (let k = 0; k < L && nodes < budget; k++) {
+    const h = lays ? lays[k] : deal1();
+    if (!h) return null;
+    const hl = hv.slice();
+    for (let j = 0; j < 2; j++) for (const x of h[hidden[j]]) hl[hid[j] + CL_SUIT[x[0]]] |= 1 << rankOf(x);
     // this side's tricks after each candidate: the heuristic's card exactly, the others compared with it
     const val = cands.map(() => 0), order = [ri, ...cands.keys()].filter((i, j) => j === 0 || i !== ri);
     let ok = true, base = 0;
     for (const i of order) {
-      const x = cands[i];
-      const p2 = { tricks: play.tricks.map(tr => ({ leader: tr.leader, cards: tr.cards.slice() })) };
-      applyPlay(p2, c, seat, x);
-      const l2 = { ...lay, [seat]: lay[seat].filter(y => y !== x) };
-      const S = claimSolver(claimPos({ play: p2, contract: c }, l2), side, Math.max(1, budget - nodes));
-      const tw = tricksWon(p2, c), got = sameSide(seat, decl) ? tw.decl : tw.def;
+      const P = pre[i], got = P.got, h2 = hl.slice();
+      h2[P.i] &= ~P.bit;
+      const S = claimSolver({ h: h2, trump: P.trump, leader: P.leader, cur: P.cur }, side, Math.max(1, budget - nodes), ttShare);
       let v;
       if (i === ri) { v = S.value(); if (v !== null) v += got; }
       else { // up or down from the heuristic card's count, one trick at a time
@@ -228,51 +316,64 @@ function botEndgame(t, seat, rc) {
     n++;
     if (n >= 8 && sc.every(x => x === sc[0])) break; // no difference so far: the heuristic's card
   }
-  botEndStats.nodes += nodes;
+  botEndStats.nodes += nodes; botEndStats.lays += n;
   if (nodes >= budget) botEndStats.over++;
   if (n < 4) return null;
   let best = cands.indexOf(rc), bs = best >= 0 ? sc[best] : -1e18;
   for (let i = 0; i < cands.length; i++) if (sc[i] > bs + 1e-9) { bs = sc[i]; best = i; }
   return cands[best];
 }
-function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the features of a decision instead of a card
+// the card table of botPlayH0 (made once; a fresh one if botPlayH is ever called from inside itself)
+const BP_MK = new Uint8Array(52);
+let bpDepth = 0;
+function botPlayH(t, seat, want) {
+  const mk = bpDepth ? new Uint8Array(52) : BP_MK.fill(0);
+  bpDepth++;
+  try { return botPlayH0(t, seat, want, mk); } finally { bpDepth--; }
+}
+function botPlayH0(t, seat, want, mk) { // want (tests/heurfit.js): return the features of a decision instead of a card
   const c = t.contract, play = t.play, hands = t.hands;
   const trump = c.strain === 'N' ? null : c.strain;
-  const legal = legalPlays(hands, play, c, seat);
+  const my = remainingHand(hands, play, seat);
+  let legal = my; // = legalPlays (follow suit if we can)
+  { const tr0 = currentTrick(play); if (tr0 && tr0.cards.length) { const f = my.filter(x => suitOf(x) === suitOf(tr0.cards[0].card)); if (f.length) legal = f; } }
   if (legal.length === 1) return want ? null : R('L5', legal[0]);
   const decl = c.declarer, dummy = partnerOf(decl);
   const partner = partnerOf(seat);
   const onDeclSide = sameSide(seat, decl);
-  const played = playedCards(play);
-  const my = remainingHand(hands, play, seat);
   const dummyUp = play.tricks.length > 0 && play.tricks[0].cards.length > 0;
   const dummyCards = dummyUp ? remainingHand(hands, play, dummy) : [];
   const pCards = onDeclSide ? remainingHand(hands, play, partner) : (seat === dummy ? [] : (partner === dummy ? dummyCards : []));
-  const known = new Set([...played, ...my, ...dummyCards, ...pCards]);
-  const ours = new Set([...my, ...(onDeclSide ? pCards : [])]);
+  // every card by index (suit * 13 + rank, BP_IX): 1 played, 2 ours (this hand, and partner's on the declaring side),
+  // 4 known (played or seen), 8 dummy's, 16 this hand's, 32 partner's (pCards); a table instead of Sets (speed)
+  for (const tr of play.tricks) for (const pc of tr.cards) mk[BP_IX(pc.card)] |= 5;
+  for (const x of my) mk[BP_IX(x)] |= 22;
+  for (const x of dummyCards) mk[BP_IX(x)] |= 12;
+  for (const x of pCards) mk[BP_IX(x)] |= onDeclSide ? 38 : 36;
   const low = arr => arr.reduce((a, b) => rankOf(b) < rankOf(a) ? b : a);
   const high = arr => arr.reduce((a, b) => rankOf(b) > rankOf(a) ? b : a);
   const of = (arr, s) => arr.filter(x => suitOf(x) === s);
   const unseenAbove = card => { // unseen cards higher than `card` in its suit
-    const s = suitOf(card), out = [];
-    for (let r = rankOf(card) + 1; r < 13; r++) { const x = s + RANKS[r]; if (!known.has(x)) out.push(x); }
+    const s = suitOf(card), b = BP_SUIT_IX[s] * 13, out = [];
+    for (let r = rankOf(card) + 1; r < 13; r++) if (!(mk[b + r] & 4)) out.push(s + RANKS[r]);
     return out;
   };
   const isMaster = card => { // no higher card outside our side
-    const s = suitOf(card);
-    for (let r = rankOf(card) + 1; r < 13; r++) { const x = s + RANKS[r]; if (!played.has(x) && !ours.has(x)) return false; }
+    const b = BP_SUIT_IX[card[0]] * 13;
+    for (let r = rankOf(card) + 1; r < 13; r++) if (!(mk[b + r] & 3)) return false;
     return true;
   };
   const oppTrumpsLeft = () => {
     if (!trump) return 0;
-    let n = 0; for (const r of RANKS) { const x = trump + r; if (!played.has(x) && !ours.has(x)) n++; }
+    const b = BP_SUIT_IX[trump] * 13;
+    let n = 0; for (let r = 0; r < 13; r++) if (!(mk[b + r] & 3)) n++;
     return n;
   };
   // signals: partner's first discard/follow in each suit (high spot = encourage)
   const signals = {};
   if (!onDeclSide) for (const tr of play.tricks) {
     const ledS = suitOf(tr.cards[0].card);
-    for (const pc of tr.cards.slice(1)) if (pc.seat === partner) {
+    for (let j = 1; j < tr.cards.length; j++) { const pc = tr.cards[j]; if (pc.seat !== partner) continue;
       const s = suitOf(pc.card);
       if (signals[s] !== undefined) continue;
       if (s !== ledS || tr.cards[0].seat === seat) signals[s] = rankOf(pc.card) >= 5 ? 1 : -1; // 7 or higher encourages
@@ -313,13 +414,14 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
   // For each suit: our cards in this hand (A) and partner's (B), the opponents' (O), all high to low;
   // sure: tricks from the top; dev: tricks once the suit is developed (round by round, our top card wins if it
   // beats theirs, else we duck and their top card wins), lost: rounds lost while developing it.
+  let scMemo = null; // (the same every time in one call; callers only read it)
   const suitCount = () => {
-    const desc = arr => arr.slice().sort((a, b) => rankOf(b) - rankOf(a));
+    if (scMemo) return scMemo;
     const info = {};
     let sure = 0;
-    for (const s of SUITS) {
-      const A = desc(of(my, s)), B = desc(of(pCards, s)), O = [];
-      for (let r = 12; r >= 0; r--) { const x = s + RANKS[r]; if (!played.has(x) && !ours.has(x)) O.push(x); }
+    for (let si = 0; si < 4; si++) {
+      const s = SUITS[si], A = [], B = [], O = [];
+      for (let r = 12; r >= 0; r--) { const m = mk[si * 13 + r]; if (m & 16) A.push(s + RANKS[r]); if (m & 32) B.push(s + RANKS[r]); if (!(m & 3)) O.push(s + RANKS[r]); }
       const L = Math.max(A.length, B.length), oTop = O.length ? rankOf(O[0]) : -1;
       const mast = A.filter(x => rankOf(x) > oTop).length + B.filter(x => rankOf(x) > oTop).length;
       const sr = !O.length || mast >= O.length ? L : Math.min(mast, L);
@@ -333,12 +435,12 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
       info[s] = { A, B, O, L, sure: sr, dev: won, lost };
       sure += s === trump && O.length ? Math.min(sr, L) : sr;
     }
-    return { info, sure, need: c.level + 6 - tricksWon(play, c).decl };
+    return (scMemo = { info, sure, need: c.level + 6 - tricksWon(play, c).decl });
   };
   // a card that forces out higher cards without losing to lower ones: we hold a lower card with no opponents' card between
   const solid = x => {
-    const s = suitOf(x);
-    for (let r = rankOf(x) - 1; r >= 0; r--) { const y = s + RANKS[r]; if (ours.has(y)) return true; if (!played.has(y)) return false; }
+    const b = BP_SUIT_IX[x[0]] * 13;
+    for (let r = rankOf(x) - 1; r >= 0; r--) { const m = mk[b + r]; if (m & 2) return true; if (!(m & 1)) return false; }
     return false;
   };
   // cashing winners in a suit where partner is shorter and holds a master: lead low to it (high from the short side first)
@@ -349,172 +451,172 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
     const top = high(oth), lo = low(mine);
     return isMaster(top) && rankOf(lo) < rankOf(top) ? lo : x;
   };
-  // the declaring side on lead
-  const declPlan = () => {
-    const { info, sure, need } = suitCount();
-    const other = pCards;
-    if (trump) {
-      const T = info[trump];
-      const ourTop = Math.max(T.A.length ? rankOf(T.A[0]) : -1, T.B.length ? rankOf(T.B[0]) : -1);
-      // ruff losers in the short trump hand
-      if (!OFF('ruff') && (T.O.length || !OFF('ruff2')) && T.B.length > 0 && T.B.length < T.A.length) {
-        for (const s of SUITS) if (s !== trump && !info[s].B.length && info[s].A.length && !info[s].A.every(isMaster)) return R('ruffShort', low(info[s].A));
-        // partner has a singleton: cash the master (ours or partner's) to make the void, when we have losers to ruff
-        if (!OFF('mkvoid')) for (const s of SUITS) {
-          const I = info[s];
-          if (s === trump || I.B.length !== 1 || I.A.length < 2 || I.A.slice(1).every(isMaster)) continue;
-          if (isMaster(I.B[0]) && rankOf(low(I.A)) < rankOf(I.B[0])) return R('mkVoid', low(I.A));
-          if (isMaster(I.A[0])) return R('mkVoid', I.A[0]);
-        }
-      }
-      // draw trumps, but leave the opponents' trumps that are higher than all of ours
-      if (T.O.length && (OFF('leaveT') || T.O.some(x => rankOf(x) < ourTop))) {
-        if (T.A.length) {
-          const m = T.A.filter(isMaster);
-          if (m.length) return R('drawTrump', cashIn(high(m)));
-          if (T.B.length && rankOf(T.B[0]) > rankOf(T.A[0])) return R('drawTrumpToward', low(T.A));
-          if (solid(T.A[0])) return R('drawTrumpSeq', T.A[0]);
-          return R('drawTrumpLow', low(T.A));
-        }
-        for (const s of SUITS) if (s !== trump && info[s].A.length && info[s].B.some(isMaster)) return R('toDrawTrump', low(info[s].A));
-      }
-    }
-    if (sure >= need || OFF('dev')) return null; // enough winners: cash them (below), short hand first
-    // not enough: develop the suit that gains the most tricks, rather than cashing winners
-    let best = null, gain = 0;
-    for (const s of SUITS) {
-      if (s === trump) continue;
-      const I = info[s]; if (!I.A.length) continue;
-      const g = I.dev - I.sure;
-      if (g > gain || (g === gain && best && g > 0 && I.lost < info[best].lost)) { best = s; gain = g; }
-    }
-    if (!best) return null;
-    const { A, B } = info[best];
-    if (B.length && rankOf(B[0]) > rankOf(A[0])) return R('devToward', low(A)); // toward the honours
-    if (isMaster(A[0])) return R('devHigh', cashIn(A[0]));
-    if (solid(A[0])) return R('devHigh', A[0]);
-    return R('devLow', low(A));
-  };
-
-  // the declaring side on lead: the rules (declPlan first), then the fitted choice of suit (dlF, BOT_DLEAD_W) may override
-  const declRule = () => {
-    const other = pCards;
-    const masters = legal.filter(isMaster);
-    if (!OFF('plan')) { const p = declPlan(); if (p) return p; }
-    if (trump) {
-      const opp = oppTrumpsLeft();
-      const myT = of(my, trump).length, otT = of(other, trump).length;
-      // ruff losers in the short trump hand before drawing trumps
-      if (!OFF('ruff') && opp && otT > 0 && otT < myT) {
-        for (const s of SUITS) if (s !== trump && of(other, s).length === 0 && of(my, s).length && !of(my, s).every(isMaster)) return R('ruffShort', low(of(my, s)));
-      }
-      // draw trumps, unless every trump the opponents hold beats all of ours (they take those anyway)
-      const ourTopT = Math.max(-1, ...of(my, trump).map(rankOf), ...of(other, trump).map(rankOf));
-      let allHigh = !OFF('leaveT2');
-      for (let r = 0; r <= ourTopT && allHigh; r++) { const x = trump + RANKS[r]; if (!played.has(x) && !ours.has(x)) allHigh = false; }
-      if (opp && myT && !allHigh) { const tm = of(legal, trump); const m = tm.filter(isMaster); return R('drawTrump', m.length ? cashIn(high(m)) : low(tm)); }
-      if (opp && !myT && otT) {
-        // get to the other hand to draw trumps: lead a suit where partner has a master
-        for (const s of SUITS) if (of(my, s).length && of(other, s).some(isMaster)) return R('toDrawTrump', low(of(my, s)));
-      }
-    }
-    // NT / trumps drawn: cash established winners in a suit where we keep the lead or unblock the short hand
-    if (!OFF('unblock')) for (const s of SUITS) {
-      const mine = of(my, s), oth = of(other, s);
-      if (!mine.length) continue;
-      const mm = mine.filter(isMaster);
-      if (mm.length && (mine.length <= oth.length ? true : mm.length === mine.length || !oth.some(isMaster))) {
-        // play from the short hand first (unblock)
-        if (mine.length <= oth.length || !oth.length) return R('L72', high(mm));
-      }
-    }
-    // finesse: lead low toward a tenace in the other hand (e.g. AQ, KJ)
-    if (!OFF('fin')) for (const s of SUITS) {
-      const mine = of(my, s), oth = of(other, s).sort((a, b) => rankOf(b) - rankOf(a));
-      if (!mine.length || oth.length < 2) continue;
-      const top = oth[0];
-      if (isMaster(top)) {
-        const gap = unseenAbove(oth[1]);
-        if (gap.length === 1 && rankOf(oth[1]) >= 8) return R('L82', low(mine)); // missing exactly one card between: finesse
-      }
-    }
-    if (masters.length) return R('L85', cashIn(high(masters)));
-    // establish our longest combined suit
-    const best = SUITS.filter(s => of(my, s).length && s !== trump).sort((a, b) => (of(my, b).length + of(other, b).length) - (of(my, a).length + of(other, a).length))[0];
-    if (best) { const m = of(my, best); const seq = m.sort((a, b) => rankOf(b) - rankOf(a)); return R('establish', seq.length >= 2 && rankOf(seq[0]) - rankOf(seq[1]) === 1 && rankOf(seq[0]) >= 9 ? seq[0] : low(m)); }
-    return R('L89', low(legal));
-  };
-  // the card the declaring side leads in a suit: a master from the short hand, low toward partner's higher cards,
-  // the top of a sequence, else low
-  const declCardIn = s => {
-    const mine = of(legal, s).sort((a, b) => rankOf(b) - rankOf(a)), oth = of(pCards, s).sort((a, b) => rankOf(b) - rankOf(a));
-    const mm = mine.filter(isMaster);
-    if (mm.length && (mine.length <= oth.length || !oth.some(isMaster))) return mm[0];
-    if (mm.length && cashIn(mm[0]) !== mm[0]) return cashIn(mm[0]);
-    if (oth.length && rankOf(oth[0]) > rankOf(mine[0])) return mine[mine.length - 1];
-    if (mm.length || solid(mine[0])) return mine[0];
-    return mine[mine.length - 1];
-  };
-  let dlInfo = null, lc = null;
-  // loser count for a suit contract (round 6): the long trump hand's losers per side suit (the first three rounds
-  // not covered by our winners from the top), the ruffs the short trump hand can take of them, and whether drawing
-  // the opponents' trumps would leave the short hand too few trumps for those ruffs
-  const loserCount = () => {
-    const { info, sure, need } = dlInfo, T = info[trump];
-    const aLong = T.A.length >= T.B.length, sT = aLong ? T.B.length : T.A.length, oppT = T.O.length;
-    const los = {}, ruffs = {}; let losTot = 0, ruffTot = 0;
-    for (const s of SUITS) {
-      if (s === trump) { los[s] = 0; ruffs[s] = 0; continue; }
-      const I = info[s], lL = aLong ? I.A.length : I.B.length, lS = aLong ? I.B.length : I.A.length;
-      const l = Math.max(0, Math.min(lL, 3) - Math.min(I.sure, 3));
-      los[s] = l; losTot += l;
-      ruffs[s] = sT && lS < lL ? Math.min(l, lL - lS) : 0; ruffTot += ruffs[s];
-    }
-    ruffTot = Math.min(ruffTot, sT);
-    const kill = oppT > 0 && ruffTot > 0 && sT - Math.ceil(oppT / 2) < ruffTot;
-    const dev = SUITS.some(x => x !== trump && info[x].dev > info[x].sure);
-    return { los, ruffs, losTot, ruffTot, kill, allowed: 13 - (c.level + 6), dev: dev && sure < need };
-  };
-  const dlF = (s, rc) => {
-    if (!dlInfo) dlInfo = suitCount();
-    if (trump && !lc) lc = loserCount();
-    const { info, sure, need } = dlInfo, I = info[s], side = !!trump && s !== trump;
-    const oppT = trump ? info[trump].O.length : 0, myT = trump ? info[trump].A.length : 0, pT = trump ? info[trump].B.length : 0;
-    const lho = nextSeat(seat), rho = partnerOf(lho);
-    const card = s === suitOf(rc) ? rc : declCardIn(s);
-    const oth = I.B, mineM = I.A.filter(isMaster).length, othM = I.B.filter(isMaster).length;
-    const ten = oth.length >= 2 && isMaster(oth[0]) && unseenAbove(oth[1]).length === 1;
-    return [
-      s === suitOf(rc) ? 1 : 0, s === trump ? 1 : 0, s === trump && oppT ? 1 : 0, s === trump && !oppT ? 1 : 0,
-      side && !oth.length && pT ? 1 : 0, side && !oth.length && pT && pT < myT ? 1 : 0,
-      side && oppT && ((voidIn(lho, s) && !voidIn(lho, trump)) || (voidIn(rho, s) && !voidIn(rho, trump))) ? 1 : 0,
-      Math.min(I.sure, 5), I.dev - I.sure, I.lost, mineM, sure >= need ? Math.min(I.sure, 5) : 0, I.O.length,
-      I.A.length <= oth.length && mineM ? 1 : 0, ten ? 1 : 0, side && oppT && I.O.length <= 3 ? 1 : 0,
-      side && !oth.length && pT && myT && SUITS.some(x => x !== trump && x !== s && !info[x].A.length && info[x].B.length) ? 1 : 0,
-      I.A.length + oth.length, Math.max(I.A.length ? rankOf(I.A[0]) : -1, oth.length ? rankOf(oth[0]) : -1) < 9 ? 1 : 0,
-      othM && !mineM ? 1 : 0, s === trump && sure < need ? 1 : 0,
-      !isMaster(card) && !solid(card) && !(oth.length && rankOf(oth[0]) > rankOf(card)) ? 1 : 0,
-      othM, s === trump && oppT && myT + pT >= 2 * oppT ? 1 : 0,
-      ...(trump ? [
-        s === trump && lc.kill ? 1 : 0, side && lc.ruffs[s] ? Math.min(lc.ruffs[s], 2) : 0,
-        side && oppT && lc.dev && I.dev > I.sure ? 1 : 0,
-        s === trump && oppT && lc.losTot - lc.ruffTot <= lc.allowed ? 1 : 0,
-        side ? lc.los[s] : 0, s === trump && oppT && lc.dev ? 1 : 0,
-      ] : [0, 0, 0, 0, 0, 0]),
-    ];
-  };
-
   // ---------- leading ----------
   if (!trick || trick.cards.length === 0) {
     if (play.tricks.length === 0 && !onDeclSide) return R('L48', botLead(hands[seat], t.auction || [], c, seat)); // opening lead: js/leads.js
     if (onDeclSide) {
+      // (the declaring side's closures are made only here, where they are used: speed)
+      // the declaring side on lead
+      const declPlan = () => {
+        const { info, sure, need } = suitCount();
+        const other = pCards;
+        if (trump) {
+          const T = info[trump];
+          const ourTop = Math.max(T.A.length ? rankOf(T.A[0]) : -1, T.B.length ? rankOf(T.B[0]) : -1);
+          // ruff losers in the short trump hand
+          if (!OFF('ruff') && (T.O.length || !OFF('ruff2')) && T.B.length > 0 && T.B.length < T.A.length) {
+            for (const s of SUITS) if (s !== trump && !info[s].B.length && info[s].A.length && !info[s].A.every(isMaster)) return R('ruffShort', low(info[s].A));
+            // partner has a singleton: cash the master (ours or partner's) to make the void, when we have losers to ruff
+            if (!OFF('mkvoid')) for (const s of SUITS) {
+              const I = info[s];
+              if (s === trump || I.B.length !== 1 || I.A.length < 2 || I.A.slice(1).every(isMaster)) continue;
+              if (isMaster(I.B[0]) && rankOf(low(I.A)) < rankOf(I.B[0])) return R('mkVoid', low(I.A));
+              if (isMaster(I.A[0])) return R('mkVoid', I.A[0]);
+            }
+          }
+          // draw trumps, but leave the opponents' trumps that are higher than all of ours
+          if (T.O.length && (OFF('leaveT') || T.O.some(x => rankOf(x) < ourTop))) {
+            if (T.A.length) {
+              const m = T.A.filter(isMaster);
+              if (m.length) return R('drawTrump', cashIn(high(m)));
+              if (T.B.length && rankOf(T.B[0]) > rankOf(T.A[0])) return R('drawTrumpToward', low(T.A));
+              if (solid(T.A[0])) return R('drawTrumpSeq', T.A[0]);
+              return R('drawTrumpLow', low(T.A));
+            }
+            for (const s of SUITS) if (s !== trump && info[s].A.length && info[s].B.some(isMaster)) return R('toDrawTrump', low(info[s].A));
+          }
+        }
+        if (sure >= need || OFF('dev')) return null; // enough winners: cash them (below), short hand first
+        // not enough: develop the suit that gains the most tricks, rather than cashing winners
+        let best = null, gain = 0;
+        for (const s of SUITS) {
+          if (s === trump) continue;
+          const I = info[s]; if (!I.A.length) continue;
+          const g = I.dev - I.sure;
+          if (g > gain || (g === gain && best && g > 0 && I.lost < info[best].lost)) { best = s; gain = g; }
+        }
+        if (!best) return null;
+        const { A, B } = info[best];
+        if (B.length && rankOf(B[0]) > rankOf(A[0])) return R('devToward', low(A)); // toward the honours
+        if (isMaster(A[0])) return R('devHigh', cashIn(A[0]));
+        if (solid(A[0])) return R('devHigh', A[0]);
+        return R('devLow', low(A));
+      };
+
+      // the declaring side on lead: the rules (declPlan first), then the fitted choice of suit (dlF, BOT_DLEAD_W) may override
+      const declRule = () => {
+        const other = pCards;
+        const masters = legal.filter(isMaster);
+        if (!OFF('plan')) { const p = declPlan(); if (p) return p; }
+        if (trump) {
+          const opp = oppTrumpsLeft();
+          const myT = of(my, trump).length, otT = of(other, trump).length;
+          // ruff losers in the short trump hand before drawing trumps
+          if (!OFF('ruff') && opp && otT > 0 && otT < myT) {
+            for (const s of SUITS) if (s !== trump && of(other, s).length === 0 && of(my, s).length && !of(my, s).every(isMaster)) return R('ruffShort', low(of(my, s)));
+          }
+          // draw trumps, unless every trump the opponents hold beats all of ours (they take those anyway)
+          const ourTopT = Math.max(-1, ...of(my, trump).map(rankOf), ...of(other, trump).map(rankOf));
+          let allHigh = !OFF('leaveT2');
+          for (let r = 0, b = BP_SUIT_IX[trump] * 13; r <= ourTopT && allHigh; r++) if (!(mk[b + r] & 3)) allHigh = false;
+          if (opp && myT && !allHigh) { const tm = of(legal, trump); const m = tm.filter(isMaster); return R('drawTrump', m.length ? cashIn(high(m)) : low(tm)); }
+          if (opp && !myT && otT) {
+            // get to the other hand to draw trumps: lead a suit where partner has a master
+            for (const s of SUITS) if (of(my, s).length && of(other, s).some(isMaster)) return R('toDrawTrump', low(of(my, s)));
+          }
+        }
+        // NT / trumps drawn: cash established winners in a suit where we keep the lead or unblock the short hand
+        if (!OFF('unblock')) for (const s of SUITS) {
+          const mine = of(my, s), oth = of(other, s);
+          if (!mine.length) continue;
+          const mm = mine.filter(isMaster);
+          if (mm.length && (mine.length <= oth.length ? true : mm.length === mine.length || !oth.some(isMaster))) {
+            // play from the short hand first (unblock)
+            if (mine.length <= oth.length || !oth.length) return R('L72', high(mm));
+          }
+        }
+        // finesse: lead low toward a tenace in the other hand (e.g. AQ, KJ)
+        if (!OFF('fin')) for (const s of SUITS) {
+          const mine = of(my, s), oth = of(other, s).sort((a, b) => rankOf(b) - rankOf(a));
+          if (!mine.length || oth.length < 2) continue;
+          const top = oth[0];
+          if (isMaster(top)) {
+            const gap = unseenAbove(oth[1]);
+            if (gap.length === 1 && rankOf(oth[1]) >= 8) return R('L82', low(mine)); // missing exactly one card between: finesse
+          }
+        }
+        if (masters.length) return R('L85', cashIn(high(masters)));
+        // establish our longest combined suit
+        const best = SUITS.filter(s => of(my, s).length && s !== trump).sort((a, b) => (of(my, b).length + of(other, b).length) - (of(my, a).length + of(other, a).length))[0];
+        if (best) { const m = of(my, best); const seq = m.sort((a, b) => rankOf(b) - rankOf(a)); return R('establish', seq.length >= 2 && rankOf(seq[0]) - rankOf(seq[1]) === 1 && rankOf(seq[0]) >= 9 ? seq[0] : low(m)); }
+        return R('L89', low(legal));
+      };
+      // the card the declaring side leads in a suit: a master from the short hand, low toward partner's higher cards,
+      // the top of a sequence, else low
+      const declCardIn = s => {
+        const mine = of(legal, s).sort((a, b) => rankOf(b) - rankOf(a)), oth = of(pCards, s).sort((a, b) => rankOf(b) - rankOf(a));
+        const mm = mine.filter(isMaster);
+        if (mm.length && (mine.length <= oth.length || !oth.some(isMaster))) return mm[0];
+        if (mm.length && cashIn(mm[0]) !== mm[0]) return cashIn(mm[0]);
+        if (oth.length && rankOf(oth[0]) > rankOf(mine[0])) return mine[mine.length - 1];
+        if (mm.length || solid(mine[0])) return mine[0];
+        return mine[mine.length - 1];
+      };
+      let dlInfo = null, lc = null;
+      // loser count for a suit contract (round 6): the long trump hand's losers per side suit (the first three rounds
+      // not covered by our winners from the top), the ruffs the short trump hand can take of them, and whether drawing
+      // the opponents' trumps would leave the short hand too few trumps for those ruffs
+      const loserCount = () => {
+        const { info, sure, need } = dlInfo, T = info[trump];
+        const aLong = T.A.length >= T.B.length, sT = aLong ? T.B.length : T.A.length, oppT = T.O.length;
+        const los = {}, ruffs = {}; let losTot = 0, ruffTot = 0;
+        for (const s of SUITS) {
+          if (s === trump) { los[s] = 0; ruffs[s] = 0; continue; }
+          const I = info[s], lL = aLong ? I.A.length : I.B.length, lS = aLong ? I.B.length : I.A.length;
+          const l = Math.max(0, Math.min(lL, 3) - Math.min(I.sure, 3));
+          los[s] = l; losTot += l;
+          ruffs[s] = sT && lS < lL ? Math.min(l, lL - lS) : 0; ruffTot += ruffs[s];
+        }
+        ruffTot = Math.min(ruffTot, sT);
+        const kill = oppT > 0 && ruffTot > 0 && sT - Math.ceil(oppT / 2) < ruffTot;
+        const dev = SUITS.some(x => x !== trump && info[x].dev > info[x].sure);
+        return { los, ruffs, losTot, ruffTot, kill, allowed: 13 - (c.level + 6), dev: dev && sure < need };
+      };
+      const dlF = (s, rc) => {
+        if (!dlInfo) dlInfo = suitCount();
+        if (trump && !lc) lc = loserCount();
+        const { info, sure, need } = dlInfo, I = info[s], side = !!trump && s !== trump;
+        const oppT = trump ? info[trump].O.length : 0, myT = trump ? info[trump].A.length : 0, pT = trump ? info[trump].B.length : 0;
+        const lho = nextSeat(seat), rho = partnerOf(lho);
+        const card = s === suitOf(rc) ? rc : declCardIn(s);
+        const oth = I.B, mineM = I.A.filter(isMaster).length, othM = I.B.filter(isMaster).length;
+        const ten = oth.length >= 2 && isMaster(oth[0]) && unseenAbove(oth[1]).length === 1;
+        return [
+          s === suitOf(rc) ? 1 : 0, s === trump ? 1 : 0, s === trump && oppT ? 1 : 0, s === trump && !oppT ? 1 : 0,
+          side && !oth.length && pT ? 1 : 0, side && !oth.length && pT && pT < myT ? 1 : 0,
+          side && oppT && ((voidIn(lho, s) && !voidIn(lho, trump)) || (voidIn(rho, s) && !voidIn(rho, trump))) ? 1 : 0,
+          Math.min(I.sure, 5), I.dev - I.sure, I.lost, mineM, sure >= need ? Math.min(I.sure, 5) : 0, I.O.length,
+          I.A.length <= oth.length && mineM ? 1 : 0, ten ? 1 : 0, side && oppT && I.O.length <= 3 ? 1 : 0,
+          side && !oth.length && pT && myT && SUITS.some(x => x !== trump && x !== s && !info[x].A.length && info[x].B.length) ? 1 : 0,
+          I.A.length + oth.length, Math.max(I.A.length ? rankOf(I.A[0]) : -1, oth.length ? rankOf(oth[0]) : -1) < 9 ? 1 : 0,
+          othM && !mineM ? 1 : 0, s === trump && sure < need ? 1 : 0,
+          !isMaster(card) && !solid(card) && !(oth.length && rankOf(oth[0]) > rankOf(card)) ? 1 : 0,
+          othM, s === trump && oppT && myT + pT >= 2 * oppT ? 1 : 0,
+          ...(trump ? [
+            s === trump && lc.kill ? 1 : 0, side && lc.ruffs[s] ? Math.min(lc.ruffs[s], 2) : 0,
+            side && oppT && lc.dev && I.dev > I.sure ? 1 : 0,
+            s === trump && oppT && lc.losTot - lc.ruffTot <= lc.allowed ? 1 : 0,
+            side ? lc.los[s] : 0, s === trump && oppT && lc.dev ? 1 : 0,
+          ] : [0, 0, 0, 0, 0, 0]),
+        ];
+      };
       const rc = declRule(), rwhy = botWhy;
       const cand = SUITS.filter(s => of(legal, s).length);
       if (want === 'lead') return cand.length > 1 ? { group: trump ? 'suit' : 'NT', opts: cand.map(s => ({ f: dlF(s, rc), card: s === suitOf(rc) ? rc : declCardIn(s) })) } : null;
       if (OFF('dlfit') || cand.length < 2 || !BOT_DLEAD_W[trump ? 'suit' : 'NT']) return R(rwhy, rc);
       const W = BOT_DLEAD_W[trump ? 'suit' : 'NT'];
       let best = null, bs = -1e9;
-      for (const s of cand) { const v = dlF(s, rc).reduce((a, x, i) => a + x * W[i], 0); if (v > bs) { bs = v; best = s; } }
+      for (const s of cand) { const v = bpDot(dlF(s, rc), W); if (v > bs) { bs = v; best = s; } }
       return best === suitOf(rc) ? R(rwhy, rc) : R('dlFit', declCardIn(best));
     }
     // defender leading later in the hand
@@ -558,12 +660,12 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
     // features of leading each suit (weights fitted to double-dummy results by tests/heurfit.js)
     const bidBy = (who, s) => (t.auction || []).some(a => a.by === who && /^[1-7][CDHS]$/.test(a.call) && a.call[1] === s);
     // dummy has a long suit it can run (discards for declarer's losers)
-    const dmMaster = x => { for (let r = rankOf(x) + 1; r < 13; r++) { const y = x[0] + RANKS[r]; if (!played.has(y) && !dummyCards.includes(y)) return false; } return true; };
+    const dmMaster = x => { for (let r = rankOf(x) + 1; r < 13; r++) { if (!(mk[BP_SUIT_IX[x[0]] * 13 + r] & 9)) return false; } return true; };
     const dummyRun = s0 => SUITS.some(x => x !== s0 && x !== trump && of(dummyCards, x).length >= 4 && of(dummyCards, x).filter(dmMaster).length >= 2);
     // dummy holds a tenace (two honours with exactly one unseen card between them)
     const dmTenace = dm => { const h = dm.filter(x => rankOf(x) >= 9).sort((a, b) => rankOf(b) - rankOf(a)); for (let i = 0; i + 1 < h.length; i++) { const gap = unseenAbove(h[i + 1]).filter(u => rankOf(u) < rankOf(h[i])).length; if (gap === 1 && isMaster(h[i])) return true; } return false; };
-    const myTenace = srt => { for (let i = 0; i + 1 < srt.length; i++) if (rankOf(srt[i + 1]) >= 9 && rankOf(srt[i]) - rankOf(srt[i + 1]) === 2 && !known.has(srt[0][0] + RANKS[rankOf(srt[i]) - 1])) return true; return false; };
-    const unseenN = s0 => { let n = 0; for (const r of RANKS) if (!known.has(s0 + r)) n++; return n; };
+    const myTenace = srt => { for (let i = 0; i + 1 < srt.length; i++) if (rankOf(srt[i + 1]) >= 9 && rankOf(srt[i]) - rankOf(srt[i + 1]) === 2 && !(mk[BP_SUIT_IX[srt[0][0]] * 13 + rankOf(srt[i]) - 1] & 4)) return true; return false; };
+    const unseenN = s0 => { let n = 0; for (let r = 0, b = BP_SUIT_IX[s0] * 13; r < 13; r++) if (!(mk[b + r] & 4)) n++; return n; };
     const swF = s => {
       const dm = of(dummyCards, s), mine = of(my, s), dT = trump ? of(dummyCards, trump).length : 0, myT = trump ? of(my, trump).length : 0;
       const srt = mine.slice().sort((a, b) => rankOf(b) - rankOf(a)), side = trump && s !== trump;
@@ -581,7 +683,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
         bidBy(decl, s) ? 1 : 0, bidBy(dummy, s) ? 1 : 0, bidBy(partner, s) ? 1 : 0,
         dm.filter(isMaster).length, dm.length >= 4 && dm.some(x => rankOf(x) >= 10) ? 1 : 0,
         side && voidIn(partner, s) && !voidIn(partner, trump) ? 1 : 0, voidIn(decl, s) ? 1 : 0,
-        has('A') && !has('K') && !dm.some(x => x[1] === 'K') && !played.has(s + 'K') ? 1 : 0, Math.min(2, mine.filter(isMaster).length) === 2 ? 1 : 0,
+        has('A') && !has('K') && !dm.some(x => x[1] === 'K') && !(mk[BP_SUIT_IX[s] * 13 + 11] & 1) ? 1 : 0, Math.min(2, mine.filter(isMaster).length) === 2 ? 1 : 0,
         s === trump && !mine.some(x => rankOf(x) >= 9 && !isMaster(x)) ? 1 : 0,
         side && voidIn(decl, s) && !voidIn(decl, trump) ? 1 : 0,
         mine.some(isMaster) && dummyRun(s) ? 1 : 0,
@@ -592,7 +694,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
     if (want === 'switch') return cand.length > 1 ? { group: trump ? 'suit' : 'NT', opts: cand.map(s => ({ f: swF(s), card: leadCardIn(s) })) } : null;
     if (!OFF('swfit') && BOT_SWITCH_W[trump ? 'suit' : 'NT']) {
       const W = BOT_SWITCH_W[trump ? 'suit' : 'NT'], sc = {};
-      for (const s of cand) sc[s] = swF(s).reduce((a, v, i) => a + v * W[i], 0);
+      for (const s of cand) sc[s] = bpDot(swF(s), W);
       // a crossruff: declarer has shown out of a side suit, dummy has trumps and is short in a suit we hold: lead
       // trumps (unless that gives up a trump honour)
       if (trump && sc[trump] !== undefined && !OFF('trX')) {
@@ -659,7 +761,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
       const nextOpp = later.find(w => !sameSide(w, seat)), nb = nextOpp ? canBeat(nextOpp, x) : null;
       const mineL = of(my, led).length, othL = onDeclSide ? of(pCards, led).length : 0;
       const left = 13 - play.tricks.length + 1;
-      let oppN = 0; for (const r of RANKS) if (!known.has(led + r)) oppN++;
+      let oppN = 0; for (let r = 0, b = BP_SUIT_IX[led] * 13; r < 13; r++) if (!(mk[b + r] & 4)) oppN++;
       return [
         x === rc ? 1 : 0, x === low(follow) ? 1 : 0, b ? 1 : 0, sureW.includes(x) ? 1 : 0, partnerWinning && b ? 1 : 0,
         Math.min(k, 4), rankOf(x) >= 9 ? 1 : 0, Math.max(0, rankOf(x) - 8),
@@ -728,7 +830,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
     if (follow.length < 2 || OFF('flfit') || rwhy === 'p2low' || (rwhy === 'L162' && !OFF('fit162'))) return R(rwhy, rc); // partner's card surely wins: no fitted overtake (round 9)
     // the fitted choice among a few candidate cards (flF, BOT_FOLLOW_W): the rule's card, low, the cheapest winner,
     // the cheapest sure winner, high; equal cards (no unseen card between them) count once, as the lowest
-    const equal = (x, y) => { const lo = Math.min(rankOf(x), rankOf(y)), hi = Math.max(rankOf(x), rankOf(y)); for (let r = lo + 1; r < hi; r++) if (!known.has(led + RANKS[r]) || (!onDeclSide && dummyCards.includes(led + RANKS[r])) || (onDeclSide && pCards.includes(led + RANKS[r]))) return false; return true; };
+    const equal = (x, y) => { const lo = Math.min(rankOf(x), rankOf(y)), hi = Math.max(rankOf(x), rankOf(y)); for (let r = lo + 1, b = BP_SUIT_IX[led] * 13; r < hi; r++) { const m = mk[b + r]; if (!(m & 4) || (!onDeclSide && m & 8) || (onDeclSide && m & 32)) return false; } return true; };
     const sureW = winners.filter(x => sureWin(x));
     const opts = [];
     for (const x of [rc, low(follow), winners.length ? low(winners) : null, sureW.length ? low(sureW) : null, high(follow)]) {
@@ -742,7 +844,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
     const W = BOT_FOLLOW_W[group];
     if (!W || opts.length < 2) return R(rwhy, rc);
     let best = rc, bs = -1e9;
-    for (const x of opts) { const v = flF(x, rc, sureW).reduce((acc, f, i) => acc + f * W[i], 0); if (v > bs + 1e-9) { bs = v; best = x; } }
+    for (const x of opts) { const v = bpDot(flF(x, rc, sureW), W); if (v > bs + 1e-9) { bs = v; best = x; } }
     return best === rc ? R(rwhy, rc) : R('flFit', best);
   }
   // void in the led suit
@@ -780,7 +882,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
   // features of discarding from each suit (weights fitted to double-dummy results by tests/heurfit.js)
   const dsF = s => {
     const mine = of(my, s), mate = onDeclSide ? of(pCards, s) : [], dm = seat === dummy ? of(pCards, s) : of(dummyCards, s);
-    const unseen = []; for (let r = 0; r < 13; r++) { const x = s + RANKS[r]; if (!known.has(x)) unseen.push(x); }
+    const unseen = []; for (let r = 0, b = BP_SUIT_IX[s] * 13; r < 13; r++) if (!(mk[b + r] & 4)) unseen.push(s + RANKS[r]);
     const top = mine.length ? Math.max(...mine.map(rankOf)) : -1, has = r => mine.some(x => x[1] === r);
     const myT = trump ? of(my, trump).length : 0;
     return [
@@ -795,7 +897,7 @@ function botPlayH(t, seat, want) { // want (tests/heurfit.js): return the featur
   if (want === 'discard') return pool.length > 1 ? { group: dsKey, opts: pool.map(s => ({ f: dsF(s), card: low(of(legal, s)) })) } : null;
   if (!OFF('dsfit') && pool.length > 1 && BOT_DISCARD_W[dsKey]) {
     const W = BOT_DISCARD_W[dsKey], sc = {};
-    for (const s of pool) sc[s] = dsF(s).reduce((a, v, i) => a + v * W[i], 0);
+    for (const s of pool) sc[s] = bpDot(dsF(s), W);
     const best = pool.slice().sort((a, b) => sc[b] - sc[a])[0];
     return R('discFit', low(of(legal, best)));
   }
@@ -840,17 +942,19 @@ function claimPos(t, hands) {
 
 // side: 0 for N-S, 1 for E-W. Returns { win(n), value(), nodes() }: win(n) says whether `side` takes at least n of
 // the remaining tricks (the one in progress included), value() how many it takes; both null past maxNodes.
-let clTable = null;
+let clTable = null, clBufs = null;
 function clTT() { // 2^16 entries, made once
   if (!clTable) { const n = 1 << 16; clTable = { K: new Int32Array(n * 4), V: new Int8Array(n * 3), G: new Int32Array(n), mask: n - 1, gen: 0 }; }
   return clTable;
 }
-function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
+function claimSolver(pos, side, maxNodes = CLAIM_NODES, share = null) { // share: {} kept by the caller (the same side and trumps), so its solves share the transposition table
   const h = Int32Array.from(pos.h), trump = pos.trump, k0 = pos.cur.length;
-  // the cards of every trick on the search path (index: 4 * trick + place in the trick), and the moves tried there
-  const tSeat = new Int8Array(56), tSuit = new Int8Array(56), tRank = new Int8Array(56);
-  const mvBuf = new Int32Array(56 * 14), scBuf = new Int32Array(14);
-  pos.cur.forEach(([s, su, r], k) => { tSeat[k] = s; tSuit[k] = su; tRank[k] = r; });
+  // the cards of every trick on the search path (index: 4 * trick + place in the trick), the moves tried there and
+  // the keys kept for the search after the card that ends a trick: scratch tables shared by all solvers (a search
+  // runs to its end before another starts; win() puts back the cards of the trick in progress)
+  if (!clBufs) clBufs = { tSeat: new Int8Array(56), tSuit: new Int8Array(56), tRank: new Int8Array(56), mvBuf: new Int32Array(56 * 14), scBuf: new Int32Array(14), kBuf: new Int32Array(56 * 14 * 4), kOk: new Uint8Array(56 * 14) };
+  const { tSeat, tSuit, tRank, mvBuf, scBuf, kBuf, kOk } = clBufs;
+  const setCur = () => { for (let k = 0; k < k0; k++) { const q = pos.cur[k]; tSeat[k] = q[0]; tSuit[k] = q[1]; tRank[k] = q[2]; } };
   let cards = 0; for (const m of h) cards += clBits(m);
   const L0 = (cards + k0) / 4;
   let leader = pos.leader, left = L0, nodes = 0;
@@ -908,16 +1012,19 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
   // is, suit by suit, who holds each remaining card from the top (relative ranks only), and the leader. An entry
   // holds bounds on the tricks this side takes from the position and the lead that settled it; an entry may be
   // overwritten by another position, which only loses the bounds.
-  const T = clTT(), gen = T.gen = (T.gen + 1) | 0, KS = T.K, VS = T.V, GS = T.G, tmask = T.mask;
+  const T = clTT();
+  const gen = share && share.gen === T.gen && share.trump === trump && share.side === side ? T.gen : (T.gen = (T.gen + 1) | 0);
+  if (share) { share.gen = gen; share.trump = trump; share.side = side; }
+  const KS = T.K, VS = T.V, GS = T.G, tmask = T.mask;
   let key0 = 0, key1 = 0, key2 = 0, key3 = 0;
-  function keyOf() {
-    for (let su = 0; su < 4; su++) {
-      const b = h[4 + su], c = h[8 + su], d = h[12 + su];
-      let v = 1;
-      for (let m = h[su] | b | c | d; m;) { const r = clTop(m), bit = 1 << r; m ^= bit; v = (v << 2) | (b & bit ? 1 : c & bit ? 2 : d & bit ? 3 : 0); }
-      if (su === 0) key0 = v | (leader << 28); else if (su === 1) key1 = v; else if (su === 2) key2 = v; else key3 = v;
-    }
+  function suitKey(su) { // (the holder's 2 bits, 0-3, are bit r of h[4 + su] | h[12 + su] and of h[8 + su] | h[12 + su])
+    const b = h[4 + su], c = h[8 + su], d = h[12 + su], B = b | d, C = c | d;
+    let v = 1;
+    for (let m = h[su] | B | c; m;) { const r = 31 - Math.clz32(m); m ^= 1 << r; v = (v << 2) | ((B >>> r) & 1) | (((C >>> r) & 1) << 1); }
+    return v;
   }
+  function keyOf() { key0 = suitKey(0) | (leader << 28); key1 = suitKey(1); key2 = suitKey(2); key3 = suitKey(3); }
+
   function slot() { // where the current key lives (or would): >= 0 if found, ~slot if not
     let x = Math.imul(key0 ^ Math.imul(key1, 0x9E3779B1) ^ Math.imul(key2, 0x85EBCA77) ^ Math.imul(key3, 0xC2B2AE3D), 0x27D4EB2F);
     x ^= x >>> 15;
@@ -970,8 +1077,12 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
         const w = winnerAt(b), old = leader, nd = need - ((w & 1) === side ? 1 : 0);
         leader = w; left--;
         let res = -1;
+        kOk[o0 + i] = 0;
         if (nd <= 0) res = 1; else if (nd > left) res = 0;
-        else if (left > 1) { keyOf(); const j = slot(); if (j >= 0) res = VS[j * 3] >= nd ? 1 : VS[j * 3 + 1] < nd ? 0 : -1; }
+        else if (left > 1) {
+          keyOf(); const q = (o0 + i) * 4; kBuf[q] = key0; kBuf[q + 1] = key1; kBuf[q + 2] = key2; kBuf[q + 3] = key3; kOk[o0 + i] = 1;
+          const j = slot(); if (j >= 0) res = VS[j * 3] >= nd ? 1 : VS[j * 3 + 1] < nd ? 0 : -1;
+        }
         leader = old; left++;
         h[seat * 4 + su] ^= bit;
         if (res === (isMax ? 1 : 0)) return isMax;
@@ -984,7 +1095,7 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
       if (k === 3) {
         const w = winnerAt(b), old = leader;
         leader = w; left--;
-        res = search(need - ((w & 1) === side ? 1 : 0));
+        res = search(need - ((w & 1) === side ? 1 : 0), kOk[o0 + i] ? (o0 + i) * 4 : -1);
         leader = old; left++;
       } else res = trick(k + 1, need);
       h[seat * 4 + su] ^= bit;
@@ -996,7 +1107,7 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
     if (!k) lastBest = -1;
     return !isMax;
   }
-  function search(need) { // at the start of a trick
+  function search(need, kq = -1) { // at the start of a trick; kq: where kBuf holds this position's key, if it does
     if (need <= 0) return true;
     if (need > left) return false;
     if (left === 1) { // the last trick: one card each
@@ -1008,7 +1119,7 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
       }
       return (w & 1) === side;
     }
-    keyOf();
+    if (kq >= 0) { key0 = kBuf[kq]; key1 = kBuf[kq + 1]; key2 = kBuf[kq + 2]; key3 = kBuf[kq + 3]; } else keyOf();
     let i = slot(), lo, hi, best = -1;
     if (i >= 0) { lo = VS[i * 3]; hi = VS[i * 3 + 1]; best = VS[i * 3 + 2]; }
     else {
@@ -1031,6 +1142,7 @@ function claimSolver(pos, side, maxNodes = CLAIM_NODES) {
     return res;
   }
   function win(n) {
+    setCur();
     try { return n <= 0 ? true : n > L0 ? false : k0 ? trick(k0, n) : search(n); } catch (e) { if (e === CL_BUDGET) return null; throw e; }
   }
   return {
