@@ -72,9 +72,14 @@ function mergeM(ms) { // a call listed more than once in a table means "any of t
 }
 function agg(ms) { // what a seat has shown with all its calls
   const r = { lo: 0, hi: 37, mn: { S: 0, H: 0, D: 0, C: 0 }, mx: { S: 13, H: 13, D: 13, C: 13 }, bal: false, nt: false };
-  for (const m of ms) {
+  // a takeout double followed by a long suit of my own (X, then 2H on five or more) was a strong hand with that suit:
+  // the double's promise of support for the other suits no longer stands
+  const xi = BID_OFF('xlong') ? -1 : ms.findIndex(m => m && m.tag === 'xto');
+  const xVoid = xi >= 0 && ms.some((m, j) => j > xi && m && !m.agree && SUITS.some(s => m.mn[s] >= 5));
+  for (const [j, m] of ms.entries()) {
     if (!m) continue;
     r.lo = Math.max(r.lo, m.lo); r.hi = Math.min(r.hi, m.hi);
+    if (xVoid && j === xi) continue;
     for (const s of SUITS) { if (m.mn[s]) r.mn[s] = Math.max(r.mn[s], m.mn[s]); if (m.mx[s] !== undefined) r.mx[s] = Math.min(r.mx[s], m.mx[s]); }
     if (m.bal) r.bal = true; if (m.nt) r.nt = true;
   }
