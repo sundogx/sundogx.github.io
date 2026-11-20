@@ -612,12 +612,15 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
         const fourth = nextSeat(seat), second = trick.cards[1].seat;
         if (voidIn(fourth, led)) {
           if (trump && led !== trump && oppTrumpsLeft() && !voidIn(fourth, trump)) return R('3rdRuffed', low(follow));
+          if (partnerWinning && !OFF('p3void')) return R('p3void', low(follow)); // partner's card wins: don't waste ours (round 9)
           return R('3rdVoid', low(winners));
         }
         const k = x => unseenAbove(x).length, kmin = Math.min(...winners.map(k));
         let lim = voidIn(second, led) || (kmin === 0 && !OFF('3safe') && (() => { const q = suitCount(); return q.sure >= q.need; })()) ? kmin : Math.max(1, kmin);
         // the auction says the second hand has few of the opponents' remaining high cards: don't finesse
         if (lim > kmin && !OFF('finAuc') && oppShare(second) < FIN_SHARE) lim = kmin;
+        // partner's card is as good as our cheapest winner (no unseen card between them): don't overtake it (round 9)
+        if (partnerWinning && k(winCard) === kmin && !OFF('p3eq')) return R('p3eq', low(follow));
         return R(lim > kmin ? '3rdFin' : '3rdTop', low(winners.filter(x => k(x) <= lim)));
       }
       // defender third hand: high, but cheapest of equals
@@ -626,7 +629,7 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
       return R('L201', seq.length ? low(seq) : top);
     };
     const rc = followRule(), rwhy = botWhy;
-    if (follow.length < 2 || OFF('flfit') || rwhy === 'p2low') return R(rwhy, rc);
+    if (follow.length < 2 || OFF('flfit') || rwhy === 'p2low' || (rwhy === 'L162' && !OFF('fit162'))) return R(rwhy, rc); // partner's card surely wins: no fitted overtake (round 9)
     // the fitted choice among a few candidate cards (flF, BOT_FOLLOW_W): the rule's card, low, the cheapest winner,
     // the cheapest sure winner, high; equal cards (no unseen card between them) count once, as the lowest
     const equal = (x, y) => { const lo = Math.min(rankOf(x), rankOf(y)), hi = Math.max(rankOf(x), rankOf(y)); for (let r = lo + 1; r < hi; r++) if (!known.has(led + RANKS[r]) || (!onDeclSide && dummyCards.includes(led + RANKS[r])) || (onDeclSide && pCards.includes(led + RANKS[r]))) return false; return true; };
@@ -672,7 +675,12 @@ function botPlay(t, seat, want) { // want (tests/heurfit.js): return the feature
   }
   // discard: as defender, signal with a high spot in a suit we like, else throw from the weakest suit
   const cands = SUITS.filter(s => s !== trump && of(legal, s).length);
-  const pool = cands.length ? cands : SUITS.filter(s => of(legal, s).length);
+  let pool = cands.length ? cands : SUITS.filter(s => of(legal, s).length);
+  // keep the masters: don't throw a winner while another suit has a loser to throw
+  if (want !== 'discard' && pool.length > 1 && !OFF('dmast')) {
+    const p2 = pool.filter(s => !isMaster(low(of(legal, s))));
+    if (p2.length) pool = p2;
+  }
   // features of discarding from each suit (weights fitted to double-dummy results by tests/heurfit.js)
   const dsF = s => {
     const mine = of(my, s), mate = onDeclSide ? of(pCards, s) : [], dm = seat === dummy ? of(pCards, s) : of(dummyCards, s);
