@@ -7,7 +7,7 @@
 // same partner and no deviation, for each partner, and the difference between the partners on the deviated deals
 // (what the new robot's handling of the human's call gains). It also counts forcing calls (by the new robots'
 // reading) that the robot partner passed, and robot calls that throw or are illegal.
-// Needs the double-dummy cache from tests/bidddsim.js for the same seed (run that first).
+// Uses the double-dummy cache of tests/bidddsim.js for the same seed (solves the missing deals first: tests/fixtures/ddcache.js).
 // Usage: node tests/bidhuman.js [boards=1000] [seed=1] [--base=basebid5] [--types=a,b] [--show=type:k] [--seats=NESW]
 //   --show=type:k prints the k boards of that kind where the robot under test did worst against the baseline partner
 //   (type 'all' for any kind; --best for the boards it gained most on; --cost: sorted by the cost of the deviation instead)
@@ -23,7 +23,7 @@ globalThis.BID_K = Object.fromEntries((flag('k', '') || '').split(',').filter(Bo
 const BASE = require('./fixtures/guard.js')('./' + flag('base', 'basebid5') + '.js'); // knobs: the version under test only
 const SYS = require(flag('sys', '../js/bidding.js'));
 const HUM = flag('human', 'sys') === 'base' ? BASE : SYS; // how the human bids when not deviating (and reads its own calls)
-const cache = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `bridge-dd-${SEED}.json`), 'utf8'));
+const cache = require('./fixtures/ddcache.js').ensure(N, SEED); // bidddsim's cache, solving missing deals first
 const rand = seededRand('bidddsim-' + SEED);
 const key = h => SEATS.map(s => h[s].join('')).join('|');
 const show = h => SUITS.map(s => h.filter(c => c[0] === s).map(c => c[1]).join('') || '-').join('.');

@@ -7,7 +7,7 @@
 // Every final contract is scored double-dummy. For each kind of overbid it reports what the overbid costs the human
 // against four baseline robots (how reckless it was), and what the robots under test gain over the baseline robots
 // on the same deals with the same overbid (IMPs for the robots' side).
-// Needs the double-dummy cache from tests/bidddsim.js for the same seed (run that first).
+// Uses the double-dummy cache of tests/bidddsim.js for the same seed (solves the missing deals first: tests/fixtures/ddcache.js).
 // Usage: node tests/bidoverbid.js [boards=1000] [seed=1] [--base=basebid6] [--types=a,b] [--show=type:k] [--best]
 //   [--seats=NESW] [--off=..] [--k=..] (BID_OFF / BID_K of js/bidding.js, as in bidddsim) [--threads=n]
 const fs = require('fs'), path = require('path'), os = require('os');
@@ -20,7 +20,7 @@ globalThis.BID_OFF = (flag('off', '') || '').split(',').filter(Boolean);
 globalThis.BID_K = Object.fromEntries((flag('k', '') || '').split(',').filter(Boolean).map(x => [x.split(':')[0], +x.split(':')[1]]));
 const BASE = require('./fixtures/guard.js')('./' + flag('base', 'basebid6') + '.js'); // knobs and penlog: the version under test only
 const SYS = require(flag('sys', '../js/bidding.js'));
-const cache = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), `bridge-dd-${SEED}.json`), 'utf8'));
+const cache = require('./fixtures/ddcache.js').ensure(N, SEED, +flag('threads', 0)); // bidddsim's cache, solving missing deals first
 const rand = seededRand('bidddsim-' + SEED);
 const key = h => SEATS.map(s => h[s].join('')).join('|');
 const show = h => SUITS.map(s => h.filter(c => c[0] === s).map(c => c[1]).join('') || '-').join('.');
