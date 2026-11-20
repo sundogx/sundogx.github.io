@@ -1096,6 +1096,8 @@ function respComp(ctx) { // partner opened one of a suit, RHO came in; my first 
   // raises
   if (MAJ(t)) {
     T.push(T_('4' + t, h => h.L[t] >= 4 && (supPts(h, t) >= 13 || h.H <= 9 && h.L[t] >= 5), MM(0, 37, { mn: { [t]: 4 }, agree: t })));
+    // their overcall at the three level or higher (a jump, or any four-level call) left no cue bid below four of our major: game with three trumps and game values
+    if (ctx.cheap(os) > 3 && !BID_OFF('r3g')) T.push(T_('4' + t, h => h.L[t] === 3 && supPts(h, t) >= 13, MM(13, 37, { mn: { [t]: 3 }, agree: t })));
     if (ctx.cheap(os) <= 3) T.push(T_(ctx.cheap(os) + os, h => h.L[t] >= 3 && supPts(h, t) >= (ctx.cheap(os) >= 3 ? 13 : 10), MM(10, 37, { mn: { [t]: 3 }, agree: t, art: true, f: 1, a: `Cue bid: 3+ ${SNAME[t]}, limit raise or better`, t: 'cueraise' })));
     if (ctx.cheap(t) <= 2 && ctx.ok('3' + t)) T.push(T_('3' + t, h => h.L[t] >= 4 && h.H <= 9, MM(0, 9, { mn: { [t]: 4 }, agree: t, a: 'Preemptive raise' })));
     if (ctx.cheap(t) <= 3) T.push(T_(ctx.cheap(t) + t, h => h.L[t] >= 3 && supPts(h, t) >= 6, MM(6, 10, { mn: { [t]: 3 }, agree: t })));
@@ -1411,7 +1413,16 @@ function doublerRebid(ctx) { // I made a takeout double, partner advanced in a s
   if (l + 1 < gl && l + 1 <= 3) T.push(T_((l + 1) + s, h => h.L[s] >= 4 && sp(h) >= 19 - bal, MM(19 - bal, 21, { mn: { [s]: 4 }, agree: s, inv: true, a: 'Invites game: strong double with support' })));
   if (l < gl && l <= 3) T.push(T_(l + s, h => h.L[s] >= 4 && sp(h) >= (BID_K('xr1') ?? 18) - bal, MM((BID_K('xr1') ?? 18) - bal, 18, { mn: { [s]: 4 }, agree: s, inv: true })));
   if (nt <= 2) T.push(T_(nt + 'N', h => h.semi && h.H >= 18 - bal && stops(h), MM(18 - bal, 20, { nt: true, stop: their, a: nt === 1 ? '18-20 points, balanced' : 'Strong, balanced, invites game' })));
-  for (const x of ['S', 'H', 'D', 'C']) if (x !== s && !their.includes(x) && ctx.cheap(x) <= 3) T.push(T_(ctx.cheap(x) + x, h => h.L[x] >= 5 && h.H >= 18 - bal && longest(h, their) === x && h.L[s] <= 3, MM(18 - bal, 37, { mn: { [x]: 5 } })));
+  if (BID_OFF('xown')) { for (const x of ['S', 'H', 'D', 'C']) if (x !== s && !their.includes(x) && ctx.cheap(x) <= 3) T.push(T_(ctx.cheap(x) + x, h => h.L[x] >= 5 && h.H >= 18 - bal && longest(h, their) === x && h.L[s] <= 3, MM(18 - bal, 37, { mn: { [x]: 5 } }))); }
+  else { // my own long suit: counted with its length; a major goes to game when partner was pushed to the four level or I have game on my own
+    const xp = (h, x) => h.H + Math.max(0, h.L[x] - 5);
+    for (const x of ['S', 'H', 'D', 'C']) {
+      if (x === s || their.includes(x)) continue;
+      const cx = ctx.cheap(x), own = h => h.L[x] >= 5 && longest(h, their) === x && (h.L[s] <= 3 || h.L[x] >= 6 && !MAJ(s));
+      if (MAJ(x) && cx <= 4 && ctx.ok('4' + x)) T.push(T_('4' + x, h => own(h) && (cx === 4 ? xp(h, x) >= (BID_K('x4') ?? 20) - bal : h.L[x] >= 6 && xp(h, x) >= (BID_K('xj') ?? 21)), MM(cx === 4 ? 17 - bal : 19, 37, { mn: { [x]: cx === 4 ? 5 : 6 } })));
+      if (cx <= 3) T.push(T_(cx + x, h => own(h) && xp(h, x) >= (BID_K("xrb") ?? 18) - bal, MM(16 - bal, 37, { mn: { [x]: 5 } })));
+    }
+  }
   T.push(T_('P', () => true, MM(ml.m.lo, 17 - bal)));
   return T;
 }
