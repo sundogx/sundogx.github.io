@@ -692,7 +692,7 @@ export class TableRoom extends DurableObject {
       const mark = progressMark(this.t) + ':' + !!this.t.timeUp, rd = this.robotDue;
       if (rd && rd.mark === mark && Date.now() < rd.due + THINK_MS + 2000) { this.askThink(rd.due); return; }
       const tr = this.t.play && this.t.play.tricks[this.t.play.tricks.length - 1];
-      const pause = this.t.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? 1300 : 700);
+      const pause = this.t.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? 1800 : 700);
       const scale = Number(this.env.ROBOT_DELAY_SCALE ?? 1); // only changed for automated tests
       const due = Date.now() + pause * (scale >= 0 ? scale : 1);
       this.robotDue = { mark, due };

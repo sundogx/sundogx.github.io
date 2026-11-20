@@ -205,7 +205,6 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .tslot .card { cursor: default; width: calc(var(--tw) * var(--tk)); height: calc(var(--th) * var(--tk)); pointer-events: none; }
 .tslot .card .cr, .tslot .card .cs { font-size: calc(var(--tf) * var(--tk)); left: calc(6px * var(--tk)); }
 .tslot .card .cr { top: calc(4px * var(--tk)); } .tslot .card .cs { top: calc(var(--th) * var(--tk) * .3); }
-.tslot .card.win, .modal .card.win { box-shadow: 0 0 0 2.5px #e0b000; } /* the trick's winner, on the table, in Last trick and in the replay */
 
 /* four-colour deck option */
 html[data-deck="4"] .s-D { color: #e06500 !important; }
@@ -222,7 +221,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .dhand .card .cr { font-size: calc(var(--cw) * .36); top: 3px; left: 4px; }
 .dhand .card .cs { font-size: calc(var(--cw) * .32); top: 4px; left: auto; right: 4px; }
 .dhand .card.legal { cursor: pointer; }
-.dhand .card.legal:hover, .dhand .card.legal:focus-visible { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass); outline: none; }
+.dhand .card.legal:focus-visible { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass); outline: none; }
+@media (hover: hover) { .dhand .card.legal:hover { background: #fff4c4; box-shadow: inset 0 0 0 3px var(--brass); outline: none; } } /* a phone keeps :hover on the last tapped spot, which would highlight the card that slides under the finger */
 .dhand .card.dim { background: #c4c4c4; cursor: default; }
 .dhand .card.sel { background: #ffe680; box-shadow: inset 0 0 0 3px #b88a00; }
 
@@ -245,7 +245,8 @@ html[data-deck="4"] .s-C { color: #12822e !important; }
 .fan .card .cr, .fan .card .cs { font-size: calc(var(--cw) * .36); left: 5px; }
 .fan .card .cr { top: 4px; } .fan .card .cs { top: calc(var(--cw) * .36 + 6px); }
 .fan .card.legal { cursor: pointer; transform: translateY(-10px); }
-.fan .card.legal:hover, .fan .card.legal:focus-visible { background: #fffbea; box-shadow: inset 0 0 0 1px #c9a227, -1px 0 0 #0003; outline: none; }
+.fan .card.legal:focus-visible { background: #fffbea; box-shadow: inset 0 0 0 1px #c9a227, -1px 0 0 #0003; outline: none; }
+@media (hover: hover) { .fan .card.legal:hover { background: #fffbea; box-shadow: inset 0 0 0 1px #c9a227, -1px 0 0 #0003; outline: none; } } /* a phone keeps :hover on the last tapped spot, which would highlight the card that slides under the finger */
 .fan .card.dim { background: #c4c4c4; cursor: default; }
 .fan .card.sel { background: #fff3c2; box-shadow: inset 0 0 0 1.5px #b88a00, -1px 0 0 #0003; }
 @media (prefers-reduced-motion: reduce) { .fan .card { transition: none; } }

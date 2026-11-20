@@ -404,7 +404,7 @@ function fitTrick() {
   const k = Math.max(0.5, Math.min(1, (pc.clientWidth - 2) / (2 * (tw + tg)), (pc.clientHeight - 2) / (2 * th + 8)));
   tr.style.setProperty('--tk', k.toFixed(3));
 }
-const TRICK_HOLD_MS = 1200;
+const TRICK_HOLD_MS = 1700; // a finished trick stays up this long (owner asked for +0.5 s, 2026-11-19)
 const speedMult = () => ({ slow: 1.6, normal: 1, fast: 0.45 })[Prefs.speed] || 1;
 // practice while you are dummy: nothing to decide until the next board, so the robots play faster
 const dummyIdle = t => !!(t && t.local && t.phase === 'play' && t.contract && mySeat(t) === partnerOf(t.contract.declarer));
