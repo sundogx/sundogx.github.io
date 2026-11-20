@@ -98,6 +98,21 @@ function brute(hands, strain, leader) { // best tricks for N-S by exhaustive min
     }
   }
   console.log('full deals, reused vs fresh instance', deals, 'mismatches', bad4);
+  // DDS's table routine (ddTableRaw, the hand record and tests/bidddsim.js) against one solve per declarer and strain,
+  // whole table and one strain at a time, on the instance shared with the solves above (and solves after it).
+  let tables = 0;
+  for (let g = 0; g < 2; g++) {
+    const h = deal(seededRand('table' + g + Math.random())), pbn = D.ddPBN(h), full = D.ddTableRaw(shared, pbn);
+    for (const st of ['N', 'S', 'H', 'D', 'C']) {
+      const one = D.ddTableRaw(shared, pbn, st);
+      for (const [ix, decl] of SEATS.entries()) {
+        const best = Math.max(...D.ddSolveRaw(shared, { S: 0, H: 1, D: 2, C: 3, N: 4 }[st], (ix + 1) & 3, [], pbn).map(r => r.tricks));
+        if (full[decl][st] !== 13 - best || one[decl][st] !== 13 - best || Object.keys(one[decl]).length !== 1) { bad4++; if (bad4 < 4) console.log('table mismatch', pbn, st, decl, full[decl][st], one[decl][st], 13 - best); }
+      }
+    }
+    tables++;
+  }
+  console.log('double-dummy tables against single solves', tables, bad4 ? 'FAILED' : 'ok');
 
   // The robot's view holds only cards it may see, and sampled layouts agree with everything it knows.
   const Bots = require('../js/bots.js'); globalThis.shown = Bots.shown;

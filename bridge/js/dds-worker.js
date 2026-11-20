@@ -17,13 +17,18 @@ async function getSolver() {
   if (!solver) { const mod = await compiled(); solver = solver || ddSolver(create_dds_module, mod); }
   return solver;
 }
-// One strain, all four declarers: declarer's tricks per seat (13 minus what the defender on lead can take).
+// One strain, all four declarers: declarer's tricks per seat, from DDS's table routine (ddplay.js ddTableRaw, about
+// twice as fast as solving each declarer's opening lead); with an older compiled.wasm that lacks it, one solve
+// per declarer (13 minus what the defender on lead can take), as before.
 async function strain(hands, st, report) {
-  const solve = await getSolver();
+  const solve = await getSolver(), pbn = ddPBN(hands);
+  let table = null;
+  try { if (solve.table) table = await solve.table(pbn, st); } catch (err) { table = null; }
+  if (table) { for (const decl of SEATS) report(decl, st, table[decl][st]); return; }
   const trump = { S: 0, H: 1, D: 2, C: 3, N: 4 }[st];
   for (const [ix, decl] of SEATS.entries()) {
     const leader = SEATS[(ix + 1) & 3]; // the defender on lead
-    const r = await solve({ trump, first: (ix + 1) & 3, trick: [], pbn: ddPBN(hands), hands, mover: leader });
+    const r = await solve({ trump, first: (ix + 1) & 3, trick: [], pbn, hands, mover: leader });
     const best = Math.max(-1, ...Object.values(r));
     if (best < 0 || best > 13) throw new Error('DDS returned no result');
     report(decl, st, 13 - best);

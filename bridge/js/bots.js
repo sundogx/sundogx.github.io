@@ -159,8 +159,8 @@ function botPlay(t, seat, want) {
 // CPU for a request), more in the page; with fewer than 4 layouts solved, the heuristic's card.
 const END_TRICKS = 7, END_LAYOUTS = 24, END_NODES = 5000, END_NODES_PAGE = 30000, END_POOL = 96;
 let botEndStats = { calls: 0, over: 0, nodes: 0, lays: 0 };
-// What a hidden hand's calls showed, as limits for the endgame's layouts (the same reading as js/ddplay.js
-// ddAuctionLimits: shown() from js/bidding.js, plus the ranges of opening bids and a passed hand).
+// What a hidden hand's calls showed, as limits for the endgame's layouts: js/ddplay.js ddAuctionLimits (shown() from
+// js/bidding.js, plus the ranges of opening bids and a passed hand), with a 2C opener's minimum never lowered.
 const endLimCache = new Map();
 function endLimits(auction, seat, vul) {
   const key = (vul || '') + ':' + seat + ':' + auction.map(a => a.by + a.call).join(' ') + ':' + JSON.stringify([globalThis.BID_OFF, globalThis.BID_K]); // (the bidding's test knobs too)
@@ -168,35 +168,9 @@ function endLimits(auction, seat, vul) {
   if (!k) { k = endLimits0(auction, seat, vul); if (endLimCache.size > 64) endLimCache.clear(); endLimCache.set(key, k); }
   return k;
 }
-function endLimits0(auction, seat, vul) {
-  const k = { hcpMin: 0, hcpMax: 37, lenMin: { S: 0, H: 0, D: 0, C: 0 }, lenMax: { S: 13, H: 13, D: 13, C: 13 }, bal: false };
-  let info = null;
-  try { if (typeof shown === 'function') info = shown(auction, seat, vul); } catch (e) { info = null; }
-  if (info) {
-    if (info.pts > 0) k.hcpMin = Math.max(0, info.pts - (info.nt ? 0 : 2));
-    if (info.len) for (const s of SUITS) k.lenMin[s] = Math.max(k.lenMin[s], info.len[s] || 0);
-    if (info.ptsMax < 37) k.hcpMax = Math.min(37, info.ptsMax + (info.nt ? 0 : 1));
-    if (info.maxLen) for (const s of SUITS) if (info.maxLen[s] < 13) k.lenMax[s] = info.maxLen[s];
-    try { const metas = auctionMetas(auction, vul); k.bal = auction.some((a, i) => a.by === seat && metas[i] && metas[i].bal); } catch (e) { /* none */ }
-  }
-  const i0 = auction.findIndex(a => a.by === seat);
-  if (i0 < 0) return k;
-  const first = auction[i0], before = auction.slice(0, i0);
-  if (!before.some(a => bidValue(a.call) >= 0)) { // the seat had the chance to open
-    const c = first.call;
-    if (c === 'P') k.hcpMax = Math.min(k.hcpMax, 12);
-    else if (c === '1N') { k.hcpMin = Math.max(k.hcpMin, 15); k.hcpMax = Math.min(k.hcpMax, 17); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
-    else if (c === '2N') { k.hcpMin = Math.max(k.hcpMin, 20); k.hcpMax = Math.min(k.hcpMax, 21); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
-    else if (c === '2C') k.hcpMin = Math.max(k.hcpMin, 22);
-    else if (/^1[CDHS]$/.test(c)) { k.hcpMin = Math.max(k.hcpMin, 10); k.hcpMax = Math.min(k.hcpMax, 21); }
-    else if (/^[23][DHS]$|^3C$/.test(c)) { k.hcpMax = Math.min(k.hcpMax, 11); k.lenMin[c[1]] = Math.max(k.lenMin[c[1]], c[0] === '2' ? 6 : 7); }
-  } else if (auction.every(a => a.by !== seat || a.call === 'P')) { // never bid
-    const opener = before.find(a => bidValue(a.call) >= 0);
-    k.hcpMax = Math.min(k.hcpMax, opener && sameSide(opener.by, seat) ? 7 : 17);
-  }
-  if (k.hcpMax < k.hcpMin) k.hcpMax = k.hcpMin;
-  for (const s of SUITS) if (k.lenMax[s] < k.lenMin[s]) k.lenMax[s] = k.lenMin[s];
-  return k;
+function endLimits0(auction, seat, vul) { // js/ddplay.js is loaded with this file in the page, its workers and the server bundle
+  const f = typeof ddAuctionLimits === 'function' ? ddAuctionLimits : (() => { const req = require; return req('./ddplay.js').ddAuctionLimits; })();
+  return f(auction, seat, vul, true, true);
 }
 function botEndgame(t, seat, rc) {
   const play = t.play, c = t.contract, hands = t.hands;

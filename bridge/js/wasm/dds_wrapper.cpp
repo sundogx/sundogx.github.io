@@ -57,4 +57,31 @@ EMSCRIPTEN_KEEPALIVE int dds_solve_board(int trump, int direction,
   return result.nodes;
 }
 
+
+// The double-dummy table of a whole deal (PBN "N:AKQ.. ..."), or of one strain: declarer's tricks for every
+// declarer, out[strain * 4 + hand] (strain 0-4 = S H D C N, hand 0 = N). strain -1 = all five; otherwise only
+// that strain's four entries are written. DDS's own table routine (CalcAllTablesPBN, as CalcDDtablePBN uses):
+// it asks for the best score only and reuses the search between declarers, so it is about twice as fast as
+// four dds_solve_board calls per strain. Returns 0, or a DDS error code (negative).
+static struct ddTableDealsPBN tableDeals;
+static struct ddTablesRes tableRes;
+EMSCRIPTEN_KEEPALIVE int dds_calc_table(char * deal, int strain, int * out)
+{
+  if (strain < -1 || strain > 4) return -1;
+  size_t n = strlen(deal);
+  if (n >= sizeof(tableDeals.deals[0].cards)) n = sizeof(tableDeals.deals[0].cards) - 1;
+  tableDeals.noOfTables = 1;
+  memcpy(tableDeals.deals[0].cards, deal, n);
+  tableDeals.deals[0].cards[n] = 0;
+  int filter[5];
+  for (int s = 0; s < 5; s++) filter[s] = strain >= 0 && s != strain;
+  int ret = CalcAllTablesPBN(&tableDeals, -1, filter, &tableRes, NULL);
+  if (ret != RETURN_NO_FAULT) return ret < 0 ? ret : -1;
+  for (int s = 0; s < 5; s++) {
+    if (strain >= 0 && s != strain) continue;
+    for (int h = 0; h < 4; h++) out[s * 4 + h] = tableRes.results[0].resTable[s][h];
+  }
+  return 0;
+}
+
 }

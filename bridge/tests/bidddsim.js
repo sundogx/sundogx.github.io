@@ -18,17 +18,11 @@ Object.assign(globalThis, require('../js/engine.js'));
 const RANKS_DD = '23456789TJQKA';
 const wasmDir = path.join(__dirname, '..', 'js', 'wasm');
 
-if (!isMainThread) { // solver worker: one deal at a time, on one DDS instance (js/ddplay.js ddSolveRaw)
+if (!isMainThread) { // solver worker: one deal at a time, on one DDS instance (js/ddplay.js ddTableRaw, DDS's table routine)
   const create = require(path.join(wasmDir, 'compiled.js')), D = require('../js/ddplay.js');
   const instP = WebAssembly.compile(fs.readFileSync(path.join(wasmDir, 'compiled.wasm'))).then(mod => D.ddInstance(create, mod));
   parentPort.on('message', async ({ id, hands }) => {
-    const inst = await instP, dealStr = D.ddPBN(hands);
-    const table = { N: {}, E: {}, S: {}, W: {} };
-    for (const st of ['N', 'S', 'H', 'D', 'C']) for (const [ix, decl] of SEATS.entries()) {
-      const best = Math.max(-1, ...D.ddSolveRaw(inst, { S: 0, H: 1, D: 2, C: 3, N: 4 }[st], (ix + 1) & 3, [], dealStr).map(r => r.tricks));
-      if (best < 0 || best > 13) throw new Error('DDS returned no result');
-      table[decl][st] = 13 - best;
-    }
+    const table = D.ddTableRaw(await instP, D.ddPBN(hands));
     parentPort.postMessage({ id, table });
   });
   return;

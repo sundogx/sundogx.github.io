@@ -4,7 +4,7 @@
 # Without a path it downloads the DDS sources @bridge-tools/dd 0.2.2 was built from: github.com/aaron-hutton/dds
 # at 860e618 (DDS 2.9.0 by Bo Haglund and Soren Hein, Apache-2.0, with small changes to build for WebAssembly).
 # Differences from the npm build: optimised (-O3, no assertions, minified glue), memory starts at 16 MB and grows
-# as needed (the npm build reserved a fixed 50 MB per instance), no file system, and dds_reset (dds_wrapper.cpp).
+# as needed (the npm build reserved a fixed 50 MB per instance), no file system, and dds_reset and dds_calc_table (dds_wrapper.cpp).
 set -e
 here=$(cd "$(dirname "$0")" && pwd)
 src=$1
@@ -22,6 +22,6 @@ em++ -O3 -flto -fno-exceptions -I "$s" \
   "$s/TimerGroup.cpp" "$s/TimerList.cpp" "$s/TimeStat.cpp" "$s/TimeStatList.cpp" "$s/TransTableL.cpp" "$s/TransTableS.cpp" \
   -sMODULARIZE=1 -sEXPORT_NAME=create_dds_module -sENVIRONMENT=web,worker,node \
   -sASSERTIONS=0 -sFILESYSTEM=0 -sALLOW_MEMORY_GROWTH=1 -sINITIAL_MEMORY=16MB -sSTACK_SIZE=1MB \
-  -sEXPORTED_FUNCTIONS=_malloc,_free,_dds_init,_dds_reset,_dds_solve_board -sEXPORTED_RUNTIME_METHODS=setValue,getValue \
+  -sEXPORTED_FUNCTIONS=_malloc,_free,_dds_init,_dds_reset,_dds_solve_board,_dds_calc_table -sEXPORTED_RUNTIME_METHODS=setValue,getValue \
   -o "$here/compiled.js"
 ls -l "$here/compiled.js" "$here/compiled.wasm"

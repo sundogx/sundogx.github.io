@@ -16,7 +16,9 @@ if (typeof require !== 'undefined' && typeof botPlay === 'undefined') globalThis
 // minimum and maximum points and suit lengths, and whether the hand is balanced), plus a few limits shown()
 // doesn't give (ranges of the opening bids, a passed hand). vul: the board's vulnerability (some calls depend on it).
 // full === false: only the minimums from shown() (the earlier sampler, for comparisons in tests/playsim.js).
-function ddAuctionLimits(auction, seat, vul, full = true) {
+// keep2C: a 2C opening raises the minimum to 22 but never lowers a higher one shown later (js/bots.js endgame's reading;
+// without it the minimum is set to 22, as the sampler has always done).
+function ddAuctionLimits(auction, seat, vul, full = true, keep2C = false) {
   const k = { hcpMin: 0, hcpMax: 37, lenMin: { S: 0, H: 0, D: 0, C: 0 }, lenMax: { S: 13, H: 13, D: 13, C: 13 }, bal: false };
   let info = null;
   try { if (typeof shown === 'function') info = shown(auction, seat, vul); } catch (e) { info = null; }
@@ -38,7 +40,7 @@ function ddAuctionLimits(auction, seat, vul, full = true) {
     if (c === 'P') k.hcpMax = Math.min(k.hcpMax, 12);
     else if (c === '1N') { k.hcpMin = Math.max(k.hcpMin, 15); k.hcpMax = Math.min(k.hcpMax, 17); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
     else if (c === '2N') { k.hcpMin = Math.max(k.hcpMin, 20); k.hcpMax = Math.min(k.hcpMax, 21); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
-    else if (c === '2C') k.hcpMin = 22;
+    else if (c === '2C') k.hcpMin = keep2C ? Math.max(k.hcpMin, 22) : 22;
     else if (/^1[CDHS]$/.test(c)) { k.hcpMin = Math.max(k.hcpMin, 10); k.hcpMax = Math.min(k.hcpMax, 21); }
     else if (/^[23][DHS]$|^3C$/.test(c)) { k.hcpMax = Math.min(k.hcpMax, 11); k.lenMin[c[1]] = Math.max(k.lenMin[c[1]], c[0] === '2' ? 6 : 7); }
   } else if (auction.filter(a => a.by === seat).every(a => a.call === 'P')) {
@@ -53,7 +55,7 @@ function ddAuctionLimits(auction, seat, vul, full = true) {
 // Did the seat show a balanced hand (a natural notrump bid, by the system's own meanings)?
 let ddMetaMemo = { key: null, metas: null }; // the last auction's meanings (ddView asks for each hidden seat)
 function ddShownBalanced(auction, seat, vul) {
-  const key = vul + ':' + auction.map(a => a.by + a.call).join(',');
+  const key = vul + ':' + auction.map(a => a.by + a.call).join(',') + ':' + JSON.stringify([globalThis.BID_OFF, globalThis.BID_K]); // (the bidding's test knobs too)
   let metas = ddMetaMemo.key === key ? ddMetaMemo.metas : null;
   if (!metas) {
     try {
@@ -332,6 +334,29 @@ function ddSolveRaw(inst, trump, first, trick, pbn) { // -> [{ suit, rank, trick
   }
   return out;
 }
+// The double-dummy table of a whole deal (pbn: ddPBN of 13-card hands) with DDS's own table routine
+// (dds_calc_table in wasm/dds_wrapper.cpp; about twice as fast as four ddSolveRaw per strain, same numbers).
+// strain: 'S' 'H' 'D' 'C' 'N' for one strain, or omitted for all five. -> { N: { S: tricks, ... }, E, S, W },
+// declarer's tricks, with only the asked strain filled in.
+function ddTableRaw(inst, pbn, strain) {
+  const { dp } = ddBuffers(inst), op = inst.ddTab || (inst.ddTab = inst._malloc(20 * 4));
+  for (let i = 0; i < pbn.length; i++) inst.setValue(dp + i, pbn.charCodeAt(i), 'i8');
+  inst.setValue(dp + pbn.length, 0, 'i8');
+  for (let i = 0; i < 20; i++) inst.setValue(op + i * 4, -1, 'i32');
+  const st = strain === undefined ? -1 : DD_TRUMP[strain];
+  const ret = inst._dds_calc_table(dp, st, op);
+  if (ret !== 0) throw new Error('DDS table error ' + ret);
+  const table = { N: {}, E: {}, S: {}, W: {} };
+  for (const s of [4, 0, 1, 2, 3]) { // N S H D C, the hand record's order
+    if (st >= 0 && s !== st) continue;
+    SEATS.forEach((seat, h) => {
+      const v = inst.getValue(op + (s * 4 + h) * 4, 'i32');
+      if (v < 0 || v > 13) throw new Error('DDS returned no result');
+      table[seat]['SHDCN'[s]] = v;
+    });
+  }
+  return table;
+}
 function ddRun(inst, job) {
   const listed = {};
   for (const r of ddSolveRaw(inst, job.trump, job.first, job.trick, job.pbn)) listed['SHDC'[r.suit] + RANKS[r.rank - 2]] = r.tricks;
@@ -366,11 +391,16 @@ async function ddInstance(createModule, wasmModule) {
 function ddSolver(createModule, wasmModule, opts = {}) {
   let inst = null;
   const get = async () => inst || (inst = await ddInstance(createModule, wasmModule));
-  return async job => {
+  const solve = async job => {
     if (opts.fresh) return ddRun(await ddInstance(createModule, wasmModule), job);
     try { return ddRun(await get(), job); }
     catch (err) { inst = null; return ddRun(await get(), job); }
   };
+  solve.table = async (pbn, strain) => { // ddTableRaw on the same instance, with the same retry
+    try { return ddTableRaw(await get(), pbn, strain); }
+    catch (err) { inst = null; return ddTableRaw(await get(), pbn, strain); }
+  };
+  return solve;
 }
 
 // ---- Choosing the card ----
@@ -564,4 +594,4 @@ function ddDecide(view, results, weights, opts) {
   return r;
 }
 
-if (typeof module !== 'undefined') module.exports = { ddEnumerate, ddSeatPen, ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };
+if (typeof module !== 'undefined') module.exports = { ddEnumerate, ddSeatPen, ddConsistency, ddAuctionLimits, ddView, ddLegal, ddClasses, ddLeadCards, ddSample, ddPBN, ddJob, ddRun, ddSolveRaw, ddTableRaw, ddInstance, ddSolver, ddPick, ddWorthIt, ddChoose, ddOpts, ddDeals, ddSolveDeals, ddDecide };
