@@ -665,12 +665,13 @@ function ntSystem(ctx) {
   const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = (BID_K('ntq') ?? 31) - lo, six = (BID_K('ntq') ?? 31) + 1 - lo;
   const T = [];
   const trA = s => `Transfer: 5+ ${SNAME[s]}`;
+  const rkS = (h, M) => h.H + (BID_K('ntf') ?? 0) >= quant && h.L[M] >= 6 && openSuits(ctx, h, M) === 0; // slam values in a 6+ major: Texas, then 4NT asks for key cards
   if (!isOpener && k === 1) {
     const pts = h => h.H + Math.max(0, h.sh[0] - 5);
     T.push(T_('6N', h => pts(h) >= six + 1 && h.sh[0] <= 6 && !(h.L.H >= 5 || h.L.S >= 5), MM(six + 1, 37)));
     T.push(T_('4N', h => pts(h) >= quant && h.H < six + 1 && h.semi && !(h.L.H >= 5 || h.L.S >= 5) && !(h.L.H === 4 || h.L.S === 4), MM(quant, six, { a: 'Quantitative: invites 6NT', t: 'quant' })));
-    T.push(T_('4H', h => h.L.S >= 6 && h.H >= gf && h.H < quant, MM(gf, quant - 1, { mn: { S: 6 }, art: true, a: 'Texas transfer: 6+ spades, game values', t: 'texas' })));
-    T.push(T_('4D', h => h.L.H >= 6 && h.H >= gf && h.H < quant, MM(gf, quant - 1, { mn: { H: 6 }, art: true, a: 'Texas transfer: 6+ hearts, game values', t: 'texas' })));
+    T.push(T_('4H', h => h.L.S >= 6 && h.H >= gf && (h.H < quant || rkS(h, 'S')), MM(gf, 37, { mn: { S: 6 }, art: true, a: 'Texas transfer: 6+ spades, game values', t: 'texas' })));
+    T.push(T_('4D', h => h.L.H >= 6 && h.H >= gf && (h.H < quant || rkS(h, 'H')), MM(gf, 37, { mn: { H: 6 }, art: true, a: 'Texas transfer: 6+ hearts, game values', t: 'texas' })));
     T.push(T_(lv + 'C', h => h.H >= inv && ((h.L.S === 5 && h.L.H === 4) || (h.L.H === 5 && h.L.S === 4)), MM(inv, 37, { art: true, a: 'Stayman: asks for a 4-card major', t: 'stayman' })));
     T.push(T_(lv + 'H', h => h.L.S >= 5 && h.L.S >= h.L.H, MM(0, 37, { mn: { S: 5 }, art: true, a: trA('S'), t: 'trS', f: 1 })));
     T.push(T_(lv + 'D', h => h.L.H >= 5, MM(0, 37, { mn: { H: 5 }, art: true, a: trA('H'), t: 'trH', f: 1 })));
@@ -720,8 +721,7 @@ function ntSystem(ctx) {
       if (sup) return [T_('4N', h => h.H + 3 + (BID_K('ntf') ?? 0) >= quant && h.L[tr] >= 5 && openSuits(ctx, h, tr) === 0, MM(quant - 3, 37, { t: 'rkcb', trump: tr, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)` })), T_('4' + tr, h => h.H >= 4 || h.L[tr] >= 6, MM(4, 37)), T_('P', () => true, MM(0, 3))];
       T.push(T_('P', h => h.H < inv, MM(0, inv - 1, { t: 'signoff' })));
       if (tr === 'S') T.push(T_(lv === 2 ? '3H' : '4H', h => h.L.H >= 5 && h.H >= gf, MM(gf, 37, { mn: { H: 5 }, f: 2 })));
-      T.push(T_('4N', h => h.H + (BID_K('ntf') ?? 0) >= quant && h.L[tr] >= 6 && openSuits(ctx, h, tr) === 0, MM(quant, 37, { t: 'rkcb', trump: tr, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)` })));
-      T.push(T_('4N', h => h.H >= quant && h.L[tr] === 5, MM(quant, six, { t: 'quant', a: 'Quantitative: invites 6NT (5-card suit)' })));
+      T.push(T_('4N', h => h.H >= quant && h.L[tr] === 5, MM(quant, six, { mn: { [tr]: 5 }, t: 'quant5', trump: tr, a: 'Quantitative: invites 6NT (5-card suit)' })));
       if (lv === 2) T.push(T_('3' + tr, h => h.L[tr] >= 6 && h.H < gf, MM(inv, gf - 1, { mn: { [tr]: 6 }, inv: true })));
       if (lv === 2) T.push(T_('2N', h => h.H < gf, MM(inv, gf - 1, { inv: true, mx: { [tr]: 5 } })));
       T.push(T_('4' + tr, h => h.L[tr] >= 6, MM(gf, quant - 1, { mn: { [tr]: 6 } })));
@@ -754,6 +754,7 @@ function ntSystem(ctx) {
       return T;
     }
     if (r === '2S' && one) return [T_('P', h => h.L.C >= 6, MM(0, 6, { mn: { C: 6 } })), T_('3D', () => true, MM(0, 6, { mn: { D: 6 }, t: 'signoff' }))];
+    if ((r === '4D' && o2 === '4H') || (r === '4H' && o2 === '4S')) { const M = o2[1]; return [T_('4N', h => rkS(h, M), MM(quant, 37, { t: 'rkcb', trump: M, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[M]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())]; }
     if (r === '4C' && after[1].m && after[1].m.tag === 'gerber') return [T_('4N', () => false, MM(0, 37, { a: 'To play (after Gerber)', t: 'signoff' }))]; // then natural
     return [T_('P', () => true, ANY())];
   }
@@ -1202,6 +1203,10 @@ function rkcbTable(ctx) {
       T_('5S', () => true, MM(0, 37, { art: true, a: `2 key cards with the ${SNAME[tr]} queen`, t: 'rkr', kc: [2], trump: tr, q: true })),
     ];
   }
+  if (pl.m.tag === 'quant5' && pl.call === '4N') { // quantitative after a transfer (5-card major): slam in the major with three or more of it, else 6NT on a maximum
+    const mid = ctx.Me.lo + Math.min(2, (Math.min(ctx.Me.hi, ctx.Me.lo + 4) - ctx.Me.lo) / 2), M = pl.m.trump;
+    return [T_('6' + M, h => h.L[M] >= 3, MM(ctx.Me.lo, ctx.Me.hi, { mn: { [M]: 3 } })), T_('6N', h => h.H >= mid, MM(mid, ctx.Me.hi, { mx: { [M]: 2 } })), T_('P', () => true, ANY())];
+  }
   if (pl.m.tag === 'quant') {
     const mid = ctx.Me.lo + Math.min(2, (Math.min(ctx.Me.hi, ctx.Me.lo + 4) - ctx.Me.lo) / 2);
     return [T_('6N', h => h.H >= mid || (h.H >= ctx.Me.lo && h.sh[0] >= 5), ANY()), T_('P', () => true, ANY())];
@@ -1337,7 +1342,16 @@ function compMore(ctx) {
   // Lebensohl advancing a takeout double of a weak two: 2NT = weak relay to 3♣, a direct 3-level suit = 8-11
   if (!BID_OFF('lebx') && !ctx.weOpened && ctx.rhoCall === 'P' && pl && pl.call === 'X' && pl.m && pl.m.tag === 'xto' && ctx.pards.length === 1 && !ctx.mine.some(x => x.call !== 'P')
     && ctx.lb === ctx.theirs[0] && ctx.theirs.length === 1 && /^2[DHS]$/.test(ctx.lb.call) && ctx.lb.m && ctx.lb.m.tag === 'weak2') return lebAdvX(ctx);
-  if (!BID_OFF('lebx') && pl && pl.m && pl.m.tag === 'lebx' && ctx.rhoCall === 'P' && ctx.lb === pl) return [T_('3C', () => true, MM(0, 37, { art: true, a: 'Forced reply to lebensohl' }))];
+  if (!BID_OFF('lebx') && pl && pl.m && pl.m.tag === 'lebx' && ctx.rhoCall === 'P' && ctx.lb === pl) {
+    const T = [], st = ctx.theirs[0].call[1];
+    if (!BID_OFF('lebb') && st !== 'N') { // a doubler too strong to stop in partner's suit breaks the relay, naturally (lebb)
+      const n3 = BID_K('lb3n') ?? 22, m3 = BID_K('lbM') ?? 22, m4 = BID_K('lb4') ?? 21;
+      for (const M of ['S', 'H']) if (M !== st && ctx.ok('4' + M)) T.push(T_('4' + M, h => h.L[M] >= 6 && h.H >= m4, MM(m4, 37, { mn: { [M]: 6 } })));
+      for (const M of ['S', 'H']) if (M !== st && ctx.ok('3' + M)) T.push(T_('3' + M, h => h.L[M] >= 5 && h.H >= m3 && longest(h, [st]) === M, MM(m3, 37, { mn: { [M]: 5 } })));
+      T.push(T_('3N', h => h.H >= n3 && stopper(h, st), MM(n3, 37, { nt: true, stop: [st] })));
+    }
+    return [...T, T_('3C', () => true, MM(0, 37, { art: true, a: 'Forced reply to lebensohl' }))];
+  }
   if (!BID_OFF('lebx') && ctx.myLast && ctx.myLast.m && ctx.myLast.m.tag === 'lebx' && ctx.mine.length === 1 && ctx.rhoCall === 'P' && ctx.lb.call === '3C' && ctx.lb.by === ctx.p) {
     const st = ctx.theirs[0].call[1], T = [T_('P', h => h.L.C >= 4 && h.L.C >= Math.max(...['S', 'H', 'D'].filter(s => s !== st).map(s => h.L[s])), MM(0, 7, { mn: { C: 4 } }))];
     for (const s of ['S', 'H', 'D']) if (s !== st && ctx.ok('3' + s)) T.push(T_('3' + s, h => longest(h, [st, 'C']) === s, MM(0, 7, { mn: { [s]: 4 }, t: 'signoff' })));
@@ -1389,6 +1403,15 @@ function compMore(ctx) {
   if (!BID_OFF('xstrong') && ctx.weOpened && ctx.opener === ctx.seat && /^1[CDHS]$/.test(ctx.first.call) && ctx.ours.length === 1 && ctx.pards.length === 0 && ctx.theirs.length === 1 && ctx.lb === ctx.theirs[0] && ctx.lb.by === ctx.rho && ctx.ok('X')) {
     const dm = dblMeaning(ctx), os = ctx.lb.call[1];
     if (dm.tag === 'xreopen' && os !== 'N' && !(ctx.lb.m && ctx.lb.m.art)) return [T_('X', h => h.H >= 16 && h.L[os] <= 2 && !(h.L[ctx.first.call[1]] >= 6 && h.L[os] >= 2), dm), { nat: true }];
+  }
+  // I opened, they overcalled at the two level, I reopened with a double and partner advanced in a major at the two level: raise with support and extras (rxr)
+  if (!BID_OFF('rxr') && ctx.weOpened && ctx.opener === ctx.seat && ctx.mine.length === 2 && ctx.myLast.call === 'X' && ctx.myLast.m && ctx.myLast.m.tag === 'xreopen' && ctx.pards.length === 1
+    && ctx.theirs.length === 1 && ctx.theirs[0].call[0] === '2' && ctx.lb === ctx.pLast && ctx.rhoCall === 'P' && /^2[HS]$/.test(ctx.pLast.call) && !(ctx.pLast.m && (ctx.pLast.m.art || ctx.pLast.m.f)) && ctx.pLast.call[1] !== ctx.first.call[1]) {
+    const r = ctx.pLast.call[1], k3 = BID_K('rx3') ?? 17, k4 = BID_K('rx4') ?? 20, T = [];
+    // (three-card support needs more: these calls are the table's, so natural bidding can't make them)
+    if (ctx.ok('4' + r)) T.push(T_('4' + r, h => (h.L[r] >= 4 && supPts(h, r) >= k4) || (h.L[r] === 3 && h.H >= k4), MM(k4 - 3, 37, { mn: { [r]: 3 }, agree: r })));
+    if (ctx.ok('3' + r)) T.push(T_('3' + r, h => (h.L[r] >= 4 && supPts(h, r) >= k3) || (h.L[r] === 3 && h.H >= k3 + 1), MM(k3 - 3, k4, { mn: { [r]: 3 }, agree: r, inv: true, a: 'Invites game: support and extra values' })));
+    if (T.length) return T.concat([{ nat: true }]);
   }
   // Support doubles: 1x - 1M by partner, RHO doubles or bids up to 2♥; X (XX over a double) = exactly 3-card support
   if (!BID_OFF('supx') && supXSpot(ctx)) return supXTable(ctx);

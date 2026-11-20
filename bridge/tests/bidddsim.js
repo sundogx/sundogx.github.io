@@ -7,7 +7,7 @@
 //   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
 //   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4;
 //                basebid3: before the third round of bidding work, c0d8685; basebid4: before the fourth round, 62af5b4;
-//                basebid5: before the fifth round, 24c9e08; basebid6: before the sixth round, a5bbe8a; basebid7: before the seventh round, 14aea9f; basebid8: before the eighth round, 4ee44ec; basebid9: before the ninth round, 453c984; basebid10: before the tenth round, cf26413)
+//                basebid5: before the fifth round, 24c9e08; basebid6: before the sixth round, a5bbe8a; basebid7: before the seventh round, 14aea9f; basebid8: before the eighth round, 4ee44ec; basebid9: before the ninth round, 453c984; basebid10: before the tenth round, cf26413; basebid11: before the eleventh round, 56bd996; basebid12: before the twelfth round, 6336234)
 //   --k=a:1,b:2  tuning knobs of js/bidding.js (BID_K); --threads=n  solver threads
 //   --worst=k  print the k boards the new system lost most on (hands and both auctions); with --best, gained most on
 //   --self     also report each system in self-play against par
@@ -113,7 +113,7 @@ const stats = () => ({ n: 0, s: 0, q: 0, add(x) { this.n++; this.s += x; this.q 
     }
   }
   console.log(`${N} boards (seed ${SEED}), scored double-dummy; tables differ on ${changed}`);
-  console.log(`New 2/1 system vs old system: ${match.text()} IMPs per board for the new system`);
+  console.log(`New 2/1 system vs old system: ${match.text()} IMPs per board for the new system (sum ${+match.s.toFixed(1)})`);
   console.log(`Against par (each system's side of each table): new ${newPar.text()}, old ${oldPar.text()} IMPs per board`);
   if (SELF) console.log(`Self-play, IMPs away from par (0 is perfect): new ${selfNew.text()}, old ${selfOld.text()}`);
   const dist = {}; swings.forEach(x => { const k = x.imps === 0 ? '0' : x.imps > 0 ? (x.imps >= 10 ? '+10..' : x.imps >= 5 ? '+5..9' : '+1..4') : (x.imps <= -10 ? '..-10' : x.imps <= -5 ? '-9..-5' : '-4..-1'); dist[k] = (dist[k] || 0) + 1; });
