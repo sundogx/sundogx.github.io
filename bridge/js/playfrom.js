@@ -148,6 +148,11 @@ const PlayFrom = {
     const b = $('whatIfBack'); if (b) b.classList.toggle('hidden', !(t && t.whatIf && PlayFrom.origins[t.id]));
     // Just declare/defend: before your first card, Undo would only reopen the robots' auction (which they bid again)
     if (t && t.just && t.just.board === t.board && t.phase === 'play' && !t.play.tricks.some(tr => tr.cards.some(pc => controllerOf(t, pc.seat) === mySeat(t)))) $('undoBtn').classList.add('hidden');
+    // a what-if table: Undo never goes back past the starting position (into the auction, or the record's own cards)
+    if (t && t.whatIf && t.phase === 'play' && mySeat(t)) {
+      const p = { ...t, auction: t.auction.slice(), play: { tricks: t.play.tricks.slice() }, chat: [] };
+      if (doUndo(p, mySeat(t)) !== false && (p.phase !== 'play' || pfFlat(p.play).length < t.whatIf.k)) { $('undoBtn').classList.add('hidden'); $('undoBtn').disabled = true; }
+    }
   },
   // the end-of-board panel: the hand record's result to compare, Back and Again instead of Next board
   resultButtons(t, go) {
@@ -178,7 +183,8 @@ const PlayFrom = {
     const mode = Prefs.just, want = d => mode === 'declare' ? sideOf(d) === 'NS' : sideOf(d) === 'EW';
     const end = Date.now() + 400;
     let pick = null, fallback = null;
-    for (let n = 0; n < 40; n++) {
+    const tries = s.fixedDeal === s.board ? 1 : 40; // an imported deal (share.js) is played as dealt, at most turned round
+    for (let n = 0; n < tries; n++) {
       if (n) s.hands = pfDeal(s);
       const au = pfAuction(s.hands, s.dealer, s.vul), c = finalContract(au);
       if (c && want(c.declarer)) { pick = { hands: s.hands, au, c }; break; }

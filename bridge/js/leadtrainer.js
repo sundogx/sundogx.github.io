@@ -20,7 +20,11 @@ const LT = {
 try { LT.kind = localStorage.getItem('bridge-lt-kind') || 'any'; } catch (e) { }
 const LT_KINDS = [['any', 'Any contract'], ['game', 'Games and slams'], ['nt', 'Notrump'], ['suit', 'Suit contracts']];
 const ltEl = id => document.getElementById(id);
-const ltStats = () => Object.assign({ n: 0, good: 0, streak: 0, bestStreak: 0, cost: 0 }, (typeof Local !== 'undefined' && Local.get('bridge-lt')) || {});
+const ltStats = () => { // numbers only: a damaged entry must not turn the counter into NaN
+  const v = (typeof Local !== 'undefined' && Local.get('bridge-lt')) || {}, st = {};
+  for (const k of ['n', 'good', 'streak', 'bestStreak', 'cost']) st[k] = Number.isFinite(+v[k]) ? +v[k] : 0;
+  return st;
+};
 
 function ltBuild() {
   if (ltEl('leadTrainer')) return;
@@ -268,7 +272,7 @@ function ltPlayOut() {
   t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: me.name || 'You' }, W: { kind: 'robot' } };
   t.board = LT.board - 1;
   startBoard(t, { dealer: LT.dealer, vul: LT.vul, hands: structuredClone(LT.hands) });
-  t.replayOf = null;
+  t.replayOf = null; t.oneOff = true; // a table of its own: never saved over your practice table
   t.auction = LT.auction.map(a => ({ ...a }));
   t.contract = finalContract(t.auction); t.phase = 'play';
   A.card(t, 'S', LT.pick);

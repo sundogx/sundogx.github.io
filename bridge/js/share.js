@@ -46,6 +46,10 @@ function shareDecode(s) {
 function buildDeal({ board, dealer, vul, hands, calls = [], plays = [], claim = null, alerts = {} }) {
   const all = SEATS.flatMap(s => hands[s] || []);
   if (all.length !== 52 || new Set(all).size !== 52 || SEATS.some(s => hands[s].length !== 13)) throw new Error('The deal needs four hands of 13 different cards');
+  // a board number of 0, below 0 or absurdly large gave no dealer (boardDealer) and broke the table's next boards
+  board = Number.isInteger(board) && board >= 1 && board <= 9999 ? board : 1;
+  if (!SEATS.includes(dealer)) dealer = boardDealer(board);
+  if (!(vul in SH_VUL)) vul = boardVul(board);
   const auction = [];
   let by = dealer;
   for (const c of calls) {
@@ -71,7 +75,7 @@ function buildDeal({ board, dealer, vul, hands, calls = [], plays = [], claim = 
     }
     const won = tricks.filter(tr => tr.cards.length === 4 && sameSide(trickWinner(tr, contract.strain), contract.declarer)).length;
     const full = tricks.filter(tr => tr.cards.length === 4).length;
-    declTricks = claim != null && claim >= 0 && claim <= 13 ? claim : full === 13 ? won : null;
+    declTricks = Number.isInteger(claim) && claim >= 0 && claim <= 13 ? claim : full === 13 ? won : null;
   }
   const h = { board: board || 1, dealer, vul, hands, auction, contract, tricks, declTricks, scoreNS: contract && declTricks != null ? scoreNS(contract, declTricks, vul) : 0 };
   if (!over) h.unfinished = true;
@@ -157,13 +161,14 @@ function fillFourth(hands) {
 // ---------- BBO LIN (also inside a handviewer URL) ----------
 function parseLIN(text) {
   let s = String(text).trim();
-  const url = /^https?:\/\//i.test(s) ? new URL(s) : null;
+  let url = null;
+  if (/^https?:\/\//i.test(s)) try { url = new URL(s); } catch (e) { throw new Error('That link could not be read'); }
   if (url) {
     const q = url.searchParams;
     if (q.get('lin')) s = q.get('lin');
     else if (q.get('n') || q.get('s')) return parseHandviewer(q);
     else throw new Error('This link has no deal in it');
-  } else if (/^lin=/i.test(s)) s = decodeURIComponent(s.slice(4));
+  } else if (/^lin=/i.test(s)) { s = s.slice(4); try { s = decodeURIComponent(s); } catch (e) { } } // a stray % is not an error
   if (!/md\|/i.test(s)) { try { const d = decodeURIComponent(s); if (/md\|/i.test(d)) s = d; } catch (e) { } }
   const tok = s.replace(/\r?\n/g, '').split('|');
   let dealer = null, vul = 'None', board = 1, hands = null, claim = null;
@@ -247,7 +252,7 @@ if (typeof document !== 'undefined') {
       ${hasPlay && h.contract ? `<h3 style="font-size:16px;margin-top:12px">Play</h3><div id="playBox">${playTableHTML(h)}</div>` : ''}
       <div class="row" style="margin-top:10px"><button class="btn small primary" id="shPlay">Play this deal</button><button class="btn small" id="shCopy">Copy link</button><button class="btn small" id="shPbn">Copy PBN</button></div>`);
     if (hasPlay) startReplay(h);
-    m.querySelector('#shPlay').addEventListener('click', () => { closeModal(); playSharedDeal(h); });
+    m.querySelector('#shPlay').addEventListener('click', () => playSharedDeal(h)); // openTable closes this window
     m.querySelector('#shCopy').addEventListener('click', () => copyText(shareURL(h)));
     m.querySelector('#shPbn').addEventListener('click', () => copyText(pbnBoard(h, { name: 'Shared deal', seats: {} })));
     // the analysis callbacks only follow the open table's hand record, so this window polls for itself
@@ -261,11 +266,13 @@ if (typeof document !== 'undefined') {
   };
   // practice with robots on this deal: you sit South, the robots bid and play the rest
   window.playSharedDeal = function (h) {
+    // seated at an online board that is still going: don't walk out of it (as PlayFrom)
+    if (T && !T.local && mySeat(T) && (T.phase === 'auction' || T.phase === 'play')) { toast('Finish the board you are playing first'); return false; }
     const t = newTable({ name: 'Practice', local: true });
     t.seats = { N: { kind: 'robot' }, E: { kind: 'robot' }, S: { kind: 'human', id: me.id, name: me.name || 'You' }, W: { kind: 'robot' } };
     t.board = (h.board || 1) - 1;
     startBoard(t, { dealer: h.dealer, vul: h.vul, hands: structuredClone(h.hands) });
-    t.replayOf = null;
+    t.replayOf = null; t.oneOff = true; t.fixedDeal = t.board; // a table of its own: never saved over your practice table
     openTable(t);
   };
   window.showImport = function () {
@@ -288,7 +295,7 @@ if (typeof document !== 'undefined') {
     m.querySelector('#shText').addEventListener('input', () => { m.querySelector('#shErr').classList.add('hidden'); boards(); });
     m.querySelector('#shFile').addEventListener('change', async e => { const f = e.target.files[0]; if (f) { m.querySelector('#shText').value = await f.text(); boards(); } });
     m.querySelector('#shFileBtn').addEventListener('click', () => m.querySelector('#shFile').click()); /* feature: a11y */
-    m.querySelector('#shDoPlay').addEventListener('click', () => { const h = read(); if (h) { closeModal(); playSharedDeal(h); } });
+    m.querySelector('#shDoPlay').addEventListener('click', () => { const h = read(); if (h) playSharedDeal(h); });
     m.querySelector('#shDoView').addEventListener('click', () => { const h = read(); if (h) showSharedDeal(h); });
     m.querySelector('#shText').focus();
   };

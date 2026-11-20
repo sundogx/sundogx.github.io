@@ -246,7 +246,7 @@ function pbnBoard(h, t) {
   L.push(`[Dealer "${h.dealer}"]`, `[Vulnerable "${vul}"]`, `[Deal "${h.dealer}:${order.map(s => pbnHand(h.hands[s])).join(' ')}"]`);
   if (h.contract) {
     const c = h.contract;
-    L.push(`[Declarer "${c.declarer}"]`, `[Contract "${c.level}${c.strain === 'N' ? 'NT' : c.strain}${c.doubled === 1 ? 'X' : c.doubled === 2 ? 'XX' : ''}"]`, `[Result "${h.declTricks}"]`);
+    L.push(`[Declarer "${c.declarer}"]`, `[Contract "${c.level}${c.strain === 'N' ? 'NT' : c.strain}${c.doubled === 1 ? 'X' : c.doubled === 2 ? 'XX' : ''}"]`, `[Result "${h.declTricks ?? ''}"]`);
   } else L.push('[Declarer ""]', '[Contract "Pass"]', '[Result ""]');
   L.push(`[Auction "${h.dealer}"]`);
   const calls = h.auction.map(a => a.call === 'P' ? 'Pass' : a.call.replace('N', 'NT'));

@@ -1051,7 +1051,7 @@ $('hintBtn').addEventListener('click', showHint);
 // ---------- practice: kept on this device, so leaving or reloading the page doesn't lose it ----------
 let practiceSaved = -1, practiceSaveTimer = null;
 function savePractice() {
-  if (!T || !T.local || T.whatIf || T.version === practiceSaved) return; /* feature: playfrom: whatIf */
+  if (!T || !T.local || T.whatIf || T.oneOff || T.version === practiceSaved) return; /* feature: playfrom: whatIf; share, leadtrainer: oneOff */
   clearTimeout(practiceSaveTimer);
   practiceSaveTimer = setTimeout(() => {
     if (!T || !T.local) return;
@@ -1059,7 +1059,7 @@ function savePractice() {
     Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() });
   }, 400);
 }
-function flushPractice() { if (T && T.local && !T.whatIf /* feature: playfrom */) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
+function flushPractice() { if (T && T.local && !T.whatIf && !T.oneOff /* feature: playfrom; share, leadtrainer */) { practiceSaved = -1; clearTimeout(practiceSaveTimer); Local.set(T.daily ? 'bt:daily' : 'bt:practice', /* feature: daily */ { ...T, history: T.history.slice(-60), chat: T.chat.slice(-60), claim: null, savedAt: Date.now() }); } }
 function savedPractice() {
   const t = Local.get('bt:practice');
   return t && t.local && t.seats && t.hands && Array.isArray(t.history) && Array.isArray(t.chat) && t.play ? t : null;
@@ -1242,7 +1242,9 @@ let otherRoom = null;
 
 // ---------- event wiring ----------
 document.addEventListener('click', e => {
-  const b = e.target.closest('button, [data-alert], tr[data-record], [data-cleartrick], [data-lasttrick]'); if (!b || !T && !b.closest('#home')) return;
+  const b = e.target.closest('button, [data-alert], tr[data-record], [data-cleartrick], [data-lasttrick]'); if (!b) return;
+  // no table open: only the home page's buttons, and explained calls in a window (a shared deal, a History board)
+  if (!T && !b.closest('#home')) { if (b.dataset.alert && b.closest('#modalRoot')) showExplain(b, b.dataset.alert); return; }
   const d = b.dataset;
   if (d.sit) doAct('sit', d.sit);
   else if (d.robot) doAct('robot', d.robot);
@@ -1406,6 +1408,7 @@ function leaveModals() { modalReturn = null; closeModal(); hideExplain(); claimW
 function showTableView() {
   if (typeof BP !== 'undefined' && BP.on) leaveBidPractice(); /* feature: bidpractice */
   if (typeof LT !== 'undefined' && LT.on) leaveLeadTrainer(false); /* feature: leadtrainer */
+  if (typeof bxHideScreens === 'function') bxHideScreens(); /* feature: explorer */
   $('home').classList.add('hidden'); $('tableView').classList.remove('hidden');
   clearInterval(lobbyTimer);
 }
@@ -1441,6 +1444,7 @@ function setJoinState(code) {
 }
 function goHome() {
   releaseWakeLock(); leaveModals();
+  if (typeof bxHideScreens === 'function') bxHideScreens(); /* feature: explorer */
   Net.close(); clearTimeout(robotTimer); robotTimer = null;
   T = null; DD.queue.length = 0; // stop analysing the table you left
   for (const [k, en] of DD.cache) if (!en.done) DD.cache.delete(k); // ...and let it start again if you come back

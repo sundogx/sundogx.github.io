@@ -127,11 +127,17 @@ function bxCloseScreen(id, fromTable, focusId) {
   const b = focusId && bxEl(focusId); if (b) b.focus({ preventScroll: true });
   if (typeof loadLobby === 'function') { loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000); }
 }
+// another screen takes over (a table opened from a #deal= link, or home): close these without going back anywhere
+function bxHideScreens() {
+  if (typeof EX !== 'undefined') EX.on = false;
+  if (typeof FC !== 'undefined') FC.on = false;
+  for (const s of ['explorer', 'flashcards']) { const el = bxEl(s); if (el && !el.classList.contains('hidden')) { el.classList.add('hidden'); hideExplain(); } }
+}
 const bxVisible = id => { const el = bxEl(id); return !!el && !el.classList.contains('hidden'); };
 
 // ---- the explorer ----
 const EX = { on: false, fromTable: false, dealer: 'N', vul: 'None', auction: [], level: null, hands: {}, ex: {}, msg: '' };
-try { const s = JSON.parse(localStorage.getItem('bridge-ex') || 'null'); if (s && SEATS.includes(s.dealer)) { EX.dealer = s.dealer; EX.vul = s.vul || 'None'; EX.auction = (s.calls || []).map(c => ({ call: c })); } } catch (e) { }
+try { const s = JSON.parse(localStorage.getItem('bridge-ex') || 'null'); if (s && SEATS.includes(s.dealer)) { EX.dealer = s.dealer; EX.vul = ['None', 'NS', 'EW', 'Both'].includes(s.vul) ? s.vul : 'None'; EX.auction = (s.calls || []).map(c => ({ call: c })); } } catch (e) { }
 
 function exBuild() {
   if (bxEl('explorer')) return;

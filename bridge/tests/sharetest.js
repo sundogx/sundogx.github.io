@@ -28,5 +28,9 @@ const two = '[Event "x"]\n' + PBN + '\n[Event "x"]\n' + PBN.replace('[Board "1"]
 ok(S.pbnBoards(two).join() === '1,2' && S.parsePBN(two, 1).board === 2 && S.parsePBN(two, 1).dealer === 'E' && S.parsePBN(two).board === 1, 'pbn several boards');
 const z = S.parseLIN(LIN.replace('ah|Board 3|', 'ah|Board 0|').replace('md|1', 'md|'));
 ok(z.board === 1 && z.dealer === 'N' && z.contract.declarer && z.auction.every(a => a.by), 'lin board 0 (no dealer digit): board 1, dealer N');
+// a board number of 0, negative or huge (no Dealer tag) still gives a dealer and vulnerability
+for (const bn of ['0', '-2', '99999999999999999999']) { const q = S.parsePBN(`[Board "${bn}"]\n[Deal "N:T5.982.874.AQ632 K43.73.KQ5.KJT54 AJ9.AQT6.JT62.98 Q8762.KJ54.A93.7"]\n`); ok(q.board === 1 && q.dealer === 'N' && q.vul === 'None', 'pbn board ' + bn); }
+{ const q = S.parseLIN('md|S4TKHJD68QC679TKA,S35H479TQKD24TAC8,S2789H3AD379JKC35,|ah|Board 0|'); ok(q.board === 1 && q.dealer === 'N', 'lin board 0'); }
+{ const q = S.shareDecode(enc.replace(/^\d+/, '-6')); ok(q.board === 1, 'link board -6'); }
 let bad = false; try { S.parseAnyDeal('hello'); } catch (e) { bad = true; } ok(bad, 'junk rejected');
 console.log(process.exitCode ? 'share: FAILED' : 'share: links, LIN and PBN ok');
