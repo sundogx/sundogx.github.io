@@ -7,7 +7,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "node tests/all.js",
-    "test:serial": "node tests/test.js && node tests/rubbertest.js && node tests/minitest.js 200 && node tests/ddtest.js 200 && node tests/bidfuzz.js 1000 && node tests/describe.js 500 && node tests/rulesfuzz.js 600 && node tests/sharetest.js && bash -o pipefail -c 'node tests/sim.js | tail -1'"
+    "test:serial": "node tests/test.js && node tests/rubbertest.js && node tests/minitest.js 200 && node tests/ddtest.js 200 && node tests/bidfuzz.js 1000 && node tests/describe.js 500 && node tests/rulesfuzz.js 600 && node tests/sharetest.js && node tests/workerbuild.js && bash -o pipefail -c 'node tests/sim.js | tail -1'"
   },
   "devDependencies": {
     "wrangler": "^4.0.0"

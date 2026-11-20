@@ -765,7 +765,7 @@ export class TableRoom extends DurableObject {
     if (this.alarmAt == null || this.alarmAt > idleAt) await this.setAlarm(idleAt);
   }
   othersHere(uid) {
-    return this.ctx.getWebSockets().some(w => { const a = w.deserializeAttachment(); return a && a.uid && a.uid !== uid && w.readyState === 1; });
+    return this.ctx.getWebSockets().some(w => { const a = w.deserializeAttachment(); return a && a.uid && a.uid !== uid && w.readyState === 1 && !this.stale(w, a); });
   }
   async setAlarm(at) { await this.ctx.storage.setAlarm(at); this.alarmAt = at; }
 
@@ -781,7 +781,8 @@ export class TableRoom extends DurableObject {
     // only a table robot's cards: never a person's (a stand-in for an away player, or the robots finishing when time is up)
     if (!o || o.kind !== 'robot') return;
     let view, prefer;
-    try { view = G.ddView(t, ts); if (!G.ddWorthIt(view)) return; prefer = G.botPlayH(t, ts); } // (the heuristic card only: the browser solves the position itself) catch (e) { console.error(e); return; }
+    // (prefer: the heuristic card only; the browser solves the position itself)
+    try { view = G.ddView(t, ts); if (!G.ddWorthIt(view)) return; prefer = G.botPlayH(t, ts); } catch (e) { console.error(e); return; }
     // seated players first (they are likely to stay), taking turns so one slow phone isn't always asked
     const seated = new Set(SEATS.map(s => t.seats[s] && t.seats[s].kind === 'human' ? t.seats[s].id : null).filter(Boolean));
     const socks = this.ctx.getWebSockets().filter(w => { const a = w.deserializeAttachment() || {}; return a.uid && seated.has(a.uid); });
@@ -824,6 +825,8 @@ export class TableRoom extends DurableObject {
       const a = w.deserializeAttachment();
       if (!a || !a.uid || w.readyState !== 1 || !this.stale(w, a)) continue;
       try { w.close(1000, 'no ping'); } catch (e) { }
+      // it was asked for a robot's card: don't wait THINK_MS for an answer that can't come
+      if (a.th && this.think && this.think.nonce === a.th.nonce && !this.think.done) { this.think.done = true; this.think.card = null; }
       if (t && SEATS.some(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === a.uid)) seated = true;
     }
     return seated;
@@ -880,23 +883,28 @@ export class TableRoom extends DurableObject {
     this.alarmAt = null; // it fired; whatever runs below sets the next one
     if (!this.t) return;
     const d = deadline(this.t);
+    // (each duty below that changes the table goes through apply, which plans the next alarm; if the save fails,
+    // nothing would, so try again in 2 s)
+    const retry = async ok => { if (!ok && this.t) await this.setAlarm(Date.now() + 2000); };
     if (d && Date.now() >= d) {
-      await this.apply({}, t => {
+      await retry(await this.apply({}, t => {
         t.timeUp = true; t.claim = null; t.undoReq = null;
         G.sysMsg(t, `Time's up (${t.boardLimit} minutes). The robots are finishing this board.`);
-      });
+      }));
       return;
     }
     // connections that went silent: their players are away now (apply marks them), so a stand-in can be planned
-    if (this.dropStale() || this.unmarkedAway()) { await this.apply({}, () => { }); return; }
+    // (unmarkedAway only during a board or with someone here: on an empty idle table after a restart the apply would
+    // reset updatedAt and put off deleting the table)
+    if (this.dropStale() || ((live(this.t) || this.here().size) && this.unmarkedAway())) { await retry(await this.apply({}, () => { })); return; }
     // a host who has been away long enough hands the job on (passHost, in apply), even if nobody acts
-    { const hd = hostDue(this.t, this.here()); if (hd != null && Date.now() >= hd) { await this.apply({}, () => { }); return; } }
+    { const hd = hostDue(this.t, this.here()); if (hd != null && Date.now() >= hd) { await retry(await this.apply({}, () => { })); return; } }
     const ab = awayBlocking(this.t);
     if (ab && Date.now() >= ab.at && this.othersHere(ab.id)) {
-      await this.apply({}, t => {
+      await retry(await this.apply({}, t => {
         t.subs = { ...(t.subs || {}), [ab.seat]: true };
         G.sysMsg(t, `A robot is playing for ${G.SEAT_NAME[ab.seat]} while ${t.seats[ab.seat].name} is away`);
-      });
+      }));
       return;
     }
     if (this.robotPending()) {

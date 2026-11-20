@@ -23,12 +23,14 @@ const open = async (host, opts = {}) => (await (await post({ secret: sec(host.to
 
 // A client that pings every 300 ms until silenced (c.silent = true: a phone asleep, the connection left open).
 async function client(code, name) {
-  const c = { name, errs: [], st: null, chat: [], closed: false, silent: false, ws: new WebSocket(`${WS}/api/table/${code}/ws`) };
+  const c = { name, errs: [], st: null, chat: [], thinks: [], closed: false, silent: false, ws: new WebSocket(`${WS}/api/table/${code}/ws`) };
   c.ws.onmessage = e => {
     if (e.data === 'pong') return;
     const m = JSON.parse(e.data);
     if (m.type === 'state') { c.st = m; c.chat = (m.chatFull ? [] : c.chat).concat(m.chat || []); }
     else if (m.type === 'error') c.errs.push(m.msg);
+    // friends mode: the server asks this browser for a robot's card; c.answer: reply at once (no card), like a page would
+    else if (m.type === 'think') { c.thinks.push(m); if (c.answer && !c.silent && c.ws.readyState === 1) c.ws.send(JSON.stringify({ type: 'thought', key: m.key, card: null })); }
   };
   c.ws.onclose = () => { c.closed = true; clearInterval(c.ping); };
   await new Promise((r, j) => { c.ws.onopen = r; c.ws.onerror = j; });
@@ -88,13 +90,61 @@ if (STALE) {
   const b2 = await client(code, 'Bob'); await sleep(400);
   check(!(a.t().subs && a.t().subs.W) && !(a.t().away && a.t().away.W), 'Bob reconnects and takes his seat back');
   // a player who thinks a long time but whose page is open (pinging) is never marked away
-  await until(() => { const t = a.t(); if (waitingFor(t) === 'S') return true; if (t.phase === 'done') a.act('next'); else humanMove({ W: b2 }); return false; }, 30000, 250);
+  // (up to 90 s: when a robot declares with Alice as dummy, the robots play the whole board, ~1 s a card)
+  await until(() => { const t = a.t(); if (waitingFor(t) === 'S') return true; if (t.phase === 'done') a.act('next'); else humanMove({ W: b2 }); return false; }, 90000, 250);
   if (waitingFor(a.t()) === 'S') {
     await sleep(STALE * 2 + 2500);
     check(!(a.t().away && a.t().away.S) && !(a.t().subs && a.t().subs.S) && !a.closed, `a player thinking for ${(STALE * 2 + 2500) / 1000} s with the page open keeps their seat`);
   } else check(false, 'the table gets to Alice\'s turn');
   a.close(); b2.close(); b.close();
 } else console.log('skip  silent connections (start the server with --var TEST_STALE_MS:3000 and set STALE_MS=3000)');
+
+// ---------- 1b. a robot's move is due just as another duty comes up (a seated connection goes silent, or the
+// host's job passes): the alarm that handles that duty must still leave the robot's move planned
+// Alice (S, host) and Bob (N) with robots E and W. passOrBid: a pass, unless it would end the auction.
+const passOrBid = t => { const a = t.auction; return a.length >= 3 && a.slice(-3).every(x => x.call === 'P') && !a.some(x => x.call === '7NT') ? '7NT' : 'P'; };
+async function robotTable() {
+  const code = await open('Alice');
+  const a = await client(code, 'Alice'), b = await client(code, 'Bob');
+  a.act('settings', { friends: false }); await sleep(200);
+  b.act('sit', 'N'); await sleep(200);
+  a.act('robot', 'E'); await sleep(150); a.act('robot', 'W');
+  await until(() => a.t().phase === 'auction', 3000);
+  return { a, b };
+}
+const calls = (t, s) => t.auction.filter(x => x.by === s).length;
+async function untilTurn(a, b, seat) {
+  return until(() => { const t = a.t(); if (t.phase !== 'auction') return false; const s = auctionTurn(t.dealer, t.auction); if (s === seat) return true;
+    if (s === 'S') a.act('call', passOrBid(t)); else if (s === 'N') b.act('call', passOrBid(t)); return false; }, 10000, 250);
+}
+if (STALE) {
+  const { a, b } = await robotTable();
+  if (await untilTurn(a, b, 'S')) {
+    // Bob's phone sleeps; Alice calls just before his connection counts as gone, so West's call (0.65 s) comes due after it does
+    b.ws.send('ping'); b.silent = true;
+    await sleep(STALE - 350);
+    const w0 = calls(a.t(), 'W'), t0 = Date.now();
+    a.act('call', passOrBid(a.t()));
+    const moved = await until(() => calls(a.t(), 'W') > w0, 5000, 50);
+    check(moved && Date.now() - t0 < 2500, `a robot still calls when a seated connection goes silent during its pause (${moved ? Date.now() - t0 : '>5000'} ms)`);
+    check(a.t().away && a.t().away.N, '... and the silent player is shown away');
+  } else check(false, 'the table gets to Alice\'s call');
+  a.close(); b.close();
+} else console.log('skip  robot move due as a connection goes silent (needs TEST_STALE_MS)');
+{
+  const { a, b } = await robotTable();
+  if (await untilTurn(a, b, 'N')) {
+    // the host leaves; Bob calls so East's call (0.65 s) comes due just after the host's job should pass (2 s scaled)
+    const hostId = b.t().host;
+    a.close(); await sleep(1650);
+    const e0 = calls(b.t(), 'E'), t0 = Date.now();
+    b.act('call', passOrBid(b.t()));
+    const moved = await until(() => calls(b.t(), 'E') > e0, 5000, 50);
+    check(moved && Date.now() - t0 < 2500, `a robot still calls when the host's job passes during its pause (${moved ? Date.now() - t0 : '>5000'} ms; needs TEST_TIME_SCALE)`);
+    check(b.t().host !== hostId, '... and the host\'s job has passed');
+  } else check(false, 'the table gets to Bob\'s call');
+  a.close(); b.close();
+}
 
 // ---------- 2. a flaky network leaves dead connections behind; the person can still get back in
 if (STALE) {
@@ -137,6 +187,42 @@ if (STALE) {
   } else check(false, 'the board time runs out (needs TEST_TIME_SCALE)');
   p.close(); q.close();
 } else console.log('skip  silent while a robot moves (needs TEST_STALE_MS)');
+
+// ---------- 2c. friends mode: the browser asked for a robot's card goes silent. Once its connection is closed the
+// robot plays at once instead of waiting out the 2.5 s it gives a browser. Rex (N) is the only seated person, with
+// two tabs that both answer; Ann (the host) watches. On Rex's turn his second tab goes silent and he plays just
+// before it counts as gone, so the robot after him is due (1 s) after the tab is closed. Tried until that tab is asked.
+if (STALE) {
+  const code = await open('Ann');
+  const a = await client(code, 'Ann');
+  await until(() => a.t().seats.S, 2000); a.act('standUp'); await until(() => !a.t().seats.S, 2000);
+  const r = await client(code, 'Rex'); r.answer = true;
+  r.act('sit', 'N'); await sleep(300);
+  for (const s of ['E', 'S', 'W']) { a.act('robot', s); await sleep(150); }
+  await until(() => a.t().phase === 'auction', 3000);
+  let r2 = null, ms = null, tries = 0;
+  const end = Date.now() + 150000;
+  while (ms == null && tries < 8 && Date.now() < end) {
+    if (!r2 || r2.closed) { r2 && r2.close(); r2 = await client(code, 'Rex'); r2.answer = true; await sleep(300); }
+    const t = a.t();
+    if (t.phase === 'done') { a.act('next'); await sleep(500); continue; }
+    if (t.phase === 'auction') { if (auctionTurn(t.dealer, t.auction) === 'N') r.act('call', 'P'); await sleep(200); continue; }
+    const tr = t.play.tricks[t.play.tricks.length - 1];
+    if (t.claim || t.undoReq || waitingFor(t) !== 'N') { await sleep(100); continue; }
+    if (tr && tr.cards.length === 3) { const s0 = playTurn(t.play, t.contract); r.act('card', s0, legal(r, s0)[0]); await sleep(300); continue; } // (a trick's last card: the next pause differs)
+    tries++;
+    r2.ws.send('ping'); r2.silent = true;
+    await sleep(STALE - 700);
+    const seat = playTurn(t.play, t.contract), n0 = cards(a.t()), k0 = r2.thinks.length;
+    r.act('card', seat, legal(r, seat)[0]);
+    const t1 = Date.now();
+    const moved = await until(() => cards(a.t()) >= n0 + 2, 6000, 25);
+    if (r2.thinks.length > k0) ms = moved ? Date.now() - t1 : 99999; // the silent tab was asked: this is the case to time
+    await until(() => r2.closed, 3000);
+  }
+  check(ms != null && ms < 1900, `the robot doesn't wait for an answer from a tab that went silent (${ms} ms after the card before; 1 s pause, 2.5 s wait for an answer; ${tries} tries)`);
+  a.close(); r.close(); r2 && r2.close();
+} else console.log('skip  robot asked a silent tab (needs TEST_STALE_MS)');
 
 // ---------- 3. the host leaves between boards: the job passes without anyone having to act
 {

@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const os = require('os'), path = require('path');
 const TESTS = [
   ['test.js'], ['rubbertest.js'], ['minitest.js', '200'], ['ddtest.js', '200'], ['bidfuzz.js', '1000'], ['describe.js', '500'],
-  ['rulesfuzz.js', '600'], ['sharetest.js'], ['sim.js', { last: true }],
+  ['rulesfuzz.js', '600'], ['sharetest.js'], ['workerbuild.js'], ['sim.js', { last: true }],
 ];
 const J = Math.max(1, +process.argv[2] || os.cpus().length);
 const res = TESTS.map(() => null);
