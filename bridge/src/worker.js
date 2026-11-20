@@ -201,6 +201,8 @@ const hex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toStr
 const TIME_UP = "Time's up for this board, so the robots are finishing it.";
 // TEST_TIME_SCALE (only set for automated tests) shortens the time limits and the host's away time, e.g. 0.0167 makes a minute one second.
 let timeScale = 1;
+// How long a connection may go without a ping or a message before the table counts it as gone (TEST_STALE_MS for tests).
+let staleMs = STALE_SOCKET_MS;
 const idleLimit = t => !t.private && !t.board ? IDLE_UNSTARTED_MS : IDLE_DELETE_MS;
 const deadline = t => (t.boardLimit && t.boardStart && live(t) && !t.timeUp) ? t.boardStart + t.boardLimit * 60e3 * timeScale : null;
 const ACTIONS = {
@@ -430,6 +432,14 @@ function passHost(t, here) {
   G.sysMsg(t, `${t.seats[to].name} is now the host, as the host ${hs ? 'is away' : 'isn\'t at the table'}`);
 }
 
+// When the host's job should pass (see passHost): the host is seated and away, and another seated player is here.
+function hostDue(t, here) {
+  const hs = SEATS.find(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === t.host);
+  if (!hs || !(t.away && t.away[hs])) return null;
+  if (!SEATS.some(s => s !== hs && t.seats[s] && t.seats[s].kind === 'human' && here.has(t.seats[s].id) && !t.away[s])) return null;
+  return t.away[hs] + HOST_AWAY_MS * timeScale;
+}
+
 // The away player the table is waiting for (their turn, or a claim or undo request that needs their answer) and
 // when a robot should stand in for them (AWAY_SUB_MS after they left), or null. A stranger who closed the page
 // mid-board would otherwise hold up the other three until someone thought of the 'sub' action.
@@ -453,6 +463,7 @@ export class TableRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     { const v = Number(env.TEST_TIME_SCALE); if (v > 0) timeScale = v; }
+    { const v = Number(env.TEST_STALE_MS); if (v > 0) staleMs = v; }
     this.t = null; this.other = []; this.lobbyKey = '';
     this.think = undefined; // friends mode: the open request for a robot's card (undefined: look on the connections, see getThink)
     ctx.blockConcurrencyWhile(async () => {
@@ -524,7 +535,8 @@ export class TableRoom extends DurableObject {
   }
 
   async fetch(req) {
-    let socks = this.ctx.getWebSockets();
+    this.dropStale(); // (dead connections left by a flaky network would otherwise use up the limits below)
+    let socks = this.ctx.getWebSockets().filter(w => w.readyState === 1);
     if (socks.length >= MAX_SOCKETS) { // make room: drop connections that never said who they are
       const now = Date.now();
       for (const w of socks) { const a = w.deserializeAttachment() || {}; if (!a.uid && now - (a.at || 0) > HELLO_WAIT_MS) try { w.close(1008, 'no hello'); } catch (e) { } }
@@ -559,7 +571,7 @@ export class TableRoom extends DurableObject {
       // a full table of onlookers turns further onlookers away (players can always get to their seats)
       if (!SEATS.some(s => this.t.seats[s] && this.t.seats[s].kind === 'human' && this.t.seats[s].id === att.uid) && !(this.t.left && Object.hasOwn(this.t.left, att.uid))) {
         const seated = new Set(SEATS.map(s => this.t.seats[s]).filter(o => o && o.kind === 'human').map(o => o.id));
-        const kibs = this.ctx.getWebSockets().filter(w => { if (w === ws) return false; const a = w.deserializeAttachment() || {}; return a.uid && !seated.has(a.uid); }).length;
+        const kibs = this.ctx.getWebSockets().filter(w => { if (w === ws || w.readyState !== 1) return false; const a = w.deserializeAttachment() || {}; return a.uid && !seated.has(a.uid) && !this.stale(w, a); }).length;
         if (kibs >= MAX_ONLOOKERS) { this.sendTo(ws, { type: 'error', msg: 'This table is full of onlookers. Try again later.' }); try { ws.close(1008, 'full'); } catch (e) { } return; }
       }
       const cur = ws.deserializeAttachment() || {}; // (read again: a broadcast during the hash may have moved this connection's sync on)
@@ -588,7 +600,7 @@ export class TableRoom extends DurableObject {
     }
 
     let u = ws.deserializeAttachment() || {};
-    if (u.uid && Date.now() - (u.seen || 0) > 20e3) { u = { ...u, seen: Date.now() }; ws.serializeAttachment(u); } // (see stale)
+    if (u.uid && Date.now() - (u.seen || 0) > Math.min(20e3, staleMs / 4)) { u = { ...u, seen: Date.now() }; ws.serializeAttachment(u); } // (see stale)
     if (u.uid && m.type === 'thought') { this.thought(m, u, ws); return; }
     if (!u.uid || m.type !== 'act') return;
     // rate limits per person and per connection (a new identity on the same connection gets no fresh allowance)
@@ -614,7 +626,7 @@ export class TableRoom extends DurableObject {
     const a = ws.deserializeAttachment() || {};
     G.setMe({ id: a.uid || '' });
     const seat = a.uid ? G.mySeat(this.t) : null;
-    const stillHere = a.uid && this.ctx.getWebSockets().some(x => x !== ws && (x.deserializeAttachment() || {}).uid === a.uid);
+    const stillHere = a.uid && this.ctx.getWebSockets().some(x => { if (x === ws || x.readyState !== 1) return false; const b = x.deserializeAttachment() || {}; return b.uid === a.uid && !this.stale(x, b); });
     if (seat && !stillHere && !(this.t.away && this.t.away[seat])) {
       await this.apply(a, t => { t.away = { ...(t.away || {}), [seat]: Date.now() }; }, null, ws);
     } else if (a.uid && !stillHere && this.t.requests && this.t.requests[a.uid]) {
@@ -638,6 +650,7 @@ export class TableRoom extends DurableObject {
     if (r === 'requested' && ws) this.sendTo(ws, { type: 'error', msg: 'The seats are locked, so the host has been asked to seat you.' });
     if (r === false) { if (err && ws) this.sendTo(ws, { type: 'error', msg: err }); return false; }
     tidyPresence(t);
+    this.dropStale();
     const here = this.here();
     // A seated player with no open connection is away, even if their close was never reported (a server restart
     // drops connections without telling the table), so their stand-in can come in time.
@@ -670,7 +683,7 @@ export class TableRoom extends DurableObject {
   // The people with an open connection that has said hello.
   here() {
     const s = new Set();
-    for (const w of this.ctx.getWebSockets()) { const a = w.deserializeAttachment(); if (a && a.uid && w.readyState === 1) s.add(a.uid); }
+    for (const w of this.ctx.getWebSockets()) { const a = w.deserializeAttachment(); if (a && a.uid && w.readyState === 1 && !this.stale(w, a)) s.add(a.uid); }
     return s;
   }
 
@@ -714,7 +727,13 @@ export class TableRoom extends DurableObject {
     if (this.robotPending()) {
       // A robot is already due for this position: keep its time (a chat line or a new watcher mustn't hold it up).
       const mark = progressMark(this.t) + ':' + !!this.t.timeUp, rd = this.robotDue;
-      if (rd && rd.mark === mark && Date.now() < rd.due + THINK_MS + 2000) { this.askThink(rd.due); return; }
+      if (rd && rd.mark === mark && Date.now() < rd.due + THINK_MS + 2000) {
+        this.askThink(rd.due);
+        // the alarm that just fired may have been the robot's own (alarm() handled a silent connection or the host
+        // first): arm it again, or the robot would never move
+        if (this.alarmAt == null || this.alarmAt < Date.now()) await this.setAlarm(Math.max(Date.now(), rd.due));
+        return;
+      }
       const tr = this.t.play && this.t.play.tricks[this.t.play.tricks.length - 1];
       const pause = this.t.phase === 'auction' ? 650 : (tr && tr.cards.length === 4 ? 1800 : 1000); // robot card 1 s (was 0.7 s, owner 2026-11-20)
       const scale = Number(this.env.ROBOT_DELAY_SCALE ?? 1); // only changed for automated tests
@@ -733,12 +752,15 @@ export class TableRoom extends DurableObject {
     const t = this.t, now = Date.now();
     if (!t) return; // closed while a save was under way
     let at = deadline(t);
-    const ab = awayBlocking(t);
-    if (ab && this.othersHere(ab.id)) at = at == null ? ab.at : Math.min(at, ab.at);
-    if (at != null) { at = Math.max(now + 1000, at); if (this.alarmAt !== at) await this.setAlarm(at); return; }
+    const ab = awayBlocking(t), min = x => { if (x != null) at = at == null ? x : Math.min(at, x); };
+    if (ab && this.othersHere(ab.id)) min(ab.at);
+    min(this.sweepAt()); // a seated player's connection that may have gone silent
+    min(hostDue(t, this.here()));
+    if (this.alarmAt === undefined) this.alarmAt = await this.ctx.storage.getAlarm(); // (not known after waking up)
+    // An alarm that comes early does no harm (alarm() plans the next one), so it is only moved earlier: no write with every move.
+    if (at != null) { at = Math.max(now + 1000, at); if (this.alarmAt == null || this.alarmAt > at || this.alarmAt < now) await this.setAlarm(at); return; }
     // The idle check needs no new write with every move: any alarm already set before the idle time will do,
     // as alarm() works out how long the table has really been idle and sets the next one.
-    if (this.alarmAt === undefined) this.alarmAt = await this.ctx.storage.getAlarm(); // (not known after waking up)
     const idleAt = Math.max(now + 1000, (t.updatedAt || now) + idleLimit(t));
     if (this.alarmAt == null || this.alarmAt > idleAt) await this.setAlarm(idleAt);
   }
@@ -786,11 +808,48 @@ export class TableRoom extends DurableObject {
   }
   // A connection that hasn't pinged (js/net.js pings every 25 s; the reply doesn't wake the table) or said
   // anything for STALE_SOCKET_MS. Background tabs ping less often, so this is generous.
-  stale(ws) {
-    const a = ws.deserializeAttachment() || {};
+  // A phone that goes to sleep, or a network that drops, often leaves the connection open on this side with nobody
+  // behind it; the runtime may not notice for a long time. Such a connection doesn't count as being here (here()),
+  // and is closed (dropStale), so the player is marked away and a robot can stand in.
+  lastSeen(ws, a = ws.deserializeAttachment() || {}) {
     let last = Math.max(a.at || 0, a.helloAt || 0, a.seen || 0);
     try { const p = this.ctx.getWebSocketAutoResponseTimestamp(ws); if (p) last = Math.max(last, +p); } catch (e) { }
-    return Date.now() - last > STALE_SOCKET_MS;
+    return last;
+  }
+  stale(ws, a) { return Date.now() - this.lastSeen(ws, a) > staleMs; }
+  // Close connections that said hello but have gone silent. Returns true if one was a seated player's.
+  dropStale() {
+    const t = this.t; let seated = false;
+    for (const w of this.ctx.getWebSockets()) {
+      const a = w.deserializeAttachment();
+      if (!a || !a.uid || w.readyState !== 1 || !this.stale(w, a)) continue;
+      try { w.close(1000, 'no ping'); } catch (e) { }
+      if (t && SEATS.some(s => t.seats[s] && t.seats[s].kind === 'human' && t.seats[s].id === a.uid)) seated = true;
+    }
+    return seated;
+  }
+  // A seated player who has no live connection but isn't marked away yet.
+  unmarkedAway() {
+    const t = this.t, here = this.here();
+    return SEATS.some(s => { const o = t.seats[s]; return o && o.kind === 'human' && !(t.away && t.away[s]) && !here.has(o.id); });
+  }
+  // During a board, when the next seated player's connection would count as gone if no ping came (so the
+  // alarm can check), only while someone else is here to play on. null if there is nobody to check.
+  sweepAt() {
+    const t = this.t; if (!t || !live(t)) return null;
+    const last = new Map();
+    for (const w of this.ctx.getWebSockets()) {
+      const a = w.deserializeAttachment();
+      if (a && a.uid && w.readyState === 1) last.set(a.uid, Math.max(last.get(a.uid) || 0, this.lastSeen(w, a)));
+    }
+    let at = null;
+    for (const s of SEATS) {
+      const o = t.seats[s];
+      if (!o || o.kind !== 'human' || (t.away && t.away[s]) || ![...last.keys()].some(id => id !== o.id)) continue;
+      const x = last.has(o.id) ? last.get(o.id) + staleMs + 100 : Date.now();
+      if (at == null || x < at) at = x;
+    }
+    return at;
   }
   // No answer in time: count it against the connection that was asked (see askThink).
   thinkMissed(th) {
@@ -828,6 +887,10 @@ export class TableRoom extends DurableObject {
       });
       return;
     }
+    // connections that went silent: their players are away now (apply marks them), so a stand-in can be planned
+    if (this.dropStale() || this.unmarkedAway()) { await this.apply({}, () => { }); return; }
+    // a host who has been away long enough hands the job on (passHost, in apply), even if nobody acts
+    { const hd = hostDue(this.t, this.here()); if (hd != null && Date.now() >= hd) { await this.apply({}, () => { }); return; } }
     const ab = awayBlocking(this.t);
     if (ab && Date.now() >= ab.at && this.othersHere(ab.id)) {
       await this.apply({}, t => {

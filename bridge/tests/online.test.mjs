@@ -15,6 +15,7 @@ const post = (body) => fetch(BASE + '/api/tables', { method: 'POST', headers: { 
 async function client(code, name) {
   const c = { name, errs: [], st: null, chat: [], hist: [], thinks: [], ws: new WebSocket(`${WS}/api/table/${code}/ws`) };
   c.ws.onmessage = e => {
+    if (e.data === 'pong') return;
     const m = JSON.parse(e.data);
     if (m.type === 'state') { c.st = m; c.chat = (m.chatFull ? [] : c.chat).concat(m.chat || []); if (m.hist) c.hist = c.hist.slice(0, m.histFrom).concat(m.hist); }
     else if (m.type === 'error') c.errs.push(m.msg);
@@ -23,6 +24,9 @@ async function client(code, name) {
   };
   await new Promise(r => c.ws.onopen = r);
   c.ws.send(JSON.stringify({ type: 'hello', secret: sec(name.toLowerCase()), name }));
+  // ping like the page (js/net.js), more often: a server started with TEST_STALE_MS counts a silent connection as gone
+  c.ping = setInterval(() => { if (c.ws.readyState === 1) c.ws.send('ping'); }, 400); c.ping.unref();
+  c.ws.addEventListener('close', () => clearInterval(c.ping));
   c.act = (n, ...args) => c.ws.send(JSON.stringify({ type: 'act', name: n, args }));
   c.t = () => c.st && c.st.t;
   return c;

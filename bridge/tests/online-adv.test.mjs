@@ -21,6 +21,9 @@ async function client(code, name) {
   };
   await new Promise((r, j) => { c.ws.onopen = r; c.ws.onerror = j; });
   c.ws.send(JSON.stringify({ type: 'hello', secret: sec(name.toLowerCase()), name }));
+  // ping like the page (js/net.js), more often: a server started with TEST_STALE_MS counts a silent connection as gone
+  c.ping = setInterval(() => { if (c.ws.readyState === 1) c.ws.send('ping'); }, 400); c.ping.unref();
+  c.ws.addEventListener('close', () => clearInterval(c.ping));
   c.act = (n, ...args) => c.ws.send(JSON.stringify({ type: 'act', name: n, args }));
   c.t = () => c.st && c.st.t;
   c.until = async (f, ms = 4000) => { for (let i = 0; i < ms / 50; i++) { if (c.st && f(c.t())) return true; await sleep(50); } return false; };
