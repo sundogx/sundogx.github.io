@@ -721,6 +721,7 @@ function ntSystem(ctx) {
       if (sup) return [T_('4N', h => h.H + 3 + (BID_K('ntf') ?? 0) >= quant && h.L[tr] >= 5 && openSuits(ctx, h, tr) === 0, MM(quant - 3, 37, { t: 'rkcb', trump: tr, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[tr]}: asks for key cards (4 aces and the trump king)` })), T_('4' + tr, h => h.H >= 4 || h.L[tr] >= 6, MM(4, 37)), T_('P', () => true, MM(0, 3))];
       T.push(T_('P', h => h.H < inv, MM(0, inv - 1, { t: 'signoff' })));
       if (tr === 'S') T.push(T_(lv === 2 ? '3H' : '4H', h => h.L.H >= 5 && h.H >= gf, MM(gf, 37, { mn: { H: 5 }, f: 2 })));
+      if (!BID_OFF('six5')) T.push(T_('6N', h => h.H >= six + 1 && h.H <= six + 2 && h.L[tr] === 5, MM(six + 1, six + 2, { mn: { [tr]: 5 } }))); // too strong for the 4NT invite, short of a grand: 6NT (a 5NT pick-a-slam measured no better and a partner who does not know it passes 5NT)
       T.push(T_('4N', h => h.H >= quant && h.L[tr] === 5, MM(quant, six, { mn: { [tr]: 5 }, t: 'quant5', trump: tr, a: 'Quantitative: invites 6NT (5-card suit)' })));
       if (lv === 2) T.push(T_('3' + tr, h => h.L[tr] >= 6 && h.H < gf, MM(inv, gf - 1, { mn: { [tr]: 6 }, inv: true })));
       if (lv === 2) T.push(T_('2N', h => h.H < gf, MM(inv, gf - 1, { inv: true, mx: { [tr]: 5 } })));
@@ -1207,6 +1208,8 @@ function rkcbTable(ctx) {
     const mid = ctx.Me.lo + Math.min(2, (Math.min(ctx.Me.hi, ctx.Me.lo + 4) - ctx.Me.lo) / 2), M = pl.m.trump;
     return [T_('6' + M, h => h.L[M] >= 3, MM(ctx.Me.lo, ctx.Me.hi, { mn: { [M]: 3 } })), T_('6N', h => h.H >= mid, MM(mid, ctx.Me.hi, { mx: { [M]: 2 } })), T_('P', () => true, ANY())];
   }
+  if (pl.m.tag === 'lrask') { const M = pl.m.trump; return [T_(pl.call === '3N' ? '4C' : '4D', h => h.H >= (BID_K('lrm') ?? 11) || (BID_K('lrs') && supPts(h, M) >= BID_K('lrs')), MM(BID_K('lrs') ? 8 : BID_K('lrm') ?? 11, 37, { art: true, t: 'lrmax', trump: M, a: 'Maximum limit raise' })), T_('4' + M, () => true, MM(0, (BID_K('lrm') ?? 11) - 1, { t: 'signoff', a: 'Minimum limit raise' }))]; }
+  if (ml && ml.m && ml.m.tag === 'lrask' && pl.m.tag === 'lrmax') { const M = ml.m.trump; return [T_('4N', () => true, MM(15, 21, { t: 'rkcb', trump: M, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[M]}: asks for key cards (4 aces and the trump king)` }))]; }
   if (pl.m.tag === 'quant') {
     const mid = ctx.Me.lo + Math.min(2, (Math.min(ctx.Me.hi, ctx.Me.lo + 4) - ctx.Me.lo) / 2);
     return [T_('6N', h => h.H >= mid || (h.H >= ctx.Me.lo && h.sh[0] >= 5), ANY()), T_('P', () => true, ANY())];
@@ -1658,7 +1661,7 @@ function tablesFor(ctx) {
         const t = c0[1];
         if (c1 === '1N') return reb1M1N(ctx);
         if (c1 === '2' + t) return reb1M2M(ctx);
-        if (c1 === '3' + t && m1.tag === 'limit') return [T_('4N', h => h.H >= 20 - SD() && openSuits(ctx, h, t) === 0, MM(20, 21, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })), T_('4' + t, h => ownPts(h, t) >= 14 || (m1.lo <= 3 && false), MM(13, 21)), T_('P', () => true, MM(11, 13))];
+        if (c1 === '3' + t && m1.tag === 'limit') return [T_('4N', h => h.H >= 20 - SD() && openSuits(ctx, h, t) === 0, MM(20, 21, { t: 'rkcb', trump: t, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[t]}: asks for key cards (4 aces and the trump king)` })), ...(!BID_OFF('lrk') && ctx.ok(BID_K('lr3') ? '3N' : '4C') && !(m1.mn && m1.mn[t] < 4) ? [T_(BID_K('lr3') ? '3N' : '4C', h => h.H >= 15 && ownPts(h, t) >= (BID_K('lrk') ?? 18) && openSuits(ctx, h, t) === 0, MM(15, 21, { t: 'lrask', trump: t, art: true, f: 1, a: `Slam try: asks whether the limit raise is a maximum (${BID_K('lr3') ? '4♣' : '4♦'} yes, 4${SSYM[t]} no)` }))] : []), T_('4' + t, h => ownPts(h, t) >= 14 || (m1.lo <= 3 && false), MM(13, 21)), T_('P', () => true, MM(11, 13))];
         if (m1.tag === 'jacoby') return reb1MJ(ctx);
         if (m1.tag === 'splinter') return rebSplinter(ctx);
         if (m1.tag === '21') return reb21(ctx);

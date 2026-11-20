@@ -7,7 +7,7 @@
 //   --off=a,b  switch off features of the new system by name (BID_OFF keys in js/bidding.js)
 //   --base=name  the baseline bidding, tests/fixtures/<name>.js (oldbid: natural bidding before 2/1; basebid: 2/1 at 84c20b4;
 //                basebid3: before the third round of bidding work, c0d8685; basebid4: before the fourth round, 62af5b4;
-//                basebid5: before the fifth round, 24c9e08; basebid6: before the sixth round, a5bbe8a; basebid7: before the seventh round, 14aea9f; basebid8: before the eighth round, 4ee44ec; basebid9: before the ninth round, 453c984; basebid10: before the tenth round, cf26413; basebid11: before the eleventh round, 56bd996; basebid12: before the twelfth round, 6336234; basebid13: before the thirteenth round, edf4706)
+//                basebid5: before the fifth round, 24c9e08; basebid6: before the sixth round, a5bbe8a; basebid7: before the seventh round, 14aea9f; basebid8: before the eighth round, 4ee44ec; basebid9: before the ninth round, 453c984; basebid10: before the tenth round, cf26413; basebid11: before the eleventh round, 56bd996; basebid12: before the twelfth round, 6336234; basebid13: before the thirteenth round, edf4706; basebid14: before the fourteenth round, 208a61b)
 //   --k=a:1,b:2  tuning knobs of js/bidding.js (BID_K); --threads=n  solver threads
 //   --worst=k  print the k boards the new system lost most on (hands and both auctions); with --best, gained most on
 //   --self     also report each system in self-play against par
