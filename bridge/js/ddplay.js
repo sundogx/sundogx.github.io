@@ -18,7 +18,12 @@ if (typeof require !== 'undefined' && typeof botPlay === 'undefined') globalThis
 // full === false: only the minimums from shown() (the earlier sampler, for comparisons in tests/playsim.js).
 // keep2C: a 2C opening raises the minimum to 22 but never lowers a higher one shown later (js/bots.js endgame's reading;
 // without it the minimum is set to 22, as the sampler has always done).
-function ddAuctionLimits(auction, seat, vul, full = true, keep2C = false) {
+// X (the play sampler's ddView passes DD_LIMX): closer to what the robots' bidding shows (round 12, scratch audit of
+// robot auctions): X.p6c a non-vulnerable 3C opening may hold six clubs (63% did, the limit said 7+); X.pre the most
+// points of a hand that passed throughout after partner's preempt or weak two (cap 7 before: real median 12, p98 16);
+// X.cont the same after partner's one-level opening when the opponents bid (p98 10). X.c2 (test knob): 2C opener's minimum.
+const DD_LIMX = { p6c: 1, pre: 15, cont: 10 };
+function ddAuctionLimits(auction, seat, vul, full = true, keep2C = false, X = {}) {
   const k = { hcpMin: 0, hcpMax: 37, lenMin: { S: 0, H: 0, D: 0, C: 0 }, lenMax: { S: 13, H: 13, D: 13, C: 13 }, bal: false };
   let info = null;
   try { if (typeof shown === 'function') info = shown(auction, seat, vul); } catch (e) { info = null; }
@@ -40,13 +45,16 @@ function ddAuctionLimits(auction, seat, vul, full = true, keep2C = false) {
     if (c === 'P') k.hcpMax = Math.min(k.hcpMax, 12);
     else if (c === '1N') { k.hcpMin = Math.max(k.hcpMin, 15); k.hcpMax = Math.min(k.hcpMax, 17); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
     else if (c === '2N') { k.hcpMin = Math.max(k.hcpMin, 20); k.hcpMax = Math.min(k.hcpMax, 21); for (const s of SUITS) { k.lenMin[s] = Math.max(k.lenMin[s], 2); k.lenMax[s] = Math.min(k.lenMax[s], 5); } }
-    else if (c === '2C') k.hcpMin = keep2C ? Math.max(k.hcpMin, 22) : 22;
+    else if (c === '2C') k.hcpMin = X.c2 != null ? Math.max(k.hcpMin, X.c2) : keep2C ? Math.max(k.hcpMin, 22) : 22;
     else if (/^1[CDHS]$/.test(c)) { k.hcpMin = Math.max(k.hcpMin, 10); k.hcpMax = Math.min(k.hcpMax, 21); }
-    else if (/^[23][DHS]$|^3C$/.test(c)) { k.hcpMax = Math.min(k.hcpMax, 11); k.lenMin[c[1]] = Math.max(k.lenMin[c[1]], c[0] === '2' ? 6 : 7); }
+    else if (/^[23][DHS]$|^3C$/.test(c)) { k.hcpMax = Math.min(k.hcpMax, 11); k.lenMin[c[1]] = Math.max(k.lenMin[c[1]], c[0] === '2' || (X.p6c && c === '3C' && !isVul(vul, seat)) ? 6 : 7); }
   } else if (auction.filter(a => a.by === seat).every(a => a.call === 'P')) {
     // never bid although the opponents opened, or partner opened and it never responded
     const opener = before.find(a => bidValue(a.call) >= 0);
-    k.hcpMax = Math.min(k.hcpMax, opener && sameSide(opener.by, seat) ? 7 : 17);
+    let cap = opener && sameSide(opener.by, seat) ? 7 : 17;
+    if (cap === 7 && X.pre && !/^1|^2[CN]$/.test(opener.call)) cap = X.pre;
+    if (cap === 7 && X.cont && /^1/.test(opener.call) && auction.some(a => !sameSide(a.by, seat) && a.call !== 'P')) cap = X.cont;
+    k.hcpMax = Math.min(k.hcpMax, cap);
   }
   if (k.hcpMax < k.hcpMin) k.hcpMax = k.hcpMin;
   for (const s of SUITS) if (k.lenMax[s] < k.lenMin[s]) k.lenMax[s] = k.lenMin[s];
@@ -77,7 +85,7 @@ function ddView(t, seat, opts = {}) {
   const known = {};
   for (const s of visible) known[s] = remainingHand(t.hands, play, s);
   const limits = {};
-  for (const s of SEATS) if (!visible.includes(s)) limits[s] = ddAuctionLimits(t.auction || [], s, t.vul, opts.limits !== 'min');
+  for (const s of SEATS) if (!visible.includes(s)) limits[s] = ddAuctionLimits(t.auction || [], s, t.vul, opts.limits !== 'min', false, opts.limx || DD_LIMX);
   const view = {
     seat, vul: t.vul, contract: { level: c.level, strain: c.strain, doubled: c.doubled, declarer: decl },
     tricks: play.tricks.map(tr => ({ leader: tr.leader, cards: tr.cards.map(pc => ({ seat: pc.seat, card: pc.card })) })),
