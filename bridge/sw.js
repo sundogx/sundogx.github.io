@@ -5,7 +5,7 @@
 // and takes over at once. Pages that were open keep being served from their old copy (and so do the workers they
 // start), are told a new version is ready and reload themselves at a safe moment (app.js, "feature: swreload");
 // the old copy is deleted once no page or worker uses it. The game server (/api) is never cached.
-const CACHE = 'bridge-v67';
+const CACHE = 'bridge-v68';
 const CORE = ['./', 'style.css', 'config.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png',
   'js/engine.js', 'js/par.js', 'js/bidding.js', 'js/leads.js', 'js/bots.js', 'js/ddplay.js', 'js/table.js', 'js/net.js', 'js/analysis.js', 'js/app.js', 'js/dds-worker.js', 'js/benbridge.js', 'js/skip.js', 'js/leadtrainer.js', 'js/showpoints.js', 'js/autoplay.js', 'js/suitorder.js', 'js/played.js', 'js/share.js', 'js/notify.js', 'js/card.js', 'js/explorer.js', 'js/flashcards.js', 'js/bidpractice.js', 'js/daily.js', 'js/stats.js', 'js/leaks.js', 'js/chatsym.js', 'js/deals.js', 'js/playfrom.js', 'js/rubber.js', 'js/minibridge.js', 'js/learn.js', 'js/ux.js', 'js/wasm/compiled.js', 'js/wasm/compiled.wasm'];
 self.addEventListener('install', e => {

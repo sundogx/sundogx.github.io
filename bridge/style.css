@@ -67,9 +67,9 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 
 /* ---------- buttons ---------- */
 .btn { border: var(--bw) solid var(--line); background: var(--panel); border-radius: 6px; padding: 7px 12px; font-weight: 600; }
-.btn:hover:not(:disabled) { background: var(--panel-2); }
+@media (hover: hover) { .btn:hover:not(:disabled) { background: var(--panel-2); } } /* ux2: a phone keeps :hover on the last tapped button, which then looked selected */
 .btn.primary { background: #2e7d4f; color: #fff; border-color: var(--line); }
-.btn.primary:hover:not(:disabled) { background: #256640; }
+@media (hover: hover) { .btn.primary:hover:not(:disabled) { background: #256640; } }
 .btn.small { padding: 4px 9px; font-size: 13px; }
 
 /* ---------- lobby ---------- */
@@ -187,7 +187,7 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 .rows .rk { border: none; background: none; padding: 1px 3px; border-radius: 4px; font: inherit; font-weight: 600; color: inherit; }
 .rows .rk.play { background: var(--brass); }
 .rows .rk.play.sel { background: #b88a00; color: #fff; }
-.rows .rk.play:hover { background: #ffb800; }
+@media (hover: hover) { .rows .rk.play:hover { background: #ffb800; } }
 .rows .rk:disabled { opacity: 1; cursor: default; }
 .rows .void { opacity: .45; }
 
@@ -344,7 +344,7 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 .reslist .again { margin-left: 2px; font-size: 11px; color: var(--ink-soft); }
 .reslist th { font-weight: 600; font-size: 12px; color: var(--ink-soft); }
 .reslist tr.click { cursor: pointer; }
-.reslist tr.click:hover td, .reslist tr.click:focus-visible td { background: var(--panel-2); }
+.reslist tr.click:focus-visible td { background: var(--panel-2); }
 .reslist tr.click:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* unread chat: a dot on the Chat tab and the sidebar button */
 .tabs button.unread::after, #sideBtn.unread::after { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--vul); margin-left: 5px; vertical-align: middle; }
@@ -382,6 +382,7 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
   #moreBtn { display: inline-block; }
   .topbar .more { display: none; }
   .topbar.open .more { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+  #exLeave, #bpLeave, #fcLeave, #ltLeave { margin-left: auto; } /* ux2: the way out of a practice screen sits at the right end, where Options is on home, not between its controls */
 }
 .quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .replay { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
@@ -599,7 +600,8 @@ table.daily-lb tr.you td { font-weight: 600; }
 .leaktab th[scope="row"] { font-weight: 400; font-size: 14px; color: var(--ink); }
 .leaktab td:last-child { line-height: 1.8; }
 .lnk { background: none; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: inherit; font-size: 13px; color: var(--ink); cursor: pointer; white-space: nowrap; }
-.lnk:hover, .lnk:focus-visible { border-color: var(--brass); }
+.lnk:focus-visible { border-color: var(--brass); }
+@media (hover: hover) { .lnk:hover { border-color: var(--brass); } .reslist tr.click:hover td { background: var(--panel-2); } .minipick .bcard:hover { box-shadow: 0 0 0 1.5px var(--brass); } }
 @media (max-width: 480px) { .reslist.hist .hd { display: none; } } /* phones: no date column */
 /* feature: explorer (bidding explorer and "What do you bid?" flashcards) */
 #explorer, #flashcards { max-width: 980px; margin: 0 auto; padding: 12px; }
@@ -636,7 +638,7 @@ table.daily-lb tr.you td { font-weight: 600; }
 @media (max-width: 640px) { #explorer .bx-side { display: contents; } #exGrid { order: -1; flex: 1 1 100%; } #exList { order: 2; flex: 1 1 100%; } }
 /* feature: leadtrainer */
 #leadTrainer { max-width: 980px; margin: 0 auto; padding: 12px; }
-#leadTrainer .topbar select { font: inherit; font-size: 13px; }
+#leadTrainer .topbar select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; } /* ux2: styled like the explorer's selects (it was the browser's grey default) */
 .lt-hand { margin: 8px 0 10px; max-width: 420px; }
 .lt-hand .rows { font-size: 22px; padding: 8px 12px; }
 .lt-hand .rows .r, .lt-hand .rows .rr, .lt-hand .rows .r .s { min-height: 34px; line-height: 34px; }
@@ -664,7 +666,7 @@ ul.costs .pftry { background: none; border: 0; padding: 2px 0 2px 4px; min-heigh
 .minipick .mgrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin-top: 6px; }
 .minipick .ml { grid-column: 1 / -1; font-size: 12px; color: var(--ink-soft); text-align: left; margin-top: 2px; }
 .minipick .bcard { padding: 5px 0; font-size: 15px; cursor: pointer; min-width: 0; }
-.minipick .bcard:hover, .minipick .bcard:focus-visible { box-shadow: 0 0 0 1.5px var(--brass); }
+.minipick .bcard:focus-visible { box-shadow: 0 0 0 1.5px var(--brass); }
 .waitmsg .note { color: inherit; opacity: .8; font-family: var(--sans, inherit); font-size: 13px; margin-top: 4px; }
 fieldset.pm { border: 0; padding: 0; margin: 0 0 10px; }
 fieldset.pm legend { font-weight: 600; margin-bottom: 6px; }
