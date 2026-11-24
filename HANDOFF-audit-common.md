@@ -1,0 +1,10 @@
+# Common rules for round-8 audit agents (local file, not in git)
+
+- Repo: your worktree (copy of /Users/admin/Documents/sundogx.github.io at main after CACHE v49); code in bridge/. Read bridge/README.md and the "Owner's UI choices" in /Users/admin/Documents/sundogx.github.io/HANDOFF.md (keep them).
+- Goal: find real bugs (wrong behaviour, crashes, races, security holes, state leaks, broken edge cases) and measurable performance wins in your area. Reproduce each bug first (a failing test, a Node script or a Playwright run), then fix it with the smallest change, then show it fixed. For performance, measure before and after; ship only clear wins.
+- Other agents are editing these files right now: js/bidding.js, js/bots.js `botPlay`, js/ddplay.js, js/leads.js, js/dds-worker.js (robot agents), and new js/learn.js, js/minibridge.js, js/rubber.js. Do not edit those; list any bugs you find there in your note instead. Do not touch bridge/ben/.
+- Keep fixes small and local so merges stay easy. Don't bump CACHE in sw.js.
+- Before each commit: `cd bridge && node build.mjs && npm test` passes and `node tests/sim.js | head -1` shows "errors":0. For server changes also run `npx wrangler dev --port <free port> &` and `BRIDGE_URL=http://localhost:<port> node tests/online.test.mjs` (and online-multi). Playwright: playwright-core with `channel: 'chrome'`; a helper that serves bridge/ through request interception is at /private/tmp/claude-501/-Users-admin-Documents/15b6824a-a1d9-49bc-a61c-0049209dc3e7/scratchpad/smoke/lib.js (set ROOT env to your worktree's bridge/; node_modules is linked there).
+- Never push, never merge to main, never deploy. Commit on your branch; messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Don't commit .claude/.
+- Write HANDOFF-audit-<name>.md at the worktree root: each bug (how found, repro, fix, test), perf numbers, and unfixed findings with file:line. Commit it.
+- Final message: fixed bugs, perf wins with numbers, unfixed findings, branch name, last commit hash.
