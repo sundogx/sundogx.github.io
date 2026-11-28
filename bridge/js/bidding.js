@@ -607,8 +607,6 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   if (ctx.cheap(t) === 2 && o !== t) T.push(T_('2' + t, h => h.L[t] >= 3 && h.L[t] >= h.L[o] && h.H <= 10, MM(6, 10, { mn: { [t]: 3 } })));
   if (ctx.cheap('N') === 1) T.push(T_('1N', h => h.H <= 10 && h.H >= 6, MM(6, 10, { nt: true })));
   T.push(T_('P', h => h.H <= 10, MM(6, 10)));
-  if (!BID_OFF('nsf4')) for (const x of ['C', 'D', 'H', 'S']) if (x !== t && x !== r && x !== o && ctx.cheap(x) <= 3 && !(+c2[0] === 1 && MAJ(x) && ctx.cheap(x) === 1)) // game values and no natural call fits (no 5-card suit, not balanced): a new suit on four cards, forcing
-    T.push(T_(ctx.cheap(x) + x, h => h.H >= 12 && h.L[x] >= 4, MM(12, 37, { mn: { [x]: 4 }, f: 1, t: 'nsf' })));
   return T.length > 1 ? T.concat([{ nat: true }]) : null;
 }
 function nmfAnswer(ctx) {
