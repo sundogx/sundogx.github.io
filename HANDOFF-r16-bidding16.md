@@ -1,9 +1,7 @@
 # Round 16 bidding16: slam routes and "no upper limit" leaks (shipped)
 
 ## Resume here
-- Status 11:40 HKT: code final unless a check fails (switches below + nxj4, r3n). Running: per-switch off-one on h16a-l
-  (scratchpad r16/ho-off2.txt), bidhuman t16a-d/h16a-d (r16/human.txt), solving f16e-h (f16a-d done: +504/16,000).
-- Next: 1) fill the numbers below from those files; 2) bidddsim f16e-h; 3) npm test + sim.js, build, commit.
+- Status 11:55 HKT: DONE. All changes committed on branch r16-bidding16; numbers below are final.
 
 ## What and why
 Missed slams were the biggest bidding loss. Many came from table entries whose condition had no upper point limit, so a much
@@ -24,18 +22,22 @@ scratchpad r16/cap.js). Fixes are in bridge/js/bidding.js, each behind a BID_OFF
 | r4o | 1x 1M 4M | responder asks for key cards with 15+ support points even with an open side suit |
 | szo | slamZone() | slam try (slamAsk) despite one open side suit when slam points >= 33 (knob szo) |
 | szo2 | natural() | same for the natural slam target and its 4NT (knob szo2) |
+| nxj4 | 1x (ovc at 2) X P | opener with 6+ M and 15-18 bids 4M when there is no room to jump (3M had no upper limit) |
+| r3n | 1x 1y 2x | responder with 13+, at most one card in opener's suit and the other suits stopped bids 3NT (natural bidding chose 2y, shown 6-10) |
 
-## Measurements (bidddsim, IMPs for the new system, 4000 boards a set, DD caches in the OS temp folder)
-- Tuning t16a-d (16,000): all on +449, +0.028 ± 0.007 a board. Alone (off-one deltas): six6 +61, six2n +50, j3n ~+86,
-  nxj +48, sixn +14, r6n +13, j4m +14, r4o +9, szo +122, szo2 +18, six4 0.
-- Held out h16a-l (48,000): all on **+989, +0.0206 ± 0.0034 a board**. Per switch on h16a-h (off-one delta, 32,000 boards,
-  before szo/szo2): j3n +52, nxj +37, six6 +50, six2n +35, sixn +61, r6n +25, j4m +14, r4o +72, six4 0; szo +223 and
-  szo2 +173 on h16a-j.
-- Fresh f16a-h (32,000, never used for any decision): FILL
-- six4 changed no board on any set (the hand is rare); kept because it is the textbook route the 4NT invite lacked.
-- bidhuman (4000 boards a seed, new - base on deviated boards): t16a +6, t16b +27, t16c -28, t16d +16, h16a +56, h16b -2;
-  with --human=base: +6, +38, -26, +16, +69, +24. No regression.
+## Measurements (bidddsim vs basebid16, IMPs for the new system, 4000 boards a set; DD caches in the OS temp folder)
+- **Fresh f16a-h (32,000 boards, no decision used them): +911 IMPs, +0.0285 ± 0.0044 a board** (95% CI +0.020..+0.037).
+  f16e-h alone (never looked at before the final run): +390, +0.024 a board.
+- Held out h16a-l (48,000): +1136, +0.0237 ± 0.0035 a board. Off-one deltas there (what each switch adds): szo2 +203,
+  r3n +112, szo +98, j3n +96, r4o +96, six6 +94, nxj +85, six2n +71, sixn +64, r6n +38, nxj4 +35, j4m +11, six4 0.
+- Tuning t16a-d (16,000): +485, +0.030 ± 0.007 a board.
+- Held out + fresh together: +2047 / 80,000 = +0.0256 ± 0.0027 a board (r14 shipped +0.0027).
+- six4 changed no board on any set (rare hand); kept because it is the textbook route the Stayman 4NT invite lacked.
+- bidhuman (4000 boards a seed, new - base summed over deviated boards), t16a-d and h16a-d: +6, +27, -28, +16, +56, -2, +33, +5
+  (total +113); with --human=base: +6, +38, -26, +16, +69, +24, +35, +5 (+167). No regression partnering humans.
 - npm test passes; sim.js errors 0, long 0.
+- Note: js/bidding.js:687 (direct 1NT-4NT) already had a 6NT route for 18+ (line above it); the gaps were after Stayman and in
+  the suit auctions listed above.
 
 ## Tried, not shipped
 - ntq 30 (1NT/2NT quantitative and 6NT one point lighter): tuning +64, held out -98 (h16a-h). Reverted (knobs ntq/ntq6 stay).
