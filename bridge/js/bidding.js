@@ -604,6 +604,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     T.push(T_(ctx.cheap(x) + x, h => h.H >= 12 && h.L[x] >= (MAJ(x) ? 4 : 5) && !(h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s))) && !(MAJ(r) && h.L[r] >= 6), MM(12, 37, { mn: { [x]: MAJ(x) ? 4 : 5 }, f: 1, t: 'nsf' })));
   if (!BID_OFF('sixn')) T.push(T_('6N', h => h.H >= (BID_K('sixn') ?? 19) && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(BID_K('sixn') ?? 19, 37, { nt: true })));
   T.push(T_('3N', h => h.H >= 13 && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(13, 16, { nt: true })));
+  if (o === t && !BID_OFF('r3n')) T.push(T_('3N', h => h.H >= 13 && h.L[t] <= 1 && !(MAJ(r) && h.L[r] >= 6) && SUITS.filter(s => s !== t && s !== r).every(s => stopper(h, s)), MM(13, 16, { nt: true }))); // short in opener's suit, the other suits stopped
   T.push(T_('4' + r, h => MAJ(r) && h.L[r] >= 6 && h.H >= 12, MM(12, 16, { mn: { [r]: 6 } })));
   T.push(T_('3' + r, h => h.L[r] >= 6 && h.H >= 10 && h.H <= 12, MM(10, 12, { mn: { [r]: 6 }, inv: true })));
   if (ctx.cheap('N') === 2) T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && h.semi && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true })));
