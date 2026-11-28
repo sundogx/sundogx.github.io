@@ -413,6 +413,13 @@ function drBidJudge(h, i, call, dd, alert) {
   const c = finalContract(au);
   return { auction: au, contract: c, ns: drDDScore(c, dd, h.vul) };
 }
+// a kept robot auction (calls from auction[i] on) back as { auction, contract, ns }
+function drBidKept(h, i, calls, dd, alert) {
+  const au = h.auction.slice(0, i);
+  for (const call of calls.split(' ')) { const by = auctionTurn(h.dealer, au); au.push(au.length === i && alert ? { call, by, alert } : { call, by }); }
+  const c = finalContract(au);
+  return { auction: au, contract: c, ns: drDDScore(c, dd, h.vul) };
+}
 // the bidding problems on a board, given its double-dummy table
 function drBidExtract(r, dd) {
   const h = r.h, out = [], sg = drSign(r.seat);
@@ -423,9 +430,13 @@ function drBidExtract(r, dd) {
     const rb = botCall(h.hands[r.seat], r.seat, h.dealer, h.auction.slice(0, i), h.vul);
     if (rb.call === a.call) return;
     const rob = drBidJudge(h, i, rb.call, dd, rb.alert);
-    const loss = toImps(sg * (rob.ns - table)); if (loss <= 0) return;
-    if (toImps(sg * (rob.ns - drBidJudge(h, i, a.call, dd).ns)) <= 0) return;
-    out.push({ k: r.id + '#b' + i, rec: r.id, i, kind: 'bid', card: a.call, rcall: rb.call, loss, dd: drDDPack(dd), date: r.date, box: 0, due: 0, tries: 0, right: 0 });
+    const vsTable = toImps(sg * (rob.ns - table)); if (vsTable <= 0) return;
+    const mine = drBidJudge(h, i, a.call, dd), vsMine = toImps(sg * (rob.ns - mine.ns)); if (vsMine <= 0) return;
+    // the loss: the smaller of the two, so a partner's later slip doesn't add to it. The two robot auctions are kept
+    // (calls from yours on), so answering needs at most one more auction worked out.
+    const calls = au => au.slice(i).map(x => x.call).join(' ');
+    out.push({ k: r.id + '#b' + i, rec: r.id, i, kind: 'bid', card: a.call, rcall: rb.call, ralert: rb.alert || '', ra: calls(rob.auction), ma: calls(mine.auction),
+      loss: Math.min(vsTable, vsMine), dd: drDDPack(dd), date: r.date, box: 0, due: 0, tries: 0, right: 0 });
   });
   return out;
 }
@@ -437,14 +448,20 @@ function drBidToScan() {
 }
 // check the boards whose DD table is in (a few each step), and ask for the next tables; true when something changed
 function drBidStep() {
-  if (typeof requestDD !== 'function' || typeof botCall !== 'function' || DD.failed) return false;
+  if (typeof requestDD !== 'function' || typeof botCall !== 'function' || typeof DD === 'undefined') return false;
+  if (DD.failed) { // requestDD tries the solver again two minutes after it failed
+    if (Date.now() - (DD.failedAt || 0) > 120e3) { const r = drBidToScan()[0]; if (r) requestDD(r.h.hands, false); }
+    if (DD.failed) return false;
+  }
   const s = drS(), t0 = Date.now();
   let changed = false, asked = 0;
   for (const r of drBidToScan()) {
     const en = ddEntry(r.h.hands);
     if (en && en.done) {
-      s.items = drMerge(s.items, drBidExtract(r, en.table), DR.MAX); s.bscanned[r.id] = DR.BV; changed = true;
-      if (Date.now() - t0 > 40) break; // keep the screen responsive
+      // a board that can't be checked (a damaged record) is marked checked too, so it doesn't stop the others
+      try { s.items = drMerge(s.items, drBidExtract(r, en.table), DR.MAX); } catch (e) { console.error(e); }
+      s.bscanned[r.id] = DR.BV; changed = true;
+      if (Date.now() - t0 > 12) break; // keep the screen responsive: after a slow board, the rest wait for the next step
     } else if (asked++ < 2) requestDD(r.h.hands, false); else break;
   }
   return changed;
@@ -456,7 +473,7 @@ function drBidRender(it, quiet) {
   const r = drRec(it.rec), h = r.h, you = r.seat, before = h.auction.slice(0, it.i), d = new Date(r.date);
   info.innerHTML = `<p class="dr-head"><b>Bidding</b> · board ${esc(h.board)}, ${esc(d.toLocaleDateString())}${r.mode !== 'practice' ? ` (${esc(r.mode)})` : ''}<br>
     Dealer ${SEAT_NAME[h.dealer]}, ${vulText(h.vul)}. You are ${SEAT_NAME[you]}.${DR.pick ? '' : ' <b>What do you bid?</b>'}</p>`;
-  tab.innerHTML = DR.pick ? '' : `<div class="bp-hand">${bpHandHTML(h.hands[you])}</div><div class="dr-bbox"></div>`;
+  tab.innerHTML = DR.pick ? '' : `<div class="bp-hand">${typeof bpHandHTML === 'function' ? bpHandHTML(h.hands[you]) : sortForHand(h.hands[you]).map(cardText).join(' ')}</div><div class="dr-bbox"></div>`;
   if (!DR.pick) drBidBox();
   const view = { seats: Object.fromEntries(SEATS.map(s => [s, { kind: 'robot' }])), auction: before, phase: DR.pick ? 'done' : 'auction' };
   auc.innerHTML = `<div class="dr-auc">${auctionGridHTML(view, before, h.dealer, h.vul, you)}</div><p class="note">Tap a call for what it means.</p>`;
@@ -481,9 +498,13 @@ function drBidChoose(call) {
   const it = DR.cur; if (!it || it.kind !== 'bid' || DR.pick) return;
   const r = drRec(it.rec), h = r.h, i = it.i;
   if (!legalCalls(h.dealer, h.auction.slice(0, i)).includes(call)) return;
-  const dd = drDDUnpack(it.dd), rb = botCall(h.hands[r.seat], r.seat, h.dealer, h.auction.slice(0, i), h.vul);
-  const ralert = rb.call === it.rcall ? rb.alert : undefined;
-  const rob = drBidJudge(h, i, it.rcall, dd, ralert), mine = call === it.rcall ? rob : drBidJudge(h, i, call, dd);
+  const dd = drDDUnpack(it.dd), ralert = it.ralert || undefined;
+  // the kept auctions (at most one new auction is worked out here: after a third call)
+  let rob, mine;
+  try {
+    rob = it.ra ? drBidKept(h, i, it.ra, dd, ralert) : drBidJudge(h, i, it.rcall, dd, ralert);
+    mine = call === it.rcall ? rob : call === it.card && it.ma ? drBidKept(h, i, it.ma, dd) : drBidJudge(h, i, call, dd);
+  } catch (e) { console.error(e); return; }
   const diff = toImps(drSign(r.seat) * (rob.ns - mine.ns)); // IMPs your call loses against the robots' (0 when as good)
   const right = call === it.rcall || diff <= 0;
   DR.pick = call; DR.level = null; DR.bres = { rob, mine, ralert, diff, right, dd };
@@ -545,4 +566,4 @@ if (typeof document !== 'undefined') {
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addBtns); else addBtns();
 }
-if (typeof module !== 'undefined') module.exports = { drFlat, drKindOf, drExtract, drPosition, drGrade, drQueue, drMerge, drLearned, drWeight, drBidExtract, drBidJudge, drRobotsOn, drDDPack, drDDUnpack, drBidNeedsCheck, DR };
+if (typeof module !== 'undefined') module.exports = { drFlat, drKindOf, drExtract, drPosition, drGrade, drQueue, drMerge, drLearned, drWeight, drBidExtract, drBidJudge, drRobotsOn, drDDPack, drDDUnpack, drBidNeedsCheck, drBidKept, drBidStep, drBidToScan, drState: v => { drState = v; }, DR };

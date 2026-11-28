@@ -66,9 +66,12 @@ for (let g = 0; g < N; g++) {
     const au = auction.slice(0, it.i).concat([{ call: rb.call, by: seat, alert: rb.alert }]);
     while (!auctionOver(au)) au.push(robotCall(hands, dealer, au, vul));
     const rob = sc(finalContract(au));
-    ok(it.loss === toImps(sg * (rob - sc(contract))) && it.loss > 0, 'loss against the contract reached');
     const mine = D.drBidJudge(h, it.i, a.call, dd);
-    ok(toImps(sg * (rob - mine.ns)) > 0, 'your call loses with the robots bidding on too');
+    ok(toImps(sg * (rob - mine.ns)) > 0 && toImps(sg * (rob - sc(contract))) > 0, 'your call loses both ways');
+    ok(it.loss === Math.min(toImps(sg * (rob - sc(contract))), toImps(sg * (rob - mine.ns))), 'loss: the smaller of the two');
+    // the kept auctions give back the same contracts and scores
+    const kr = D.drBidKept(h, it.i, it.ra, dd, it.ralert), km = D.drBidKept(h, it.i, it.ma, dd);
+    ok(kr.ns === rob && JSON.stringify(kr.auction.map(x => x.call + x.by)) === JSON.stringify(au.map(x => x.call + x.by)) && km.ns === mine.ns && JSON.stringify(km.contract) === JSON.stringify(mine.contract), 'kept auctions');
     ok(mine.auction.length > it.i && mine.auction[it.i].call === a.call && auctionOver(mine.auction), 'judge auction');
     ok(JSON.stringify(D.drDDUnpack(it.dd)) === JSON.stringify(Object.fromEntries(SEATS.map(d => [d, Object.fromEntries(['N', 'S', 'H', 'D', 'C'].map(st => [st, dd[d][st]]))]))), 'DD table kept');
   }
@@ -76,6 +79,28 @@ for (let g = 0; g < N; g++) {
 ok(D.drDDUnpack(pack).N.N === 11 && D.drDDPack(D.drDDUnpack(pack)) === pack, 'pack round trip');
 ok(!D.drBidNeedsCheck({ seat: 'S', h: { auction: [{ call: 'P', by: 'N' }], hands: { S: [] } } }), 'unfinished or no hand: not checked');
 ok(boards > N * 0.5 && probs > boards * 0.05, `enough cases (${boards} boards, ${probs} problems)`);
+// drBidStep: a damaged record is marked checked and the others go on; after a solver failure it asks again after 2 minutes
+{
+  const hs = [deal(seededRand('x1')), deal(seededRand('x2'))], recs = hs.map((hands, n) => {
+    const auction = [];
+    while (!auctionOver(auction)) auction.push(robotCall(hands, 'N', auction, 'None'));
+    auction[0] = { call: auction[0].call === 'P' ? '1C' : 'P', by: 'N' }; // a call unlike the robots'
+    return { id: 'r' + n, date: n, seat: 'N', h: { board: 1, dealer: 'N', vul: 'None', hands, auction, contract: null } };
+  });
+  for (const r of recs) { const au = r.h.auction; au.length = 1; while (!auctionOver(au)) au.push(robotCall(r.h.hands, 'N', au, 'None')); r.h.contract = finalContract(au); }
+  Object.defineProperty(recs[1].h, 'vul', { get() { throw new Error('damaged'); } });
+  let asked = 0; const errs = console.error; console.error = () => { };
+  Object.assign(globalThis, { Stats: { list: recs }, DD: { failed: false }, ddEntry: () => ({ done: true, table: fakeDD(recs[0].h.hands) }), requestDD: () => { asked++; } });
+  D.drState({ v: 1, st: {}, items: [], scanned: {}, bscanned: {} });
+  let n = 0; while (D.drBidToScan().length && n++ < 10) D.drBidStep();
+  console.error = errs;
+  ok(D.drBidToScan().length === 0, 'damaged record: marked checked, the others checked too');
+  D.drState({ v: 1, st: {}, items: [], scanned: {}, bscanned: {} });
+  Object.assign(globalThis.DD, { failed: true, failedAt: Date.now() });
+  ok(!D.drBidStep() && asked === 0, 'solver failed: waits');
+  globalThis.DD.failedAt = Date.now() - 121e3;
+  D.drBidStep(); ok(asked === 1, 'solver failed 2 minutes ago: asks again');
+}
 // a bidding problem's IMPs weigh about a third of a trick in the queue
 const mk = (k, kind, loss) => ({ k, rec: 'r', i: 0, kind, loss, date: 1, box: 0, due: 0, tries: 0, right: 0 });
 ok(D.drQueue([mk('a', 'decl', 1), mk('b', 'bid', 6), mk('c', 'bid', 2)], 'all', 1, false).map(x => x.k).join() === 'b,a,c', 'queue weighs IMPs against tricks');
