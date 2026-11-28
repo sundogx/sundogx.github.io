@@ -11,6 +11,7 @@
 4. **Idle worker.** The worker is now closed after `DD_IDLE_MS` (30 s) with no solve pending, and remade on demand.
 5. **Blob URL.** It is revoked whenever the worker is closed: on idle, on Leave, and on a worker error.
 8. **Docs.** README now gives the measured timing and notes that this screen also stores leak reviews. It also says a table opening closes the screen.
+- **Merge conflict with r16-stab3.** After the first fix commit, `git merge-tree` showed a conflict with r16-stab3, which now adds rules right after the lead-practice CSS. I moved the `#drills` CSS block to after the bidding-practice rules, and all five branches now merge cleanly. I also borrowed stab3's idea for lead practice: on screens 760 px or narrower, the score line (`#drScore`) keeps its own row even while empty, so the problem does not move down after the first answer.
 - Review item 6 is not changed: Play on from here comes back to the History record, as the hand record's Play from here does.
 
 ## What it is, and why this feature
