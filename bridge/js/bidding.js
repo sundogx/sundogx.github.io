@@ -669,7 +669,7 @@ function ntSystem(ctx) {
   const k = after.length, isOpener = x.by === ctx.seat, c = i => after[i] ? after[i].call : null;
   if (b.interfered) { const lb = !BID_OFF('leb') && lebensohl(ctx, b, after); if (lb !== false) return lb; return (k === 1 && !isOpener) ? ntInterference(ctx, lo) : null; }
   const ovc2N = !one && !sameSide(ctx.first.by, x.by) && !BID_OFF('o2n'); // over their weak two the 2NT overcaller's partner raises with less
-  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = (BID_K('ntq') ?? 31) - lo, six = (BID_K('ntq') ?? 31) + 1 - lo;
+  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), ntq = BID_K('ntq') ?? (BID_OFF('ntq30') ? 31 : 30), quant = ntq - lo, six = (BID_K('ntq6') ?? ntq) + 1 - lo; // ntq30: the 4NT invitation and 6NT one point lighter (31 -> 30 combined at the bottom of the invite)
   const T = [];
   const trA = s => `Transfer: 5+ ${SNAME[s]}`;
   const rkS = (h, M) => h.H + (BID_K('ntf') ?? 0) >= quant && h.L[M] >= 6 && openSuits(ctx, h, M) === 0; // slam values in a 6+ major: Texas, then 4NT asks for key cards
