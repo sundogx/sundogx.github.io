@@ -13,7 +13,7 @@
 //  { warm: true }             warm up (make the solver instance, run the sampler and a small solve) before the first real job
 // The solver is DDS (Bo Haglund and Soren Hein, Apache-2.0) compiled to WebAssembly; see wasm/NOTICE.txt and wasm/build.sh.
 // The worker keeps one solver instance for all its solves (ddplay.js ddSolver; tests/ddtest.js checks reuse).
-importScripts('wasm/compiled.js', 'engine.js', 'bidding.js', 'leads.js', 'bots.js', 'ddplay.js'); // create_dds_module; rules helpers; bidding (what calls show); opening leads; the heuristic robot (the sampler's play model); the sampler
+importScripts('wasm/compiled.js', 'min/engine.js', 'min/bidding.js', 'min/leads.js', 'min/bots.js', 'min/ddplay.js'); // the page's minified copies (build.mjs; same code, and already cached for the page); /* feature: perf10 */ create_dds_module; rules helpers; bidding (what calls show); opening leads; the heuristic robot (the sampler's play model); the sampler
 
 // The claim a robot about to lead to a new trick would make (js/table.js robotClaim; the page skips its own search
 // when this answer is there), worked out here so the page's main thread doesn't block on it. seat: the robot's seat

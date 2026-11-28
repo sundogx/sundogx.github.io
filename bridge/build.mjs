@@ -40,7 +40,7 @@ console.log('built src/game.js');
 // js/min/<file>.js: the scripts index.html loads (its `js/min/` tags), with comments and spacing removed by
 // esbuild (names, statements and strings are kept exactly; each file stays a plain script). About a quarter fewer
 // bytes over the network (gzip), so a first visit on a slow phone connection is ready sooner. The source files in
-// js/ stay what you edit, and the workers and tests load them as they are. GitHub Pages serves the repository as
+// js/ stay what you edit; the solver workers import the js/min/ copies too (perf10), the tests load js/. GitHub Pages serves the repository as
 // it is, so js/min/ is committed: run `node build.mjs` (npm test does too) after editing js/ and commit js/min/.
 // `node build.mjs --check` fails when js/min/ is out of date. Without esbuild (no `npm install`) the copies are verbatim.
 const minDir = join(root, 'js', 'min');

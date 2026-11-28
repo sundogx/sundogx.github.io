@@ -158,7 +158,7 @@ function reviewWorker() {
   if (PlayDD.w) return PlayDD.w;
   // a worker from a few lines here, with the solver scripts the robots use (engine.js, ddplay.js, wasm/compiled.js)
   const u = p => JSON.stringify(new URL('js/' + p, location.href).href);
-  const src = `importScripts(${u('wasm/compiled.js')}, ${u('engine.js')}, ${u('ddplay.js')});
+  const src = `importScripts(${u('wasm/compiled.js')}, ${u('min/engine.js')}, ${u('min/ddplay.js')});
 let mod = null, solve = null;
 self.onmessage = async e => {
   const m = e.data;
