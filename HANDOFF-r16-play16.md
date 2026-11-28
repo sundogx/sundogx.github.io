@@ -1,20 +1,22 @@
 # Round 16: play16 (robot card play: leads.js, bots.js botPlay, ddplay.js)
 
 ## Resume here
-- Review fix pass (12:55-): done in code (js/ddplay.js ddFinalPenX): both readings now apply only when the final double's
-  meaning tag is 'xpen' (takeout/negative/responsive doubles passed for penalty keep their reading), and the trump
-  minimum keeps what the doubler's earlier calls showed (max with its limits before the double). Fixture scripts use
+- Work complete, review fixes included (13:10 HKT). Nothing half done; see "Open findings" at the end.
+- Review fix pass: both double readings (DD_XPEN, DD_XPENH) now apply only when the final double's meaning tag is 'xpen'
+  (js/ddplay.js ddFinalPenX); the trump minimum keeps what the doubler's earlier calls showed; fixture scripts use
   `process.env.R || path.join(__dirname, '../../js/')`.
-- Running: `XONLY=1 NEW='{"xpen":-1,"xpenH":0}' node tests/ddacc.js 12000 13 p16xd 2` > scratch p16/xd.log: the whole fixed
-  package against the pre-round reading on a fresh seed (negative = the new default is better).
-- Next: put the xd numbers in sections 2-3 and the summary, commit, report.
+- Re-measured, fresh seed p16xd, fixed package against the pre-round reading: `XONLY=1 NEW='{"xpen":-1,"xpenH":0}'
+  node tests/ddacc.js 12000 13 p16xd 2` (1,648 doubled boards): old reading declarer -0.0243 +- 0.0069 IMPs per decision
+  (1,090 of 18,022 changed), defenders -0.0155 +- 0.0064 (557 of 15,011), lead +0.021 +- 0.023 (88 of 1,648; flat).
+  So the new readings gain +0.024 (declarer) and +0.016 (defenders) per decision on doubled boards.
 
 ## Summary
 | change | file | held-out measurement |
 |---|---|---|
 | botLead NT weights LEAD_WB.N | js/leads.js:150 | 2 x 30k fresh boards: +0.015 +- 0.005 DD, +0.027 +- 0.007 played out IMPs/board (review reproduced +0.027 DD, +0.021 played out) |
-| no trump minimum from a defender's double of the final suit contract (DD_XPEN 0) | js/ddplay.js:96-112 | doubled boards p16xa: decl +0.015 +- 0.006, def +0.012 +- 0.004 IMPs/decision; confirmed p16xb (old vs new): decl -0.014 +- 0.005, def -0.017 +- 0.005, lead -0.037 +- 0.019 |
-| no HCP minimum from that double either (DD_XPENH) | js/ddplay.js:114-127 | doubled boards p16xb, on top: decl +0.016 +- 0.005, def +0.015 +- 0.005 |
+| no trump minimum from a defender's double of the final suit contract (DD_XPEN 0) | js/ddplay.js ddXpenLimit | doubled boards p16xa: decl +0.015 +- 0.006, def +0.012 +- 0.004 IMPs/decision; confirmed p16xb (old vs new): decl -0.014 +- 0.005, def -0.017 +- 0.005, lead -0.037 +- 0.019 |
+| no HCP minimum from that double either (DD_XPENH) | js/ddplay.js | doubled boards p16xb, on top: decl +0.016 +- 0.005, def +0.015 +- 0.005 |
+| review fix: both only for 'xpen' doubles, earlier trump length kept | js/ddplay.js ddFinalPenX | whole package vs old, fresh p16xd: decl +0.024 +- 0.007, def +0.016 +- 0.006, lead -0.021 +- 0.023 (flat) |
 
 ## 1. botLead notrump refit (shipped)
 - Who: botLead is the lead of strangers-mode online robots (src/worker.js plays botPlay/botLead), Beginner robots and
