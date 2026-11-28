@@ -1801,7 +1801,7 @@ function natural(ctx, h, reserved) {
     if (strain === 'N' && totLo >= 33 - SD() && ok('6N')) return '6N';
     if (strain === 'N' && ok('4N') && cheapS <= 4 && P.nt) return '4N';
     const c6 = (target === 7 && totLo >= 37 ? 7 : 6) + strain;
-    if (ok(c6) && (totLo >= 32 - SD() || fitLen >= 9)) return c6;
+    if (ok(c6) && (totLo >= 32 - SD() || fitLen >= 9) && !(strain !== 'N' && openSuits(ctx, h, strain) > 0 && !BID_OFF('szo2k'))) return c6; // szo2k: with an open side suit only via key cards
     target = gl;
   }
   if (ours) {
