@@ -1,7 +1,28 @@
 # Round 16 bidding16: slam routes and "no upper limit" leaks (shipped)
 
 ## Resume here
-- Status 11:55 HKT: DONE. All changes committed on branch r16-bidding16; numbers below are final.
+- Status 12:40 HKT: DONE after the review fix pass (REVIEW-r16-bidding16.md in the main folder). Final numbers are in
+  "Review fix pass" below; the earlier sections describe the first version (some switches since dropped).
+
+## Review fix pass (final state)
+Review finding: partnering humans lost on fresh seeds rv16a-e (bidhuman -131): light human openers and human jump shifts met
+direct slam calls. Per-switch bidhuman on rv16a-e: szo2 -76, six6 -22, szo -18, r6n -16, others 0.
+- Dropped r6n and six6 (direct 6-level calls opposite a possibly light opener) and six4 (can never fire for a robot).
+- szo/szo2 threshold 33 -> 34 slam points.
+- szo2k (new, on): in natural(), a slam with an open side suit goes only through key cards (4NT); no direct 6-level call.
+- j3n: opener needs the other two suits stopped (switch j3ns; held out -28, kept for safety with a human 3NT).
+- nxj cue bid now has the text "Cue bid: 19+ points, game forcing" (tag cue19), like the app's other cue bids.
+- Tried: szFloor (slam points with partner at the bottom of his range) did not separate light human openers: dropped.
+  judgeX HCP floor for penalty doubles (coordinator's request; NT 7, suit 4, switch xfl): tuning +6, held out h16a-l -198
+  (double-dummy scoring rewards those low-HCP doubles): not shipped. If the play-based measure disagrees, it is a one-line
+  guard after the pxl check in judgeX (js/bidding.js, function judgeX).
+Final numbers (bidddsim vs basebid16, 4000 boards a set):
+- Robots: f16a-h +577, +0.0180 ± 0.0032 a board; rv16a-e (reviewer's fresh sets) +317, +0.0158 ± 0.0041; h16a-l +764,
+  +0.0159 ± 0.0026. Together +1658 / 100,000 boards = **+0.0166 ± 0.0018 a board** (first version: +0.024; the human fix cost ~30%).
+- bidhuman: rv16a-e +6 (2, -7, 22, -11, 0), with --human=base +17; t16a-d + h16a-d +61. Was -131 on rv16a-e.
+- npm test passes; sim.js errors 0, long 0.
+- Open (review 3): responder's 6NT answer reads any 1m-1y-3NT as j3n; a human's balanced 3NT measured +596/80k for the new
+  partner in the review, so it was left.
 
 ## What and why
 Missed slams were the biggest bidding loss. Many came from table entries whose condition had no upper point limit, so a much
