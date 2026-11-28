@@ -1476,10 +1476,17 @@ function startPractice(fresh) {
 }
 $('practiceBtn').addEventListener('click', () => startPractice(false));
 $('practiceNew').addEventListener('click', () => typeof PracticeModes !== 'undefined' ? PracticeModes.show() : startPractice(true)); /* feature: minibridge */
+const API_TIMEOUT_MS = 15000;
 async function api(path, body) {
-  const r = await fetch(API_BASE + path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
-  if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; try { e.serverMsg = (await r.json()).error; } catch (_) {} throw e; } /* the server's own message (e.g. the hourly table limit) reaches the toast */
-  return r.json();
+  const o = body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {};
+  // a server that never answers mustn't leave the button disabled (AbortController, not AbortSignal.timeout: Safari 15)
+  const ac = typeof AbortController === 'function' ? new AbortController() : null, timer = ac && setTimeout(() => ac.abort(), API_TIMEOUT_MS);
+  if (ac) o.signal = ac.signal;
+  try {
+    const r = await fetch(API_BASE + path, o);
+    if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; try { e.serverMsg = (await r.json()).error; } catch (_) {} throw e; } /* the server's own message (e.g. the hourly table limit) reaches the toast */
+    return await r.json();
+  } finally { clearTimeout(timer); }
 }
 $('createBtn').addEventListener('click', async () => {
   if (!needName()) return;
@@ -1487,7 +1494,7 @@ $('createBtn').addEventListener('click', async () => {
   try {
     const r = await api('/api/tables', { secret: me.secret, name: me.name, tableName: $('tableName').value.trim(), priv: $('privateChk').checked, match: $('matchChk').checked });
     openOnline(r.code);
-  } catch (e) { toast(e.status === 429 && e.serverMsg ? e.serverMsg : 'Could not open the table. Check your connection and try again.'); }
+  } catch (e) { toast(e.serverMsg ? e.serverMsg : 'Could not open the table. Check your connection and try again.'); }
   finally { btn.disabled = false; }
 });
 $('joinCodeBtn').addEventListener('click', () => {

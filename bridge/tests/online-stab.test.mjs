@@ -268,7 +268,10 @@ if (run('flood')) {
 
 // ---------- 7. the 20-new-tables-an-hour limit per address
 if (run('limit')) {
-  const ip = `198.51.100.${1 + Math.floor(Math.random() * 250)}`, hdr = { 'cf-connecting-ip': ip };
+  // a fresh address each run (an IPv6 /64 out of 2^32 in the documentation range): with 250 IPv4 addresses, two runs
+  // within the hour on the same server drew the same one about once in 250 pairs and found its 20 tables used up
+  const fresh = () => `2001:db8:${(Math.random() * 65536 | 0).toString(16)}:${(Math.random() * 65536 | 0).toString(16)}::1`;
+  const ip = fresh(), hdr = { 'cf-connecting-ip': ip };
   const body = { secret: sec('rapid'), name: 'Rapid', priv: true };
   const ok = [], slow = [];
   for (let i = 0; i < 20; i++) { const t0 = Date.now(); const r = await post(body, hdr); ok.push(r.status); slow.push(Date.now() - t0); await r.text(); }
@@ -281,7 +284,7 @@ if (run('limit')) {
   const r2 = await post({ name: 'x' }, { 'cf-connecting-ip': '198.51.100.251' }); await r2.text();
   check(r2.status === 400, 'a bad request is refused before the hourly count');
   // many at once from a fresh address: exactly 20 get through (no lost count)
-  const ip2 = { 'cf-connecting-ip': `203.0.113.${1 + Math.floor(Math.random() * 250)}` };
+  const ip2 = { 'cf-connecting-ip': fresh() };
   const rs = await Promise.all(Array.from({ length: 30 }, () => post(body, ip2).then(async r => { await r.text(); return r.status; })));
   check(rs.filter(s => s === 200).length === 20 && rs.filter(s => s === 429).length === 10, `30 at once from one address: ${rs.filter(s => s === 200).length} open, ${rs.filter(s => s === 429).length} refused (want 20/10)`);
 }

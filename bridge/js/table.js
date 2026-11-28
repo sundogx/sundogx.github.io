@@ -45,6 +45,7 @@ function fixHost(t) {
 
 // rec (optional): a finished board (from t.history) to deal again, with its dealer and vulnerability
 // ("play this deal again", online tables; never in a team match, whose deals are fixed by the seed).
+const LOCAL_HISTORY = 200;
 function startBoard(t, rec) {
   t.board += 1;
   t.dealer = rec ? rec.dealer : boardDealer(t.board);
@@ -71,6 +72,12 @@ function finishBoard(t, declTricks) {
   }));
   if (t.local) { try { const o = simulateBoard(t.hands, t.dealer, t.vul); rec.other = { auction: o.auction, contract: o.contract, declTricks: o.declTricks, scoreNS: o.scoreNS }; } catch (e) { console.error(e); } }
   t.history.push(rec);
+  // a practice table keeps its last LOCAL_HISTORY boards in memory (60 are saved); a long session grew it without end.
+  // Online tables keep the whole record (the server's copy, team matches). The page's open hand record is an index into it.
+  if (t.local && t.history.length > LOCAL_HISTORY) {
+    const n = t.history.length - LOCAL_HISTORY; t.history.splice(0, n);
+    if (typeof openRecord === 'number' && typeof T !== 'undefined' && t === T) openRecord = openRecord >= n ? openRecord - n : null;
+  }
   t.phase = 'done'; t.claim = null;
   sysMsg(t, `Board ${t.board}: ${c ? contractText(c) + ' ' + resultText(c, declTricks) : 'passed out'}, N-S ${sc >= 0 ? '+' : ''}${sc}`);
   t.chat[t.chat.length - 1].res = t.board; // the result line (a team match holds it back from onlookers until both rooms have played the board)

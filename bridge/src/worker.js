@@ -103,10 +103,10 @@ const handle = async (req, env) => {
 
     if (path === '/api/tables' && req.method === 'POST') {
       const body = await readJson(req);
-      if (!body || typeof body !== 'object') return json({ error: 'bad request' }, 400);
+      if (!body || typeof body !== 'object') return json({ error: 'Could not open the table: the request was not understood. Reload the page and try again.' }, 400);
       const secret = String(body.secret || '');
       const name = cleanName(body.name);
-      if (secret.length < 16 || !name) return json({ error: 'name required' }, 400); // checked first: a bad request doesn't use up the hourly allowance
+      if (secret.length < 16 || !name) return json({ error: 'Enter your name first, then open the table.' }, 400); // checked first: a bad request doesn't use up the hourly allowance
       const ip = req.headers.get('cf-connecting-ip') || 'local';
       const wait = await lobbyStub(env).allowCreate(ipGroup(ip)); // seconds until another table may be opened (0: now)
       if (wait) {
@@ -143,7 +143,7 @@ const handle = async (req, env) => {
         open.seats.S = { kind: 'human', id: uid, name };
         G.sysMsg(open, `${name} opened the match. The Closed room code is ${closed.id}.`);
         G.sysMsg(closed, `Match opened by ${name}. The Open room code is ${open.id}.`);
-        const clash = () => json({ error: 'code clash, try again' }, 503);
+        const clash = () => json({ error: 'Could not open the table (its code was taken). Please try again.' }, 503);
         if (!(await tableStub(env, closed.id).init(closed))) return clash();
         if (!(await tableStub(env, open.id).init(open))) { // don't leave the Closed room open on its own
           await tableStub(env, closed.id).closeBy(uid).catch(e => console.error(e));
@@ -159,7 +159,7 @@ const handle = async (req, env) => {
         t.seats.S = { kind: 'human', id: uid, name };
         G.sysMsg(t, `${name} opened the table`);
         return t;
-      }); } catch (e) { console.error(e); return json({ error: 'could not open a table, try again' }, 503); }
+      }); } catch (e) { console.error(e); return json({ error: 'Could not open the table. Please try again.' }, 503); }
       return json({ code: t.id });
     }
 
