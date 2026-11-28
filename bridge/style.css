@@ -553,6 +553,11 @@ table.daily-lb tr.you td { font-weight: 600; }
 #drills .dr-tricks li { margin: 1px 0; white-space: nowrap; }
 #drills .dr-win { font-weight: 700; }
 #drills .bp-res .red, #drills .dr-tricks .red { color: #d32f2f; }
+#drills .dr-bbox { max-width: 520px; margin: 0 0 8px; } #drills .dr-bbox .bbox { margin: 0; }
+#drills .dr-bcmp td:nth-child(3) { font-weight: 400; white-space: normal; min-width: 8em; } #drills .dr-bcmp td:nth-child(4) { white-space: nowrap; }
+#drills .dr-auc .agrid { margin-bottom: 4px; } #drills .bp-hand .red { color: #d32f2f; }
+.leaktab .leakdr { border-color: var(--brass); }
+@media (max-width: 640px) { #drills .dr-bcmp { font-size: 13px; } #drills .dr-bcmp th, #drills .dr-bcmp td { padding-right: 6px; } }
 @media (max-width: 640px) { #drills .topbar { flex-wrap: wrap; } #drills { padding: 8px; } #drills .diagram { column-gap: 4px; } #drills .diagram .rows { font-size: 15px; padding: 2px 3px; } }
 @media (max-width: 560px) { #drLeave { margin-left: auto; } }
 @media (max-width: 760px) { #drills #drScore { display: block; order: 1; flex-basis: 100%; line-height: 1.4; min-height: 1.4em; } } /* the score line gets its own row, kept while empty, so it does not move the problem when it appears (as stab3 does for lead practice) */
