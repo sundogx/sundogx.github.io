@@ -74,6 +74,11 @@ h1, h2, h3 { font-family: var(--serif); font-weight: 600; margin: 0; }
 
 /* ---------- lobby ---------- */
 #home { max-width: 760px; margin: 0 auto; padding: 28px 18px 60px; }
+/* stab3: the home screen under the title stays hidden until js/ux.js (the last script) has put in the saved labels
+   (Continue practice, Daily deals board n of 4). Painted with the default labels first, the longer daily label then wrapped
+   the mode buttons onto a third row and moved everything below 46 px (layout shift 0.075 on reload). Shown after 3 s anyway. */
+html:not(.home-ready) #home > :not(.mast) { visibility: hidden; animation: home-show 0s 3s forwards; }
+@keyframes home-show { to { visibility: visible; } }
 .mast { display: flex; align-items: baseline; gap: 14px; margin-bottom: 22px; }
 .mast h1 { font-size: 34px; letter-spacing: -.01em; }
 .mast .suits { font-family: var(--serif); font-size: 26px; letter-spacing: 4px; }
@@ -375,6 +380,13 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 .alertrow label.row { flex-wrap: nowrap; flex: none; }
 .topbar .more { display: contents; }
 #moreBtn, #sideBtn, .sidehead, #dailyLeave { display: none; }
+/* stab3: on a wide screen the table's buttons that come and go (Last trick, Undo, Claim; Skip deal at a practice table)
+   keep their place while hidden, so the top bar doesn't change between one and two rows during a board. At 1280 px it
+   wrapped when Last trick or Undo showed and unwrapped when they went, moving the whole table 37 px (layout shift up to
+   0.58). Phones and phones held sideways put these in More (below), so it isn't needed there. */
+@media (min-width: 561px) and (not ((orientation: landscape) and (max-height: 520px))) {
+  .topbar :is(#lastTrickBtn, #undoBtn, #claimBtn).hidden, .topbar:has(#ltMoreBtn:not(.hidden)) #skipBtn.hidden { display: inline-block !important; visibility: hidden; }
+}
 @media (max-width: 560px) { #dailyLeave:not(.hidden) { display: inline-block; order: 1; } } /* ux3: after More, at the right end */
 @media (max-width: 560px) {
   .topbar { gap: 5px; }
