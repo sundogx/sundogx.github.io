@@ -18,7 +18,9 @@ const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 let offline = false;
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split(/[?#]/)[0]);
-  if (offline) { req.socket.destroy(); return; } // like a dropped network (Chrome's offline emulation doesn't reach workers)
+  // offline 'all': every request dropped (Chrome's offline emulation doesn't reach workers); 'imports': the workers' own
+  // scripts load (as from the browser cache) but what they import doesn't, so importScripts throws inside them
+  if (offline && !(offline === 'imports' && /(dds-worker|ben-worker)\.js$/.test(p))) { req.socket.destroy(); return; }
   if (p === '/config.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); return res.end("window.BRIDGE_API = '';"); }
   if (p.endsWith('/')) p += 'index.html';
   const f = path.join(ROOT, p);
@@ -32,10 +34,12 @@ let fails = 0; const check = (ok, m) => { console.log((ok ? 'ok   ' : 'FAIL ') +
 
 async function newPage() {
   const ctx = await browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1280, height: 800 }, hasTouch: phone, isMobile: phone, serviceWorkers: 'block' });
+  await ctx.addInitScript(() => { addEventListener('error', e => console.error('window error event: ' + (e.message || e.type) + ' @' + String(e.filename || '').slice(0, 60))); const W = window.Worker; window.__workers = 0; window.Worker = class extends W { constructor(...a) { super(...a); window.__workers++; } }; });
   const page = await ctx.newPage(); page.errs = [];
   page.on('pageerror', e => page.errs.push(String(e.stack || e).split('\n').slice(0, 2).join(' ')));
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|net::ERR/.test(m.text())) page.errs.push('console: ' + m.text()); });
   page.on('worker', w => w.on('console', m => { if (m.type() === 'error') page.errs.push('worker console: ' + m.text()); }));
+  { const cdp = await ctx.newCDPSession(page); await cdp.send('Log.enable'); cdp.on('Log.entryAdded', e => { if (e.entry.source === 'worker' && e.entry.level === 'error') page.errs.push('worker: ' + e.entry.text.slice(0, 160)); }); }
   await page.goto(BASE); await sleep(600);
   page.tapIt = async (sel, opts = {}) => phone ? page.tap(sel, { timeout: 5000, ...opts }) : page.click(sel, { timeout: 5000, ...opts });
   return page;
@@ -66,23 +70,25 @@ if (run('api')) {
   await page.context().close();
 }
 
-if (run('offline')) {
+for (const mode of ['all', 'imports']) if (run('offline')) {
   const page = await newPage();
-  offline = true;
+  offline = mode;
   await page.tapIt('#practiceBtn'); await sleep(1500);
-  // play a few boards by passing and playing the first legal card
+  // pass, play the first legal card, look at the last trick and the finished board's record for 25 s
   const t0 = Date.now();
   while (Date.now() - t0 < 25000) {
     const s = await page.evaluate(() => T && { phase: T.phase, turn: turnSeat(T), modal: !!document.querySelector('#modalRoot .modal') });
-    if (s && s.phase === 'done') await page.evaluate(() => doAct('next'));
-    else if (s && s.turn === 'S' && !s.modal) {
+    if (s && s.phase === 'done') { await page.evaluate(() => { if (T.history.length) showRecord(T.history.length - 1); }).catch(() => { }); await sleep(800); await page.keyboard.press('Escape'); await page.evaluate(() => doAct('next')); }
+    else if (s && (s.turn === 'S' || s.turn === 'N') && !s.modal) {
       if (s.phase === 'auction') { await page.tapIt('#bidArea [data-call="P"]').catch(() => { }); await sleep(100); await page.tapIt('[data-confirmcall]').catch(() => { }); }
-      else { const c = await page.$('[data-play][data-seat]'); if (c) await c.evaluate(e => e.click()).catch(() => { }); }
+      else { const c = await page.$('[data-play][data-seat]'); const bb = c && await c.boundingBox(); if (bb) await page.mouse.click(bb.x + 6, bb.y + 12).catch(() => { }); }
+      if (s.phase === 'play' && !(await page.$eval('#lastTrickBtn', b => b.disabled))) { await page.click('#lastTrickBtn').catch(() => { }); await sleep(300); await page.keyboard.press('Escape'); }
     }
     await sleep(250);
   }
   offline = false;
-  check(page.errs.length === 0, 'offline first visit: no uncaught errors ' + JSON.stringify(page.errs.slice(0, 5)));
+  const n = await page.evaluate(() => [window.__workers, T.board, T.phase, turnSeat(T), T.auction.length, T.play.tricks.length, T.play.tricks.flatMap(t => t.cards).length]); console.log('     ' + JSON.stringify(n));
+  check(page.errs.length === 0, `offline (${mode}) first visit, no service worker: ${n[0]} workers tried, ${n[1]} boards, no uncaught errors ` + JSON.stringify(page.errs.slice(0, 5)));
   await page.context().close();
 }
 
