@@ -113,3 +113,4 @@ self.addEventListener('fetch', e => {
     return res;
   })().catch(() => Response.error()));
 });
+CORE.push('js/min/drills.js'); // feature: drills (its own line, so CORE above merges cleanly)

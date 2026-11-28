@@ -87,7 +87,7 @@ Leaks.sectionHTML = function (rs) {
     return shown.map(([r, im]) => `<button class="lnk" data-histrec="${esc(r.id)}" title="${esc(new Date(r.date).toLocaleDateString())}">${r.h.board} <span class="note">−${im}</span></button>`).join(' ') + (top.length > shown.length ? ` <span class="note">and ${top.length - shown.length} more</span>` : '');
   };
   const rows = Leaks.CATS.filter(([k]) => sum[k].imps > 0).sort((a, b) => sum[b[0]].imps - sum[a[0]].imps)
-    .map(([k, label]) => `<tr><th scope="row">${label}</th><td class="num">−${sum[k].imps}</td><td>${links(sum[k].list)}</td></tr>`).join('');
+    .map(([k, label]) => `<tr><th scope="row">${label}</th><td class="num">−${sum[k].imps}</td><td>${links(sum[k].list)}${leakDrill(k)}</td></tr>`).join('');
   const nSel = `<select data-leakn="1" aria-label="Boards to look at">${[[20, 'Last 20'], [50, 'Last 50'], [100, 'Last 100'], [0, 'All']].map(([v, l]) => `<option value="${v}" ${Leaks.N === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const wait = [noDD ? `${noDD} board${noDD > 1 ? 's' : ''} waiting for double-dummy analysis` : '', noPlay ? `checking the play of ${noPlay} board${noPlay > 1 ? 's' : ''}` : ''].filter(Boolean).join(', ');
   return `<details class="leaks" ${Leaks.openUI ? 'open' : ''}><summary>Where the IMPs went</summary>
@@ -96,6 +96,9 @@ Leaks.sectionHTML = function (rs) {
     ${wait ? `<p class="note">Still ${wait}…</p>` : ''}
     <p class="note">Contracts: your contract played double dummy against par. Play: what the tricks you gave away double dummy cost.</p></details>`;
 };
+
+// "Practise these": opens Your mistakes (js/drills.js) at the matching kind (contracts: your calls that cost IMPs against the robots')
+const leakDrill = k => typeof startDrills !== 'function' ? '' : ` <button class="lnk leakdr" data-drills="1" data-drkind="${{ declarer: 'decl', defence: 'def', lead: 'lead' }[k] || 'bid'}">Practise these</button>`;
 
 // one step of the background work: finish the board being checked, or start the next one
 Leaks.step = function () {
