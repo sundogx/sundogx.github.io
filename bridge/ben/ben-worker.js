@@ -10,7 +10,7 @@
 // This folder (bridge/ben/) holds BEN-derived code and models under GPL-3.0 (github.com/lorserker/ben,
 // by Lorand Dali and Thorvald Aagaard).
 
-importScripts('../js/wasm/compiled.js', '../js/engine.js', '../js/bidding.js', '../js/leads.js', '../js/bots.js', '../js/ddplay.js', 'ort/ort.wasm.min.js', 'ben-core.js');
+importScripts('../js/wasm/compiled.js', '../js/min/engine.js', '../js/min/bidding.js', '../js/min/leads.js', '../js/min/bots.js', '../js/min/ddplay.js', 'ort/ort.wasm.min.js', 'ben-core.js');
 
 // The models are kept with the Cache API under a name of their own, so they download once and survive app updates
 // (sw.js deletes only its own 'bridge-' caches and doesn't touch ben/models/). Bump the name to replace the models.

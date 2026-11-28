@@ -99,6 +99,7 @@ self.onmessage = async e => {
   } catch (err) { self.postMessage({ key: m.key, error: String(err && err.message || err) }); }
 };`;
     const w = Learn.w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    w.addEventListener('error', e => e.preventDefault()); /* feature: stab3 */
     if (typeof ddGiveWasm === 'function') ddGiveWasm(w);
     w.onmessage = e => {
       const m = e.data, j = Learn.cur; Learn.cur = null;

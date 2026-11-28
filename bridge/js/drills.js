@@ -17,7 +17,7 @@ const DR = {
   GAP: [0, 864e5, 3 * 864e5, 7 * 864e5], // wait before a problem comes back, by box
   LEARNED: 3, // right this many times in a row (box 3): learned
   KINDS: [['all', 'All mistakes'], ['decl', 'Declarer play'], ['def', 'Defence'], ['lead', 'Opening leads'], ['bid', 'Bidding']],
-  BV: 1, // version of the bidding check (s.bscanned)
+  BV: 2, // version of the bidding check (s.bscanned)
   on: false, kind: 'all', cur: null, pick: null, sol: null, solErr: false, anyway: false,
   scanRec: null, timer: 0, w: null, url: null, idle: 0, n: 0, wait: new Map(), noSolver: false, done: 0,
 };

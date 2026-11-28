@@ -45,6 +45,7 @@ function ddGiveWasm(w) {
 }
 function ddNewWorker() {
   const w = new Worker('js/dds-worker.js');
+  w.addEventListener('error', e => e.preventDefault()); // handled by each pool's onerror, not an uncaught page error /* feature: stab3 */
   ddGiveWasm(w);
   return w;
 }
@@ -170,6 +171,7 @@ self.onmessage = async e => {
 };`;
   const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
   const w = PlayDD.w = new Worker(url);
+  w.addEventListener('error', e => e.preventDefault()); /* feature: stab3 */
   ddGiveWasm(w);
   w.onmessage = e => {
     const m = e.data, en = PlayDD.cache.get(m.k), j = PlayDD.cur; PlayDD.cur = null;
