@@ -1,9 +1,9 @@
 # r16-stab3: UI and online stability (branch r16-stab3)
 
 ## Resume here
-- State: fixes 1-6 below are done and committed. Still to do: final soaks (phone + desktop) with zero console errors; rerun online-net (one stall seen while 6 soaks ran at once).
+- State: all fixes below committed; online tests done. Last step: final soaks (phone + desktop) and handback.
 - Playwright: `NODE_PATH=/private/tmp/claude-501/-Users-admin/c95d256f-4c77-4778-9fcf-01deefc13883/scratchpad/pw/node_modules` (playwright-core installed there). `bridge/node_modules` is an untracked symlink to the main checkout's; don't commit it.
-- Server: `npx wrangler dev --port 8977 --var TEST_TIME_SCALE:0.0167 --var TEST_STALE_MS:3000`, then `BRIDGE_URL=http://localhost:8977 STALE_MS=3000 node tests/online*.test.mjs`.
+- Server: `npx wrangler dev --port 8979 --inspector-port 9311 --var TEST_TIME_SCALE:0.0167 --var TEST_STALE_MS:3000` (give each wrangler its own --inspector-port, or a second one fails with "Address already in use"), then `BRIDGE_URL=http://localhost:8979 STALE_MS=3000 node tests/online*.test.mjs`.
 
 ## New test: `bridge/tests/ui-stab.pw.mjs`
 `NODE_PATH=<dir>/node_modules node tests/ui-stab.pw.mjs [--vp=phone|desktop] [--only=api,offline,history]`
@@ -64,6 +64,12 @@
   is the input's own change painted late at CPU x4 (`exRender`), not a stray shift. Perf, not layout.
 - Home fix residual: if the scripts take more than 3 s to load, the home screen shows with the default labels and can still shift once.
 - Hint (when on in Options) still toggles its button each turn and can wrap the desktop top bar; not reserved, as most people have hints off.
+
+## Online checks (branch server with the test vars)
+online all passed, online-multi all passed, online-adv all passed, online-stab all passed (incl. limit x3 more).
+online-net: 2c "the robot doesn't wait for an answer from a tab that went silent" is flaky on main too: fresh servers, branch 3/3 passed,
+main 1st run FAIL (0 tries); on a long-running branch server that had already run all suites, 2b/2c failed 3 of 5. My server change is
+only the three error strings, so this is not from the branch. Open: make 2c robust (it depends on which tab is asked and when).
 
 ## Checks
 `node build.mjs && npm test` all ok; `node tests/sim.js | tail -1` errors 0, long 0.
