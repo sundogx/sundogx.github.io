@@ -1649,7 +1649,7 @@ function slamZone(ctx, h, tr) { // worth a slam try: values, and no side suit wh
   if (BID_OFF('slamzone')) return false;
   const v = slamVal(ctx, h, tr);
   if (tr === 'N') return v.pts >= (BID_K('nts') ?? 31);
-  return slamValues(ctx, h, tr) && openSuits(ctx, h, tr) === 0;
+  return slamValues(ctx, h, tr) && (openSuits(ctx, h, tr) === 0 || (!BID_OFF('szo') && v.pts >= (BID_K('szo') ?? 33)));
 }
 function slamValues(ctx, h, tr) { const v = slamVal(ctx, h, tr); return v.pts >= SLAM_PTS + 2 || (v.pts >= SLAM_PTS && v.tricks >= SLAM_TR); }
 
