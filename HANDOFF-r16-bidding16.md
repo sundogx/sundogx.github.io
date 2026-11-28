@@ -1,9 +1,9 @@
 # Round 16 bidding16: slam routes and "no upper limit" leaks (shipped)
 
 ## Resume here
-- Status 11:55 HKT: all changes committed on r16-bidding16; final confirmation on fresh sets f16a-h is running/pending
-  (bidddsim 4000 f16x --base=basebid16; scratchpad r16/run.sh). If those numbers are missing below, rerun them and fill in.
-- Next: fill in the f16 line; npm test + sim.js; commit.
+- Status 11:40 HKT: code final unless a check fails (switches below + nxj4, r3n). Running: per-switch off-one on h16a-l
+  (scratchpad r16/ho-off2.txt), bidhuman t16a-d/h16a-d (r16/human.txt), solving f16e-h (f16a-d done: +504/16,000).
+- Next: 1) fill the numbers below from those files; 2) bidddsim f16e-h; 3) npm test + sim.js, build, commit.
 
 ## What and why
 Missed slams were the biggest bidding loss. Many came from table entries whose condition had no upper point limit, so a much
