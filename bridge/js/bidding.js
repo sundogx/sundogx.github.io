@@ -519,6 +519,8 @@ function reb1m(ctx) { // opener after 1m - response
     if (ctx.ok('1' + s)) continue; // could have been bid at the one level
     T.push(T_('2' + s, h => h.L[s] >= 4 && h.L[t] > h.L[s] && h.H >= 16, MM(16, 21, { mn: { [s]: 4, [t]: 5 }, f: 1, t: 'reverse', a: 'Reverse: 16+ points, forcing one round' })));
   }
+  if (MAJ(t) && !BID_OFF('j4m')) T.push(T_('4' + t, h => h.L[t] >= 6 && h.H >= (BID_K('j4m') ?? 19), MM(BID_K('j4m') ?? 19, 21, { mn: { [t]: 6 } }))); // too strong for the 3M invitation
+  if (MIN(t) && !BID_OFF('j3n')) T.push(T_('3N', h => h.L[t] >= 6 && hon(h, t, 'AKQ') >= 2 && h.H >= (BID_K('j3n') ?? 19), MM(BID_K('j3n') ?? 19, 21, { mn: { [t]: 6 }, t: 'j3n' }))); // a long minor, too strong for the 3m invitation
   T.push(T_('3' + t, h => h.L[t] >= 6 && h.H >= 15, MM(15, 18, { mn: { [t]: 6 }, inv: true })));
   for (const s of ['C', 'D']) if (s !== t && s !== r && bidValue('2' + s) < bidValue('2' + t)) T.push(T_('2' + s, h => h.L[s] >= 4, MM(11, 18, { mn: { [s]: 4 } })));
   T.push(T_('3' + r, h => MIN(r) && h.L[r] >= 4 && h.H >= 15, MM(15, 18, { mn: { [r]: 4 }, agree: r, inv: true })));
@@ -561,6 +563,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   if (c2 === '3' + r && MAJ(r)) return [T_('4N', h => supPts(h, r) + 16 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(17, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('4' + r, h => supPts(h, r) >= 8, MM(8, 16)), T_('P', () => true, MM(6, 7))];
   if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
   if (c2 === '2N') { // 18-19 balanced
+    if (MAJ(r) && !BID_OFF('six2n')) T.push(T_('6' + r, h => h.L[r] >= 6 && h.H >= (BID_K('six2n') ?? 13), MM(BID_K('six2n') ?? 13, 37, { mn: { [r]: 6 } }))); // slam values opposite 18-19 (4M had no upper limit)
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6, MM(6, 12, { mn: { [r]: 6 } })), T_('3' + r, h => h.L[r] >= 5 && !h.bal, MM(6, 37, { mn: { [r]: 5 }, f: 1 })));
     if (r === 'H') T.push(T_('3S', h => h.L.S >= 4 && h.H <= 14, MM(6, 37, { mn: { S: 4 }, f: 1, a: '4 spades (opener may have 4 too)' })));
     T.push(T_('6N', h => h.H >= 15, MM(15, 37)), T_('4N', h => h.H >= 13, MM(13, 14, { t: 'quant', a: 'Quantitative: invites 6NT' })), T_('3N', () => true, MM(6, 12)));
@@ -576,6 +579,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     T.push(T_('P', () => true, MM(6, 9)));
     return T;
   }
+  if (c2 === '3N' && om.tag === 'j3n') return [T_('6N', h => h.H >= (BID_K('j3n6') ?? 11), MM(BID_K('j3n6') ?? 11, 37)), ...(MAJ(r) ? [T_('4' + r, h => h.L[r] >= 6 && h.H >= 8, MM(8, 10, { mn: { [r]: 6 } }))] : []), T_('P', () => true, MM(6, 10))];
   if (om.tag === 'reverse' || om.f === 2 || +c2[0] >= 3 && om.lo >= 18) return null; // forcing: natural bidding (it cannot pass)
   const f4 = fourth(ctx);
   // a new suit (or 1S over 1H): raise it, show values, or fourth suit forcing
