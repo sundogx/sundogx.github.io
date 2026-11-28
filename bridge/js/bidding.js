@@ -1151,6 +1151,11 @@ function afterNegX(ctx) { // opener after 1x (overcall) X (pass)
   const nt = ctx.cheap('N');
   if (nt <= 2) T.push(T_(nt + 'N', h => h.semi && stopper(h, os) && (nt === 1 ? h.H <= 14 : h.H >= 15 && h.H <= 17), MM(nt === 1 ? 11 : 15, nt === 1 ? 14 : 17, { nt: true })));
   if (nt <= 3) T.push(T_('3N', h => h.semi && stopper(h, os) && h.H >= 18, MM(18, 19, { nt: true })));
+  if (!BID_OFF('nxj')) { // extras with a long suit of my own: the cheap rebid had no upper limit
+    const lt = ctx.cheap(t), lc = ctx.cheap(os);
+    if (lc <= 3) T.push(T_(lc + os, h => h.H >= (BID_K('nxc') ?? 19) && !(h.semi && stopper(h, os)), MM(BID_K('nxc') ?? 19, 37, { art: true, f: 2 })));
+    if (lt + 1 <= 3) T.push(T_((lt + 1) + t, h => h.L[t] >= 6 && h.H >= 16, MM(16, 18, { mn: { [t]: 6 }, inv: true })));
+  }
   T.push(T_(ctx.cheap(t) + t, h => h.L[t] >= 6 || h.L[t] >= 5 && shown.every(s => h.L[s] <= 2), MM(11, 15, { mn: { [t]: 5 } })));
   for (const s of SUITS) if (s !== t && s !== os && !shown.includes(s) && ctx.cheap(s) <= 2) T.push(T_(ctx.cheap(s) + s, h => h.L[s] >= 4, MM(11, 17, { mn: { [s]: 4 } })));
   T.push(T_(ctx.cheap(t) + t, () => true, MM(11, 15)));
