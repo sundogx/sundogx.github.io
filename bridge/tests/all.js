@@ -5,7 +5,7 @@ const { spawn } = require('child_process');
 const os = require('os'), path = require('path');
 const TESTS = [
   ['test.js'], ['rubbertest.js'], ['minitest.js', '200'], ['ddtest.js', '200'], ['bidfuzz.js', '1000'], ['describe.js', '500'],
-  ['rulesfuzz.js', '600'], ['sharetest.js'], ['workerbuild.js'], ['sim.js', { last: true }],
+  ['rulesfuzz.js', '600'], ['sharetest.js'], ['dealgentest.js'], ['workerbuild.js'], ['sim.js', { last: true }],
 ];
 // js/min/ (the minified copies the page loads) is committed, and later steps regenerate it, so check it first: a stale copy would ship old code.
 { const c = require('child_process').spawnSync(process.execPath, [path.join(__dirname, '..', 'build.mjs'), '--check'], { cwd: path.join(__dirname, '..'), encoding: 'utf8' });

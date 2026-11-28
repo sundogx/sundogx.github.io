@@ -62,6 +62,7 @@ function pfAuction(hands, dealer, vul) {
 }
 // a deal of the chosen practice deal type (deals.js), quietly (no toast if the filter is slow)
 function pfDeal(t) {
+  if (Prefs.deals === 'gen' && typeof dgFind === 'function') return dgFind(DG.spec, { ms: 30 }).hands || deal(); /* feature: dealgen */
   const f = typeof DEAL_FILTERS !== 'undefined' && DEAL_FILTERS[Prefs.deals];
   if (!f) return deal();
   const end = Date.now() + 30;
