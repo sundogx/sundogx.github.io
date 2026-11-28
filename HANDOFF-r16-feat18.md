@@ -1,7 +1,7 @@
 # Round 16, feat18: bidding problems from your own boards ("Your mistakes", kind Bidding)
 
 ## Resume here
-- Status: working, committed on `r16-feat18` (based on `r16-feat17`). `npm test` passes, sim shows errors 0 and long 0, `node tests/drillbidtest.js` and `node tests/drilltest.js` pass, `tests/drillbid.pw.mjs` passes at 390 and 1280.
+- Status: done, committed on `r16-feat18` (based on `r16-feat17`). `npm test` passes, sim shows errors 0 and long 0, `node tests/drillbidtest.js` and `node tests/drilltest.js` pass, `tests/drillbid.pw.mjs` passes at 390 and 1280.
 - Half done: nothing. README has the Bidding section; feat17's `tests/drills.pw.mjs` still passes (27 checks at each width). Next steps: (1) at merge add `['drilltest.js'], ['drillbidtest.js']` to `TESTS` in `tests/all.js`.
 - Key numbers: checking one board's calls takes about 1.2 ms (node, 1,000 boards with real DD tables). With a human-like slip on about half the boards, 531 problems came from 1,000 boards.
 
@@ -23,5 +23,12 @@
 - `node tests/drillbidtest.js [boards] [--cache=$TMPDIR/bridge-dd-<seed>.json]`: robot-bid boards with human-like slips in one seat. It checks that a problem comes only from your calls that differ from the robots' call, recomputes each loss, checks that your call also loses with the robots bidding on, that boards bid as the robots make no problem, the DD packing, and the queue weight. 300 boards with a made-up DD table: 174 problems. 1,000 boards with real DD tables (cache h16a): 531 problems, all checks ok.
 - `NODE_PATH=<dir with playwright-core> node tests/drillbid.pw.mjs --shots=../screenshots/r16-feat18`: real Chrome at 390x844 and 1280x800, 25 checks each, all ok. It seeds 16 boards with a South slip, opens History, waits for "Practise these" (Bidding), and checks the problem (hand, "?", meanings, legal calls, explain pop-up). It answers with the table's call (wrong, graded, the robots' call explained) and with the robots' call (right, box 1). It also checks the full scan (16 boards, 8 problems), Hand record, Escape, no sideways scroll and no page errors.
 
+## Decided against
+- Judging a call only against the contract reached at the table. That blamed you for a partner's later slip, so the robots also bid on after your call, and both tests must show a loss.
+- Using the real table result rather than double dummy. Card play would then mix into a bidding problem, so every contract is scored double dummy, the same way bidding practice and the leak finder do it.
+- "Play on from here" for bidding problems. PlayFrom starts at a card, not at a call, so only Next and Hand record are shown.
+
 ## Open findings
+- "Practise these" on a contract row (loss against par) opens Bidding problems (loss against the robots' call). These are not always the same boards. For example, when the robots would have bid the same contract, that board has no bidding problem, and the screen may say "No mistakes of this kind".
+- Problems store the robots' call from the time of the check. If js/bidding.js changes (r16-bidding16), old problems keep the old answer. Bump `DR.BV` to check boards again (the stored problems stay, by key).
 - `tests/all.js` runs neither `drilltest.js` (feat17) nor `drillbidtest.js`.
