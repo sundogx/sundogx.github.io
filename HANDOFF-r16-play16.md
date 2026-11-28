@@ -23,4 +23,19 @@
 - Pre-registered rule NimpA (NT only, IMP target, lambda 300, trained on all p16a), held out on p16b:
   DD +0.0180 +- 0.0066 IMPs/board (2,756 of 29,830 leads changed; NT +0.059 +- 0.022), played out +0.0293 +- 0.0101.
   By slice (NT): game +0.042, part +0.060, doubled games +0.43 +- 0.18, doubled partials -0.22 +- 0.18 (n 272).
+- Second held-out set p16c (29,804 boards): DD +0.0120 +- 0.0068, played out +0.0255 +- 0.0098 (2,772 leads changed).
+  Pooled p16b+p16c: DD +0.015 +- 0.0047, played out +0.027 +- 0.007 IMPs/board.
+- Not shipped: NmoreA (10 extra NT suit features: intermediates, AQ/KJ tenaces, length without honour, length x weak/strong
+  hand, good long suit, partner's suit short, their suit long, Qxx/Jxx; ridge 100, tricks) refit on p16a+b, vs shipped on
+  p16c: +0.017 +- 0.015 vs NT (it led +0.080 vs +0.059 on p16b). A refit of the shipped rule on a+b: +0.015 +- 0.009 vs NT.
+  Doubled suit contracts with their own refit (SX*): +0.004 +- 0.005. Within-suit card (leadCardOf) vs other cards of the
+  same suit, DD on p16a: no holding with 300+ cases where another card beats the conventional one by > 0.08 IMPs.
 - Cost: botLead 0.19 ms (same code path, other weights).
+
+## Finding for bidding.js (not my file): robots double 3NT with 0-5 HCP
+- js/bidding.js judgeX ("Penalty: expects to beat 3NT (about 2 down)") doubles notrump contracts with 0-5 HCP: on
+  p16a+b+c (89,438 robot auctions) 555 doubled NT contracts by a 0-5 HCP defender; the contract made 57% of the time and the
+  double cost -1.51 IMPs a board against not doubling (DD, botLead lead), -838 IMPs in all (~-0.009 IMPs/board overall).
+  Examples (doubler's call reproduced by botCall): `P 1D 1N P 2N P 3N X` (N, 3 HCP), `1C P P X P 1N P 3N P P X` (W, 4 HCP),
+  `P 2C 3S X` (E, 2 HCP: "about 3 down"). NT doubles by 6-8 HCP -0.13, 9-11 +0.23, 12+ +0.32 IMPs; suit doubles by
+  0-5 HCP -0.12, 6-8 +1.03, 9+ +1.25..2.03. Script: scratch p16/xw.js, xw2.js (copies in bridge/tests/fixtures/r16-xw*.js).

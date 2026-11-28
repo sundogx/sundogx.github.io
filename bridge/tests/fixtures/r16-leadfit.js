@@ -48,7 +48,7 @@ function feats(p, j, v) {
   if (v.ext.includes('part')) for (const i of v.dblIdx) out.push(p.game === 'part' ? x[i] : 0);
   return out;
 }
-function groupOf(p, v) { return v.split === 'kind' ? p.kind : v.split === 'kg' ? p.kind + p.game : p.kind; }
+function groupOf(p, v) { return v.split === 'sx' ? (p.kind === 'S' && p.dbl ? 'SX' : p.kind) : v.split === 'kind' ? p.kind : v.split === 'kg' ? p.kind + p.game : p.kind; }
 function fit(recs, v) {
   const W = {};
   const groups = {};
@@ -69,7 +69,7 @@ function fit(recs, v) {
   return W;
 }
 function pick(r, v, W) {
-  const p = prep(r), w = v.nOnly && p.kind !== 'N' ? null : W[groupOf(p, v)] || W[p.kind];
+  const p = prep(r), w = (v.nOnly && p.kind !== 'N') || (v.sxOnly && groupOf(p, v) !== 'SX') ? null : W[groupOf(p, v)] || W[p.kind];
   if (!w) return L.botLead(r.hand, r.auction, r.ct, r.leader, r.vul);
   let best = -1e9, bc = null;
   p.cands.forEach((c, j) => { const f = feats(p, j, v); let s = 0; for (let i = 0; i < f.length; i++) s += f[i] * w[i]; if (s > best) { best = s; bc = c; } });
@@ -110,6 +110,9 @@ const V = {
   s0tr1000: { ext: 'none', y: 'tr', lambda: 1000, split: 'kind', to0: 1 },
   s0tr3000: { ext: 'none', y: 'tr', lambda: 3000, split: 'kind', to0: 1 },
   s0imp1000: { ext: 'none', y: 'imp', lambda: 1000, split: 'kind', to0: 4 },
+  SXtr100: { ext: 'none', y: 'tr', lambda: 100, split: 'sx', sxOnly: 1 },
+  SXimp300: { ext: 'none', y: 'imp', lambda: 300, split: 'sx', sxOnly: 1 },
+  SXimp1000: { ext: 'none', y: 'imp', lambda: 1000, split: 'sx', sxOnly: 1 },
   more100: { ext: 'more', y: 'tr', lambda: 100, split: 'kind' },
   moreimp300: { ext: 'more', y: 'imp', lambda: 300, split: 'kind' },
   moreimp100: { ext: 'more', y: 'imp', lambda: 100, split: 'kind' },
