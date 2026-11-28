@@ -341,6 +341,7 @@ function resp1m(ctx) {
   T.push(T_('3N', h => noM(h) && h.H >= 13 && h.H <= 15 && h.semi, MM(13, 15, { bal: true, nt: true, mx: { H: 3, S: 3 } })));
   T.push(T_('1N', h => h.H >= 6 && h.H <= 10, MM(6, 10, { nt: true, mx: { H: 3, S: 3 } })));
   if (t === 'D') T.push(T_('2C', h => !ph && h.H >= 11 && h.L.C >= 3, MM(12, 37, { mn: { C: 4 }, f: 2, a: 'Two over one: game forcing', t: '21' })));
+  if (!BID_OFF('r6n')) T.push(T_('6N', h => noM(h) && h.H >= (BID_K('r6n') ?? 19), MM(BID_K('r6n') ?? 19, 37, { nt: true, mx: { H: 3, S: 3 } }))); // slam values (3NT had no upper limit)
   T.push(T_('3N', h => h.H >= 11, MM(13, 15, { bal: true, nt: true, mx: { H: 3, S: 3 } })));
   T.push(T_('P', () => true, MM(0, 5)));
   return T;
@@ -595,6 +596,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   // opener rebid his suit, or showed a lower suit: natural
   if (!BID_OFF('newsuitf')) for (const x of ['C', 'D', 'H', 'S']) if (x !== t && x !== r && x !== o && x !== f4 && ctx.cheap(x) <= 3 && !(+c2[0] === 1 && MAJ(x) && ctx.cheap(x) === 1)) // a new (third) suit by responder: forcing
     T.push(T_(ctx.cheap(x) + x, h => h.H >= 12 && h.L[x] >= (MAJ(x) ? 4 : 5) && !(h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s))) && !(MAJ(r) && h.L[r] >= 6), MM(12, 37, { mn: { [x]: MAJ(x) ? 4 : 5 }, f: 1, t: 'nsf' })));
+  if (!BID_OFF('sixn')) T.push(T_('6N', h => h.H >= (BID_K('sixn') ?? 19) && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(BID_K('sixn') ?? 19, 37, { nt: true })));
   T.push(T_('3N', h => h.H >= 13 && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(13, 16, { nt: true })));
   T.push(T_('4' + r, h => MAJ(r) && h.L[r] >= 6 && h.H >= 12, MM(12, 16, { mn: { [r]: 6 } })));
   T.push(T_('3' + r, h => h.L[r] >= 6 && h.H >= 10 && h.H <= 12, MM(10, 12, { mn: { [r]: 6 }, inv: true })));
@@ -605,6 +607,8 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   if (ctx.cheap(t) === 2 && o !== t) T.push(T_('2' + t, h => h.L[t] >= 3 && h.L[t] >= h.L[o] && h.H <= 10, MM(6, 10, { mn: { [t]: 3 } })));
   if (ctx.cheap('N') === 1) T.push(T_('1N', h => h.H <= 10 && h.H >= 6, MM(6, 10, { nt: true })));
   T.push(T_('P', h => h.H <= 10, MM(6, 10)));
+  if (!BID_OFF('nsf4')) for (const x of ['C', 'D', 'H', 'S']) if (x !== t && x !== r && x !== o && ctx.cheap(x) <= 3 && !(+c2[0] === 1 && MAJ(x) && ctx.cheap(x) === 1)) // game values and no natural call fits (no 5-card suit, not balanced): a new suit on four cards, forcing
+    T.push(T_(ctx.cheap(x) + x, h => h.H >= 12 && h.L[x] >= 4, MM(12, 37, { mn: { [x]: 4 }, f: 1, t: 'nsf' })));
   return T.length > 1 ? T.concat([{ nat: true }]) : null;
 }
 function nmfAnswer(ctx) {
@@ -892,7 +896,6 @@ function resp2C2(ctx) { // responder after 2C - 2D - suit
   const neg = r === '3C' ? '3D' : '3C';
   if (bidValue(neg) > bidValue(r)) T.push(T_(neg, h => h.H <= 3, MM(0, 3, { art: true, a: 'Second negative: 0-3 points', t: 'neg2' })));
   for (const x of ['S', 'H', 'D']) if (x !== s && ctx.cheap(x) <= 3) T.push(T_(ctx.cheap(x) + x, h => h.L[x] >= 5 && hon(h, x) >= 1 && h.H >= 4, MM(4, 37, { mn: { [x]: 5 } })));
-  if (!BID_OFF('c26')) T.push(T_('6N', h => h.H >= (BID_K('c26') ?? 9) && h.semi && h.L[s] <= (MAJ(s) ? 2 : 3), MM(BID_K('c26') ?? 9, 37, { nt: true }))); // no fit, slam values opposite 22+ (the notrump call had no upper limit)
   T.push(T_(ctx.cheap('N') + 'N', () => true, MM(4, 37, { nt: true })));
   return T;
 }
