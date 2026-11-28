@@ -93,12 +93,16 @@ function ddView(t, seat, opts = {}) {
     known, limits,
   };
   if (!play.tricks.length && typeof leadView === 'function') leadView(view, t, opts); // opening lead: js/leads.js
-  if (opts.xpen != null) ddXpenLimit(view, opts.xpen);
+  const xp = opts.xpen != null ? opts.xpen : DD_XPEN;
+  if (xp >= 0) ddXpenLimit(view, xp);
   return view;
 }
-// opts.xpen (test knob, off): the trump minimum read from a penalty double of the final contract. shown() reads one
-// as 3+ trumps, but the robots' judgement doubles (bidding.js judgeX) count defensive tricks: in robot auctions with
-// an odd bidder, 24% of the doublers held 0-2 trumps (scratch xpen.js, 584 doubled suit contracts).
+// The trump minimum read from a defender's penalty double of the final suit contract (opts.xpen: test knob, -1 = off).
+// shown() reads one as 3+ trumps, but the robots' judgement doubles (bidding.js judgeX) count defensive tricks: in 89,000
+// robot auctions (round 16, seed p16a-c) the doublers held 0/1/2/3/4/5+ trumps 284/1151/1512/1402/1477/419 of 6,245
+// times, so the real hand broke the 3+ limit on 41% of these boards (round 12: 24% with an odd bidder). Round 16 reads
+// no trump minimum from the double (DD_XPEN 0), for the lead and the play: see HANDOFF-r16-play16.md for the measurement.
+const DD_XPEN = 0;
 function ddXpenLimit(view, n) {
   const c = view.contract, st = c.strain; if (!c.doubled || st === 'N') return;
   const x = [...view.auction].reverse().find(a => a.call === 'X');

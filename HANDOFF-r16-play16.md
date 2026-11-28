@@ -1,15 +1,12 @@
 # Round 16: play16 (robot card play: leads.js, bots.js botPlay, ddplay.js)
 
 ## Resume here
-- DONE (committed 4a5d0c2): botLead notrump weights LEAD_WB.N (js/leads.js). Held out (seed p16b, 29,830 boards):
-  +0.018 +- 0.0066 DD IMPs/board overall (+0.059 +- 0.022 vs NT), played out by the heuristic robots +0.029 +- 0.010.
-- Running (11:05 HKT): (a) scratch p16/c.jsonl, seed p16c, third fresh lead set: test NmoreA (10 extra NT features) refit on
-  a+b against shipped LEAD_WB.N (switch only if > 2 SE). (b) `XONLY=1 NEW='{"xpen":0}' node tests/ddacc.js 16000 12 p16xa 2`
-  -> scratch p16/xa.log: drop the trump minimum read from a defender's double of the final suit contract.
-- Finding behind (b): on 60k robot auctions (a+b), defenders who doubled the final suit contract held 0/1/2/3/4/5+ trumps
-  284/1151/1512/1402/1477/419 of 6,245; the samplers' lenMin is 3 on 5,453 of them, so the real hand breaks the limit on
-  41% of those boards (2,569). xpen was flat in r13 (303 leads) and leaned + in ddplay5 (small).
-- Next: if xa positive > 2 SE pooled, set xpen 0 by default in ddView (ddplay.js) and commit; else note it.
+- DONE: (1) botLead NT weights LEAD_WB.N (js/leads.js), held out on two fresh 30k sets: pooled +0.015 +- 0.005 DD,
+  +0.027 +- 0.007 played out IMPs/board. (2) DD_XPEN 0 in js/ddplay.js ddView: no trump minimum from a defender's double
+  of the final suit contract (lead and play samplers). ddacc XONLY seed p16xa (11,300 boards so far, run to 16,000 going
+  into scratch p16/xa.log): declX +0.0175 +- 0.0072, defX +0.0133 +- 0.0053, lead +0.013 +- 0.020 IMPs per decision.
+- Next: put the final xa numbers in section 2; maybe a fresh-seed confirmation (`XONLY=1 NEW='{"xpen":-1}'` now measures
+  old vs new, sign flipped; new seed so the cache can't serve stale choices). Then fix commit trailers, final report.
 
 ## 1. botLead notrump refit (shipped)
 - Who: botLead is the lead of strangers-mode online robots (src/worker.js plays botPlay/botLead), Beginner robots and
@@ -39,3 +36,20 @@
   Examples (doubler's call reproduced by botCall): `P 1D 1N P 2N P 3N X` (N, 3 HCP), `1C P P X P 1N P 3N P P X` (W, 4 HCP),
   `P 2C 3S X` (E, 2 HCP: "about 3 down"). NT doubles by 6-8 HCP -0.13, 9-11 +0.23, 12+ +0.32 IMPs; suit doubles by
   0-5 HCP -0.12, 6-8 +1.03, 9+ +1.25..2.03. Script: scratch p16/xw.js, xw2.js (copies in bridge/tests/fixtures/r16-xw*.js).
+
+## 2. No trump minimum from a defender's penalty double (shipped)
+- js/ddplay.js ddView: DD_XPEN = 0 applies the old test knob ddXpenLimit by default (opts.xpen -1 = off, the old reading).
+  shown() reads the robots' judgement doubles as 3+ trumps; on 89k robot auctions the doubler had 0-2 trumps on 47% of
+  doubled suit contracts (histogram in the ddplay.js comment), so the sampler excluded the real layout on 41% of them.
+- Measured (pre-registered: xpen 0 vs current, fresh seed, ship if > 2 SE): `XONLY=1 NEW='{"xpen":0}' node tests/ddacc.js
+  16000 12 p16xa 2` (only boards whose auction ended doubled; every second card). At 11,300 boards: declarer
+  +0.0175 +- 0.0072 IMPs per decision (741 of 16,441 changed), defenders +0.0133 +- 0.0053 (387 of 13,992), lead
+  +0.013 +- 0.020 (63 of 1,524). Time per decision falls (decl 164 -> 151 ms, def 740 -> 674, lead 3,893 -> 3,538 in Node),
+  as fewer layouts are rejected. Main thread: unchanged (one comparison in ddView).
+- Earlier rounds saw the same sign with too few boards (r12 ddplay5 ODD=1: +0.008..+0.031; r13 lead-only: +0.017 +- 0.017).
+
+## Other limit misreadings (audit, not acted on)
+- Real hands outside ddAuctionLimits (DD_LIMX) on p16a: 5.2% of 119,136 seat readings (scratch p16/viol.js, copy
+  bridge/tests/fixtures/r16-viol.js). Largest groups: defenders who passed throughout over 1S-2S / 2S / 1H-2H with more
+  than the 17 cap (62/53/47 cases), negative doubles (`pd1D op1S meX`) lengths, `op2S op4S meX` trump length. Each is
+  small; most are shown() readings (bidding.js).
