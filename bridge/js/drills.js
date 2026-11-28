@@ -1,0 +1,376 @@
+// ===== Your mistakes: drills from your own boards (feature: drills) =====
+// Every card you played that cost a trick double dummy (as declarer, your cards and dummy's; on defence, yours) on the
+// boards in History becomes a problem: the position just before that card, the hands you could see, the auction and
+// the tricks so far. You pick a card; the position is solved (DDS) for every legal card, and you see the tricks each
+// takes, the best cards and what you played at the table. Problems come back until you get them right three times in
+// a row, with a few days between (a Leitner box: wrong -> box 0, due again this session; right -> next box).
+// Like BBO's Bridge Master or Funbridge's deal review, but the problems are your own mistakes.
+// The mistakes are found with the hand record's play review (js/analysis.js playReview, read-only, one board at a
+// time, only while this screen is open), and the positions are solved by a small worker of its own (the same few lines
+// as the play review's worker). Progress is kept in localStorage (`bridge-dr`). Self-contained: its own screen, built
+// on first use; it adds its buttons to the home page and the table's More menu itself.
+
+const DR = {
+  KEY: 'bridge-dr', V: 1,
+  SCAN: 200, // the newest boards checked
+  MAX: 400, // problems kept
+  GAP: [0, 864e5, 3 * 864e5, 7 * 864e5], // wait before a problem comes back, by box
+  LEARNED: 3, // right this many times in a row (box 3): learned
+  KINDS: [['all', 'All mistakes'], ['decl', 'Declarer play'], ['def', 'Defence'], ['lead', 'Opening leads']],
+  on: false, kind: 'all', cur: null, pick: null, sol: null, solErr: false, anyway: false,
+  scanRec: null, timer: 0, w: null, n: 0, wait: new Map(), noSolver: false, done: 0,
+};
+
+// ---- Pure helpers (also used by tests/drilltest.js) ----
+const drFlat = h => { const f = []; h.tricks.forEach((tr, k) => tr.cards.forEach((pc, j) => f.push({ ...pc, trick: k, pos: j, leader: tr.leader }))); return f; };
+// whose mistakes a board's cards are: 'decl' (your cards and dummy's when you declared), 'lead', 'def', or null
+function drKindOf(r, pc, i) {
+  if (r.role === 'declarer') return sameSide(pc.seat, r.seat) ? 'decl' : null;
+  if (r.role === 'defender') return pc.seat === r.seat ? (i === 0 ? 'lead' : 'def') : null;
+  return null;
+}
+// the problems on a board, from its finished play review (en.res[i] = { loss, best, legal, tricks })
+function drExtract(r, en) {
+  const out = [];
+  drFlat(r.h).forEach((pc, i) => {
+    const x = en.res[i];
+    if (!x || !(x.loss > 0)) return;
+    const kind = drKindOf(r, pc, i); if (!kind) return;
+    out.push({ k: r.id + '#' + i, rec: r.id, i, kind, card: pc.card, loss: x.loss, best: (x.best || []).slice(), date: r.date, box: 0, due: 0, tries: 0, right: 0 });
+  });
+  return out;
+}
+// the position just before card i: the cards left in each hand, the trick so far, the legal cards, tricks won so far
+function drPosition(h, i) {
+  const flat = drFlat(h), pc = flat[i], played = new Set(flat.slice(0, i).map(x => x.card));
+  const hands = {}; SEATS.forEach(s => { hands[s] = h.hands[s].filter(c => !played.has(c)); });
+  const trick = flat.slice(i - pc.pos, i);
+  const led = trick.length ? suitOf(trick[0].card) : null, hand = hands[pc.seat];
+  const follow = led ? hand.filter(c => suitOf(c) === led) : [];
+  const legal = follow.length ? follow : hand.slice();
+  let decl = 0, def = 0;
+  h.tricks.slice(0, pc.trick).forEach(tr => { if (tr.cards.length === 4) (sameSide(trickWinner(tr, h.contract.strain), h.contract.declarer) ? decl++ : def++); });
+  return { pc, hands, trick, legal, decl, def, mover: pc.seat, leader: pc.leader, trickNo: pc.trick };
+}
+// grade an answer: right moves the problem up a box (learned at DR.LEARNED), wrong sends it back to box 0
+function drGrade(it, right, now) {
+  it.tries++;
+  if (right) { it.right++; it.box = Math.min(DR.LEARNED, it.box + 1); it.due = now + (DR.GAP[it.box] || 0); }
+  else { it.box = 0; it.due = now; } // due again at once (drNext shows another problem first when there is one)
+  return it;
+}
+const drLearned = it => it.box >= DR.LEARNED;
+// what to practise next: problems due now, of the kind chosen; new and missed ones first, then the costliest, then newest
+function drQueue(items, kind, now, anyway) {
+  return items.filter(it => !drLearned(it) && (kind === 'all' || it.kind === kind) && (anyway || it.due <= now))
+    .sort((a, b) => a.box - b.box || (b.due <= now) - (a.due <= now) || b.loss - a.loss || b.date - a.date || a.i - b.i);
+}
+// merge newly found problems into the saved list (keeping progress), newest boards kept when over the limit
+function drMerge(items, found, max) {
+  const have = new Set(items.map(it => it.k));
+  const out = items.concat(found.filter(it => !have.has(it.k)));
+  out.sort((a, b) => b.date - a.date || a.i - b.i);
+  return out.slice(0, max);
+}
+
+// ---- Saved state ----
+function drLoad() {
+  const v = (typeof Local !== 'undefined' && Local.get(DR.KEY)) || {};
+  const st = {};
+  for (const k of ['n', 'good', 'streak', 'bestStreak']) st[k] = Number.isFinite(+(v.st || {})[k]) ? +v.st[k] : 0;
+  return {
+    v: DR.V, st,
+    items: Array.isArray(v.items) ? v.items.filter(it => it && typeof it.k === 'string' && typeof it.rec === 'string' && Number.isInteger(it.i)) : [],
+    scanned: v.scanned && typeof v.scanned === 'object' ? v.scanned : {},
+  };
+}
+let drState = null;
+const drS = () => drState || (drState = drLoad());
+function drSave() {
+  const s = drS();
+  // forget boards no longer in History
+  if (typeof Stats !== 'undefined' && Stats.list.length) {
+    const ids = new Set(Stats.list.map(r => r.id));
+    s.items = s.items.filter(it => ids.has(it.rec));
+    for (const id of Object.keys(s.scanned)) if (!ids.has(id)) delete s.scanned[id];
+  }
+  Local.set(DR.KEY, s);
+}
+const drRec = id => typeof Stats !== 'undefined' ? Stats.list.find(r => r.id === id) : null;
+const drNeedsCheck = r => (r.role === 'declarer' || r.role === 'defender') && r.h && r.h.contract && r.h.tricks && r.h.tricks.length > 0;
+
+// ---- Finding the mistakes: the play review of one board at a time, newest first ----
+function drToScan() {
+  const s = drS(), out = [];
+  const list = Stats.list;
+  for (let i = list.length - 1; i >= 0 && list.length - i <= DR.SCAN; i--) { const r = list[i]; if (drNeedsCheck(r) && s.scanned[r.id] !== DR.V) out.push(r); }
+  return out;
+}
+function drStep() {
+  if (!DR.on || document.hidden || typeof playReview !== 'function') return;
+  const s = drS();
+  let changed = false;
+  if (DR.scanRec) {
+    const r = DR.scanRec, en = playReview(r.h);
+    if (!en) { DR.noSolver = true; DR.scanRec = null; drRenderProgress(); return; }
+    if (!en.done) return;
+    s.items = drMerge(s.items, drExtract(r, en), DR.MAX);
+    s.scanned[r.id] = DR.V; DR.scanRec = null; DR.done++; changed = true;
+    // the leak finder wants the same review: store it in the record while we have it
+    if (typeof Leaks !== 'undefined' && Leaks.absorb && Leaks.absorb(r)) Stats.put(r);
+  }
+  if (!DR.scanRec) {
+    const next = drToScan()[0];
+    if (next) { DR.scanRec = next; if (!playReview(next.h)) { DR.noSolver = true; DR.scanRec = null; } }
+  }
+  if (changed) { drSave(); if (!DR.cur) drNext(); else drRenderProgress(); }
+}
+
+// ---- Solving a position for every legal card ----
+function drWorker() {
+  if (DR.w) return DR.w;
+  const u = p => JSON.stringify(new URL('js/' + p, location.href).href);
+  const src = `importScripts(${u('wasm/compiled.js')}, ${u('engine.js')}, ${u('ddplay.js')});
+let mod = null, solve = null;
+self.onmessage = async e => {
+  const m = e.data;
+  if (m.wasm) { mod = mod || m.wasm; return; }
+  try {
+    if (!solve) { if (!mod) mod = await WebAssembly.compile(await (await fetch(${u('wasm/compiled.wasm')})).arrayBuffer()); solve = ddSolver(create_dds_module, mod); }
+    self.postMessage({ k: m.k, r: await solve(m.job) });
+  } catch (err) { self.postMessage({ k: m.k, error: String(err && err.message || err) }); }
+};`;
+  const w = DR.w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  if (typeof ddGiveWasm === 'function') ddGiveWasm(w);
+  w.onmessage = e => { const f = DR.wait.get(e.data.k); if (f) { DR.wait.delete(e.data.k); f(e.data); } };
+  w.onerror = () => { for (const f of DR.wait.values()) f({ error: 'worker failed' }); DR.wait.clear(); try { w.terminate(); } catch (e) { } DR.w = null; };
+  return w;
+}
+function drSolve(h, pos) {
+  return new Promise(res => {
+    let w; try { w = drWorker(); } catch (e) { res(null); return; }
+    const k = ++DR.n;
+    const t = setTimeout(() => { DR.wait.delete(k); res(null); }, 20000);
+    DR.wait.set(k, m => { clearTimeout(t); res(m.error ? null : m.r); });
+    w.postMessage({ k, job: { trump: DD_TRUMP[h.contract.strain], first: SEATS.indexOf(pos.leader), trick: pos.trick.map(x => x.card), pbn: ddPBN(pos.hands), hands: pos.hands, mover: pos.mover } });
+  });
+}
+
+// ---- The screen ----
+const drEl = id => document.getElementById(id);
+function drBuild() {
+  if (drEl('drills')) return;
+  const s = document.createElement('section');
+  s.id = 'drills'; s.className = 'hidden';
+  s.innerHTML = `<div class="topbar"><span class="tt">Your mistakes</span><span class="code" id="drScore"></span>
+    <select id="drKind" aria-label="Which mistakes">${DR.KINDS.map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+    <button class="btn small" id="drLeave">Leave</button></div>
+    <div class="bp-wrap"><div class="bp-main"><div id="drInfo"></div><div id="drTable"></div><div id="drResult"></div><p class="note" id="drProg"></p></div>
+    <div class="bp-side" id="drAuction"></div></div>`;
+  (drEl('leadTrainer') || drEl('tableView')).after(s);
+  s.addEventListener('click', drClick);
+  drEl('drKind').addEventListener('change', e => { DR.kind = e.target.value; try { localStorage.setItem('bridge-dr-kind', DR.kind); } catch (er) { } DR.anyway = false; if (!DR.pick) drNext(); else drRenderProgress(); });
+}
+function startDrills() {
+  if (typeof T !== 'undefined' && T) { if (T.local) flushPractice(); goHome(); }
+  if (typeof BP !== 'undefined' && BP.on) leaveBidPractice();
+  if (typeof LT !== 'undefined' && LT.on) leaveLeadTrainer(false);
+  drBuild();
+  try { DR.kind = localStorage.getItem('bridge-dr-kind') || 'all'; } catch (e) { }
+  DR.on = true; DR.cur = null; DR.pick = null; DR.anyway = false; DR.done = 0;
+  if (typeof leaveModals === 'function') leaveModals();
+  drEl('home').classList.add('hidden'); drEl('tableView').classList.add('hidden'); drEl('drills').classList.remove('hidden');
+  drEl('drKind').value = DR.kind;
+  clearInterval(lobbyTimer);
+  drEl('drInfo').innerHTML = '<p class="note">Loading your boards…</p>';
+  Stats.open().then(() => {
+    if (!DR.on) return;
+    drState = drLoad(); drSave();
+    drNext();
+    clearInterval(DR.timer); DR.timer = setInterval(() => { try { drStep(); } catch (e) { console.error(e); } }, 300);
+    drStep();
+  });
+}
+function leaveDrills(toHome = true) {
+  DR.on = false; DR.cur = null; DR.pick = null; DR.scanRec = null;
+  clearInterval(DR.timer); DR.timer = 0;
+  if (DR.w) { try { DR.w.terminate(); } catch (e) { } DR.w = null; } DR.wait.clear();
+  const s = drEl('drills'); if (s) s.classList.add('hidden');
+  if (!toHome) return;
+  drEl('home').classList.remove('hidden');
+  { const b = drEl('drillsBtn'); if (b) b.focus({ preventScroll: true }); }
+  if (typeof loadLobby === 'function') { loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000); }
+}
+
+function drNext() {
+  const s = drS(), now = Date.now();
+  DR.pick = null; DR.sol = null; DR.solErr = false;
+  let q = drQueue(s.items, DR.kind, now, DR.anyway).filter(it => drRec(it.rec));
+  if (q.length > 1 && DR.cur) q = q.filter(it => it.k !== DR.cur.k).concat(q.filter(it => it.k === DR.cur.k)); // not the same one twice running
+  DR.cur = q[0] || null;
+  drRender();
+  if (DR.cur) {
+    const it = DR.cur, r = drRec(it.rec), pos = drPosition(r.h, it.i);
+    drSolve(r.h, pos).then(sol => { if (DR.cur !== it) return; DR.sol = sol; DR.solErr = !sol; if (DR.pick) drRender(); });
+  }
+}
+
+const drCount = () => {
+  const s = drS(), now = Date.now(), mine = s.items.filter(it => DR.kind === 'all' || it.kind === DR.kind);
+  return { left: mine.filter(it => !drLearned(it)).length, due: mine.filter(it => !drLearned(it) && it.due <= now).length, learned: mine.filter(drLearned).length, total: mine.length };
+};
+function drRenderScore() {
+  const st = drS().st, el = drEl('drScore'); if (!el) return;
+  el.textContent = st.n ? `Streak ${st.streak} · right ${st.good} of ${st.n} (${Math.round(100 * st.good / st.n)}%)` : '';
+}
+function drRenderProgress() {
+  const el = drEl('drProg'); if (!el) return;
+  const c = drCount(), left = typeof Stats !== 'undefined' && DR.on ? drToScan().length : 0;
+  const parts = [];
+  if (c.total) parts.push(`${c.due} to practise now${c.left > c.due ? `, ${c.left - c.due} later` : ''} · ${c.learned} learned`);
+  if (DR.noSolver) parts.push('The double-dummy solver isn\'t available in this browser, so no more boards can be checked.');
+  else if (left) parts.push(`Checking ${left} more board${left === 1 ? '' : 's'} from History…`);
+  el.textContent = parts.join(' · ');
+  if (!DR.cur && !DR.pick) drRender(true);
+}
+const drKindText = { decl: 'Declarer play', def: 'Defence', lead: 'Opening lead' };
+function drRender(quiet) {
+  drRenderScore();
+  const info = drEl('drInfo'), tab = drEl('drTable'), box = drEl('drResult'), auc = drEl('drAuction');
+  if (!info) return;
+  const it = DR.cur;
+  if (!it) {
+    const c = drCount(), left = DR.noSolver ? 0 : drToScan().length;
+    const any = drS().items.length;
+    let msg;
+    if (c.left && !c.due) msg = `<p><b>All caught up.</b> ${c.left} problem${c.left === 1 ? '' : 's'} come${c.left === 1 ? 's' : ''} back in the next few days.</p><div class="row"><button class="btn primary" data-drany="1">Practise them now</button></div>`;
+    else if (c.total && !c.left) msg = `<p><b>All ${c.learned} learned.</b> Play more boards and new mistakes will turn up here.</p>`;
+    else if (left) msg = '<p class="note">Looking for mistakes in your boards…</p>';
+    else if (any) msg = '<p class="note">No mistakes of this kind in your boards.</p>';
+    else msg = `<p>No mistakes found yet.</p><p class="note">Play some boards as declarer or defender. Each card that cost your side a trick double dummy becomes a problem here: the position before that card, to try again.</p>`;
+    info.innerHTML = msg; tab.innerHTML = ''; box.innerHTML = ''; auc.innerHTML = '';
+    if (!quiet) drRenderProgress();
+    return;
+  }
+  const r = drRec(it.rec), h = r.h, pos = drPosition(h, it.i), c = h.contract;
+  const you = r.seat, dummy = partnerOf(c.declarer), mover = pos.mover;
+  const youLbl = s => s === you ? 'You' : s === dummy ? 'Dummy' : s === c.declarer ? 'Declarer' : '';
+  const role = r.role === 'declarer' ? (mover === you ? 'You declare' : `You declare; play from dummy (${SEAT_NAME[mover]})`) : (it.kind === 'lead' ? 'You are on lead' : 'You defend');
+  const d = new Date(r.date);
+  info.innerHTML = `<p class="dr-head"><b>${drKindText[it.kind]}</b> · board ${esc(h.board)}, ${esc(d.toLocaleDateString())}${r.mode !== 'practice' ? ` (${esc(r.mode)})` : ''}<br>
+    ${contractHTML(c)}, ${vulText(h.vul)}. Trick ${pos.trickNo + 1}: declarer ${pos.decl}, defence ${pos.def}.<br>
+    ${role}. ${DR.pick ? '' : '<b>Find the best card.</b>'}</p>`;
+  // the hands you could see then: yours, and dummy's once the lead is made; with the answer, all four
+  const seen = s => DR.pick || s === you || s === mover || (s === dummy && (it.i > 0 || r.role === 'declarer'));
+  const legal = DR.pick ? [] : pos.legal;
+  const hand = s => {
+    const lbl = `<div class="lbl">${SEAT_NAME[s]}${youLbl(s) ? ' · ' + youLbl(s) : ''}</div>`;
+    if (!seen(s)) return `<div class="dr-hid">${lbl}<div class="note">${pos.hands[s].length} cards</div></div>`;
+    return `<div class="${s === mover ? 'dr-mover' : ''}">${lbl}${rowsHTML(pos.hands[s], s === mover ? legal : [], s)}</div>`;
+  };
+  const trickCards = pos.trick.concat(DR.pick ? [{ seat: mover, card: DR.pick }] : []);
+  const centre = trickCards.length ? `<div class="tr cmp">${trickCards.map(x => `<div class="at-${x.seat}" title="${SEAT_NAME[x.seat]}">${cardHTML(x.card, x.card === DR.pick ? 'dr-you' : '', 'tabindex="-1"')}</div>`).join('')}</div>`
+    : `<div class="tr"><span class="lbl">${SEAT_NAME[mover]} to lead</span></div>`;
+  tab.innerHTML = `<div class="replay dr-table"><div class="diagram"><div></div>${hand('N')}<div></div>${hand('W')}${centre}${hand('E')}<div></div>${hand('S')}<div></div></div></div>`;
+  const view = { seats: Object.fromEntries(SEATS.map(s => [s, { kind: 'robot' }])), auction: h.auction, phase: 'done' };
+  auc.innerHTML = `<div class="dr-auc">${auctionGridHTML(view, h.auction.slice(), h.dealer, h.vul, you)}</div>${drPlayedHTML(h, it.i)}`;
+  box.innerHTML = DR.pick ? drResultHTML(it, r, pos) : '';
+  if (!quiet) drRenderProgress();
+}
+// the tricks before this one, compact: leader's card first, the winner bold
+function drPlayedHTML(h, i) {
+  const flat = drFlat(h), k = flat[i].trick;
+  if (!k) return '';
+  const rows = h.tricks.slice(0, k).map((tr, n) => {
+    const w = trickWinner(tr, h.contract.strain);
+    return `<li><span class="note">${n + 1}.</span> ${tr.cards.map(pc => `<span class="${pc.seat === w ? 'dr-win' : ''}" title="${SEAT_NAME[pc.seat]}">${pc.seat}&nbsp;${cardText(pc.card)}</span>`).join(' ')}</li>`;
+  }).join('');
+  return `<details class="dr-tricks"><summary>Tricks so far</summary><ol>${rows}</ol></details>`;
+}
+// the tricks each card takes for your side (the whole board), best first, equal cards together
+function drCardsHTML(sol, pos, base) {
+  const by = new Map();
+  for (const c of pos.legal) if (c in sol) { const t = base + sol[c]; if (!by.has(t)) by.set(t, []); by.get(t).push(c); }
+  return [...by.entries()].sort((a, b) => b[0] - a[0]).map(([t, cs]) => `<tr><td class="num">${t}</td><td>${sortForHand(cs).map(c => `<span class="${c === DR.pick ? 'dr-youc' : ''}">${cardText(c)}</span>`).join(' ')}</td></tr>`).join('');
+}
+function drResultHTML(it, r, pos) {
+  const h = r.h, decl = sameSide(pos.mover, h.contract.declarer), base = decl ? pos.decl : pos.def;
+  const side = decl ? 'your side' : 'the defence';
+  const btns = `<div class="row"><button class="btn primary" data-drnext="1">Next</button>${typeof PlayFrom !== 'undefined' ? '<button class="btn" data-drplay="1">Play on from here</button>' : ''}<button class="btn" data-drrec="1">Hand record</button></div>`;
+  const sol = DR.sol;
+  const atTable = `At the table you played ${cardText(it.card)}${it.card === DR.pick ? ' too' : ''}, which cost ${it.loss} trick${it.loss > 1 ? 's' : ''}.`;
+  if (!sol) {
+    if (!DR.solErr) return '<p class="note">Solving the position…</p>';
+    const right = it.best.includes(DR.pick);
+    return `<div class="bp-res"><p>${right ? '<b>Right.</b>' : '<b>Not the best card.</b>'} Best: ${it.best.map(cardText).join(', ')}. ${atTable}</p><p class="note">The solver isn't available, so the other cards aren't rated.</p>${btns}</div>`;
+  }
+  const best = Math.max(...pos.legal.filter(c => c in sol).map(c => sol[c]));
+  const mine = sol[DR.pick], bestCards = pos.legal.filter(c => sol[c] === best);
+  const right = mine === best, cost = best - mine;
+  const head = right
+    ? `<p class="dr-ok"><b>Right.</b> ${cardText(DR.pick)} takes ${base + best} tricks for ${side}, the most there are.</p>`
+    : `<p class="dr-bad"><b>${cardText(DR.pick)} costs ${cost} trick${cost > 1 ? 's' : ''}.</b> It takes ${base + mine} tricks for ${side}; ${bestCards.length === 1 ? `${cardText(bestCards[0])} takes` : bestCards.length <= 4 ? `${sortForHand(bestCards).map(cardText).join(' ')} take` : 'the best cards take'} ${base + best}.</p>`;
+  return `<div class="bp-res">${head}<p>${atTable}</p>
+    <table class="bp-cmp dr-cards"><tr><th class="num">Tricks</th><th>Cards</th></tr>${drCardsHTML(sol, pos, base)}</table>
+    <p class="note">Tricks for ${side} in the whole board, double dummy (every hand known), after each card. ${right ? `Learned after ${DR.LEARNED} right in a row.` : 'This problem comes back.'}</p>${btns}</div>`;
+}
+
+function drChoose(card) {
+  const it = DR.cur; if (!it || DR.pick) return;
+  const r = drRec(it.rec), pos = drPosition(r.h, it.i);
+  if (!pos.legal.includes(card)) return;
+  DR.pick = card;
+  const grade = () => {
+    const right = DR.sol ? DR.sol[card] === Math.max(...pos.legal.filter(c => c in DR.sol).map(c => DR.sol[c])) : it.best.includes(card);
+    const s = drS(), live = s.items.find(x => x.k === it.k) || it;
+    drGrade(live, right, Date.now());
+    s.st.n++; if (right) { s.st.good++; s.st.streak++; s.st.bestStreak = Math.max(s.st.bestStreak, s.st.streak); } else s.st.streak = 0;
+    drSave();
+  };
+  if (DR.sol || DR.solErr) { grade(); drRender(); drFocus(); return; }
+  drRender();
+  const wait = setInterval(() => { // the solve is still running (it started when the problem was shown)
+    if (DR.cur !== it || !DR.on) { clearInterval(wait); return; }
+    if (DR.sol || DR.solErr) { clearInterval(wait); grade(); drRender(); drFocus(); }
+  }, 50);
+}
+function drFocus() {
+  const b = drEl('drills') && drEl('drills').querySelector(DR.pick ? '[data-drnext]' : '#drTable .rk.play');
+  if (b) b.focus({ preventScroll: true });
+}
+function drPlayOn() {
+  const it = DR.cur, r = it && drRec(it.rec); if (!r) return;
+  leaveDrills(false);
+  PlayFrom.start(r.h, it.i, { kind: 'hist', id: r.id, seat: r.seat });
+}
+function drClick(e) {
+  const b = e.target.closest('button, [data-alert]'); if (!b) return;
+  const d = b.dataset;
+  if (b.id === 'drLeave') leaveDrills();
+  else if (d.play) drChoose(d.play);
+  else if (d.drnext) drNext();
+  else if (d.drany) { DR.anyway = true; drNext(); }
+  else if (d.drplay) drPlayOn();
+  else if (d.drrec) { const it = DR.cur; if (it) Stats.record(it.rec); }
+  else if (d.alert) { if (drEl('explainPop')) hideExplain(); else showExplain(b, d.alert); }
+  else return;
+  e.stopPropagation();
+}
+
+// ---- Hooks: buttons on the home page and in the table's More menu, N for the next problem ----
+if (typeof document !== 'undefined') {
+  document.addEventListener('keydown', e => {
+    if (!DR.on || e.ctrlKey || e.metaKey || e.altKey || /input|textarea|select/i.test(e.target.tagName || '') || drEl('modalRoot').firstChild || drEl('explainPop')) return;
+    if (e.key === 'Escape') { e.preventDefault(); leaveDrills(); }
+    else if (DR.pick && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); drNext(); }
+  });
+  document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-drills]')) startDrills(); });
+  const addBtns = () => {
+    const home = drEl('leadTrainerBtn');
+    if (home && !drEl('drillsBtn')) home.insertAdjacentHTML('afterend', '<button class="btn" id="drillsBtn" data-drills="1">Your mistakes</button>');
+    const more = drEl('ltMoreBtn');
+    if (more && !drEl('drMoreBtn')) more.insertAdjacentHTML('afterend', '<button class="btn small" id="drMoreBtn" data-drills="1">Your mistakes</button>');
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addBtns); else addBtns();
+}
+if (typeof module !== 'undefined') module.exports = { drFlat, drKindOf, drExtract, drPosition, drGrade, drQueue, drMerge, drLearned, DR };

@@ -661,6 +661,30 @@ table.daily-lb tr.you td { font-weight: 600; }
 .lt-deal { margin: 6px 0 10px; }
 .lt-deal .diagram { justify-content: start; grid-template-columns: auto auto auto; column-gap: 6px; }
 @media (max-width: 640px) { #leadTrainer .topbar { flex-wrap: wrap; } }
+/* feature: drills (js/drills.js): Your mistakes */
+#drills { max-width: 980px; margin: 0 auto; padding: 12px; }
+#drills .topbar select { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 4px; }
+#drills .dr-head { margin: 4px 0; line-height: 1.45; }
+#drills .dr-table { border-top: 0; margin-top: 0; padding-top: 0; }
+#drills .diagram { grid-template-columns: auto auto auto; justify-content: start; column-gap: 8px; margin: 6px 0 8px; }
+#drills .diagram .rows .rr { flex-wrap: nowrap; gap: 0; }
+#drills .diagram .rows { font-size: 17px; background: #fff; color: #111; padding: 2px 6px; }
+#drills .diagram .rows .red { color: #d32f2f; }
+#drills .diagram .rows .rk { padding: 1px 2px; min-width: 15px; }
+#drills .dr-mover .rows .rk.play { min-width: 26px; min-height: 30px; padding: 1px 4px; font-weight: 700; }
+#drills .dr-mover .rows { box-shadow: inset 0 0 0 1.5px var(--brass); }
+#drills .dr-hid { min-width: 70px; text-align: center; }
+#drills .card.dr-you { box-shadow: inset 0 0 0 2px var(--brass); }
+#drills .dr-youc { box-shadow: inset 0 0 0 1.5px var(--brass); padding: 0 2px; }
+#drills .dr-cards td:first-child { padding-left: 4px; }
+#drills .dr-cards td:nth-child(2) { font-weight: 400; white-space: normal; }
+#drills .dr-tricks { margin: 8px 0; font-size: 14px; }
+#drills .dr-tricks ol { list-style: none; padding: 0; margin: 4px 0; }
+#drills .dr-tricks li { margin: 1px 0; white-space: nowrap; }
+#drills .dr-win { font-weight: 700; }
+#drills .bp-res .red, #drills .dr-tricks .red { color: #d32f2f; }
+@media (max-width: 640px) { #drills .topbar { flex-wrap: wrap; } #drills { padding: 8px; } #drills .diagram { column-gap: 4px; } #drills .diagram .rows { font-size: 15px; padding: 2px 3px; } }
+@media (max-width: 560px) { #drLeave { margin-left: auto; } }
 /* feature: playfrom */
 ul.costs .pftry { background: none; border: 0; padding: 2px 0 2px 4px; min-height: 0; font: inherit; color: var(--ink-soft); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
 /* feature: minibridge — declarer's contract panel, and the new-practice dialog */
