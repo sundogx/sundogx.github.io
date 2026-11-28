@@ -15,6 +15,8 @@
 2. The reserved places now apply only at practice tables (`.topbar:has(#ltMoreBtn:not(.hidden))`) for all four buttons; online tables are as on main.
 3. api(): AbortController + setTimeout (15 s) instead of AbortSignal.timeout (Safari < 16); the timer also covers reading the body and is cleared.
 4. worker.js: the create route's 'bad request' is a sentence ("Could not open the table: the request was not understood. Reload the page and try again.").
+Re-run after the fixes: npm test ok, sim 0/0; ui-stab phone+desktop: api, offline (all), history ok (offline imports: known, analysis.js); stab.pw phone+desktop all ok;
+soak seed 51 phone and desktop (150 s, CPU x4, chaos): 0 findings, CLS 0.000; wrangler: online.test all passed, online-stab limit all passed.
 
 ## New test: `bridge/tests/ui-stab.pw.mjs`
 `NODE_PATH=<dir>/node_modules node tests/ui-stab.pw.mjs [--vp=phone|desktop] [--only=api,offline,history]`
