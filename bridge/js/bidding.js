@@ -1793,9 +1793,10 @@ function natural(ctx, h, reserved) {
     const m = natMean(ctx, cheapS + strain);
     if (m.tag === 'slow' && (openSuits(ctx, h, strain) > 0 || fourNTMeaning(ctx).trump !== strain)) return cheapS + strain;
   }
-  if (target >= 6 && strain !== 'N' && openSuits(ctx, h, strain) > 0) target = gl;
+  const bigSlam = strain !== 'N' && !BID_OFF('szo2') && slamVal(ctx, h, strain).pts >= (BID_K('szo2') ?? 33); // enough to risk an open side suit
+  if (target >= 6 && strain !== 'N' && openSuits(ctx, h, strain) > 0 && !bigSlam) target = gl;
   if (target >= 6 && pBid) {
-    if (strain !== 'N' && fit && ok('4N') && !ctx.ours.some(x => x.call === '4N') && openSuits(ctx, h, strain) === 0) {
+    if (strain !== 'N' && fit && ok('4N') && !ctx.ours.some(x => x.call === '4N') && (openSuits(ctx, h, strain) === 0 || bigSlam)) {
       const m4 = fourNTMeaning(ctx);
       if (m4.tag === 'rkcb' && m4.trump === strain) return '4N';
     }
