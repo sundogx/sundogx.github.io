@@ -18,7 +18,7 @@ const DR = {
   LEARNED: 3, // right this many times in a row (box 3): learned
   KINDS: [['all', 'All mistakes'], ['decl', 'Declarer play'], ['def', 'Defence'], ['lead', 'Opening leads']],
   on: false, kind: 'all', cur: null, pick: null, sol: null, solErr: false, anyway: false,
-  scanRec: null, timer: 0, w: null, n: 0, wait: new Map(), noSolver: false, done: 0,
+  scanRec: null, timer: 0, w: null, url: null, idle: 0, n: 0, wait: new Map(), noSolver: false, done: 0,
 };
 
 // ---- Pure helpers (also used by tests/drilltest.js) ----
@@ -123,7 +123,7 @@ function drStep() {
     const next = drToScan()[0];
     if (next) { DR.scanRec = next; if (!playReview(next.h)) { DR.noSolver = true; DR.scanRec = null; } }
   }
-  if (changed) { drSave(); if (!DR.cur) drNext(); else drRenderProgress(); }
+  if (changed) { drSave(); if (!DR.cur) drNext(!document.activeElement || document.activeElement === document.body || drEl('drills').contains(document.activeElement)); else drRenderProgress(); }
 }
 
 // ---- Solving a position for every legal card ----
@@ -140,16 +140,28 @@ self.onmessage = async e => {
     self.postMessage({ k: m.k, r: await solve(m.job) });
   } catch (err) { self.postMessage({ k: m.k, error: String(err && err.message || err) }); }
 };`;
-  const w = DR.w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+  DR.url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+  const w = DR.w = new Worker(DR.url);
   if (typeof ddGiveWasm === 'function') ddGiveWasm(w);
-  w.onmessage = e => { const f = DR.wait.get(e.data.k); if (f) { DR.wait.delete(e.data.k); f(e.data); } };
-  w.onerror = () => { for (const f of DR.wait.values()) f({ error: 'worker failed' }); DR.wait.clear(); try { w.terminate(); } catch (e) { } DR.w = null; };
+  w.onmessage = e => { const f = DR.wait.get(e.data.k); if (f) { DR.wait.delete(e.data.k); f(e.data); } drIdle(); };
+  w.onerror = () => { const fs = [...DR.wait.values()]; DR.wait.clear(); drDropWorker(); for (const f of fs) f({ error: 'worker failed' }); };
   return w;
+}
+// the worker and its blob URL go when the screen closes, or after a while with nothing to solve (frees the solver's memory)
+function drDropWorker() {
+  clearTimeout(DR.idle); DR.idle = 0;
+  if (DR.w) { try { DR.w.terminate(); } catch (e) { } DR.w = null; }
+  if (DR.url) { try { URL.revokeObjectURL(DR.url); } catch (e) { } DR.url = null; }
+}
+function drIdle() {
+  clearTimeout(DR.idle);
+  DR.idle = setTimeout(() => { DR.idle = 0; if (!DR.wait.size) drDropWorker(); }, typeof DD_IDLE_MS === 'number' ? DD_IDLE_MS : 30e3);
 }
 function drSolve(h, pos) {
   return new Promise(res => {
     let w; try { w = drWorker(); } catch (e) { res(null); return; }
     const k = ++DR.n;
+    clearTimeout(DR.idle); DR.idle = 0;
     const t = setTimeout(() => { DR.wait.delete(k); res(null); }, 20000);
     DR.wait.set(k, m => { clearTimeout(t); res(m.error ? null : m.r); });
     w.postMessage({ k, job: { trump: DD_TRUMP[h.contract.strain], first: SEATS.indexOf(pos.leader), trick: pos.trick.map(x => x.card), pbn: ddPBN(pos.hands), hands: pos.hands, mover: pos.mover } });
@@ -186,7 +198,7 @@ function startDrills() {
   Stats.open().then(() => {
     if (!DR.on) return;
     drState = drLoad(); drSave();
-    drNext();
+    drNext(true);
     clearInterval(DR.timer); DR.timer = setInterval(() => { try { drStep(); } catch (e) { console.error(e); } }, 300);
     drStep();
   });
@@ -194,7 +206,7 @@ function startDrills() {
 function leaveDrills(toHome = true) {
   DR.on = false; DR.cur = null; DR.pick = null; DR.scanRec = null;
   clearInterval(DR.timer); DR.timer = 0;
-  if (DR.w) { try { DR.w.terminate(); } catch (e) { } DR.w = null; } DR.wait.clear();
+  drDropWorker(); DR.wait.clear();
   const s = drEl('drills'); if (s) s.classList.add('hidden');
   if (!toHome) return;
   drEl('home').classList.remove('hidden');
@@ -202,13 +214,14 @@ function leaveDrills(toHome = true) {
   if (typeof loadLobby === 'function') { loadLobby(); clearInterval(lobbyTimer); lobbyTimer = setInterval(() => { if (!document.hidden) loadLobby(); }, 10000); }
 }
 
-function drNext() {
+function drNext(focus) {
   const s = drS(), now = Date.now();
   DR.pick = null; DR.sol = null; DR.solErr = false;
   let q = drQueue(s.items, DR.kind, now, DR.anyway).filter(it => drRec(it.rec));
   if (q.length > 1 && DR.cur) q = q.filter(it => it.k !== DR.cur.k).concat(q.filter(it => it.k === DR.cur.k)); // not the same one twice running
   DR.cur = q[0] || null;
   drRender();
+  if (focus) drFocus();
   if (DR.cur) {
     const it = DR.cur, r = drRec(it.rec), pos = drPosition(r.h, it.i);
     drSolve(r.h, pos).then(sol => { if (DR.cur !== it) return; DR.sol = sol; DR.solErr = !sol; if (DR.pick) drRender(); });
@@ -335,7 +348,8 @@ function drChoose(card) {
   }, 50);
 }
 function drFocus() {
-  const b = drEl('drills') && drEl('drills').querySelector(DR.pick ? '[data-drnext]' : '#drTable .rk.play');
+  const sc = drEl('drills'); if (!sc || !DR.on) return;
+  const b = sc.querySelector(DR.pick ? '[data-drnext]' : DR.cur ? '#drTable .rk.play' : '#drInfo button') || sc.querySelector('#drKind');
   if (b) b.focus({ preventScroll: true });
 }
 function drPlayOn() {
@@ -348,8 +362,8 @@ function drClick(e) {
   const d = b.dataset;
   if (b.id === 'drLeave') leaveDrills();
   else if (d.play) drChoose(d.play);
-  else if (d.drnext) drNext();
-  else if (d.drany) { DR.anyway = true; drNext(); }
+  else if (d.drnext) drNext(true);
+  else if (d.drany) { DR.anyway = true; drNext(true); }
   else if (d.drplay) drPlayOn();
   else if (d.drrec) { const it = DR.cur; if (it) Stats.record(it.rec); }
   else if (d.alert) { if (drEl('explainPop')) hideExplain(); else showExplain(b, d.alert); }
@@ -362,7 +376,7 @@ if (typeof document !== 'undefined') {
   document.addEventListener('keydown', e => {
     if (!DR.on || e.ctrlKey || e.metaKey || e.altKey || /input|textarea|select/i.test(e.target.tagName || '') || drEl('modalRoot').firstChild || drEl('explainPop')) return;
     if (e.key === 'Escape') { e.preventDefault(); leaveDrills(); }
-    else if (DR.pick && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); drNext(); }
+    else if (DR.pick && (e.key === 'n' || e.key === 'N')) { e.preventDefault(); drNext(true); }
   });
   document.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-drills]')) startDrills(); });
   const addBtns = () => {

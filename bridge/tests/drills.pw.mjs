@@ -71,6 +71,7 @@ for (const vp of ['phone', 'desktop']) {
   const first = await page.evaluate(() => ({ n: drS().items.length, cur: DR.cur && DR.cur.k, kind: DR.cur && DR.cur.kind, prog: document.getElementById('drProg').textContent }));
   check(first.n > 0 && first.cur, `${vp}: first problem in ${Date.now() - t0} ms (${first.n} found so far, ${first.kind}; "${first.prog}")`);
   await page.waitForFunction(() => DR.sol, null, { timeout: 20000 });
+  check(await page.evaluate(() => !!document.activeElement.closest('#drTable') && document.activeElement.matches('.rk.play')), `${vp}: focus on a playable card when the screen opens`);
   // the position: the mover's legal cards only, matching the record
   const pos = await page.evaluate(() => { const it = DR.cur, r = drRec(it.rec), p = drPosition(r.h, it.i); return { legal: p.legal.slice().sort().join(), shown: [...document.querySelectorAll('#drTable .rk.play')].map(b => b.dataset.play).sort().join(), played: it.card, best: Math.max(...p.legal.map(c => DR.sol[c])), tricks: DR.sol, base: p }; });
   check(pos.legal === pos.shown, `${vp}: the playable cards are the legal ones (${pos.shown})`);
@@ -91,6 +92,7 @@ for (const vp of ['phone', 'desktop']) {
   await page.keyboard.press('n');
   await page.waitForSelector('#drTable .rk.play', { timeout: 10000 });
   await page.waitForFunction(() => DR.sol, null, { timeout: 20000 });
+  check(await page.evaluate(() => document.activeElement.matches('#drTable .rk.play')), `${vp}: focus on a playable card after N`);
   const best = await page.evaluate(() => { const p = drPosition(drRec(DR.cur.rec).h, DR.cur.i), m = Math.max(...p.legal.map(c => DR.sol[c])); return { k: DR.cur.k, card: p.legal.find(c => DR.sol[c] === m) }; });
   check(best.k !== k1 || first.n === 1, `${vp}: N shows another problem`);
   await tap(`#drTable .rk.play[data-play="${best.card}"]`);
@@ -124,6 +126,16 @@ for (const vp of ['phone', 'desktop']) {
   const lead = await page.evaluate(() => ({ kind: DR.cur ? DR.cur.kind : null, txt: document.getElementById('drInfo').textContent }));
   check(lead.kind === 'lead' || /No mistakes of this kind|All caught up|learned/.test(lead.txt), `${vp}: Opening leads only (${lead.kind || lead.txt.slice(0, 50)})`);
   await page.selectOption('#drKind', 'all'); await sleep(200);
+  // review fix 1: the hand record's Play from here (any table opening) closes this screen and stops its work
+  await page.evaluate(() => { DR.anyway = true; drNext(true); }); await page.waitForSelector('#drTable .rk.play', { timeout: 10000 });
+  await page.evaluate(() => document.querySelector('#drTable .rk.play').click()); await page.waitForSelector('[data-drrec]', { timeout: 20000 });
+  await tap('[data-drrec]'); await sleep(300);
+  await tap('#replayBtn'); await sleep(300);
+  await page.evaluate(() => document.querySelector('#replayBox [data-playfrom]').click()); await sleep(800);
+  const gone = await page.evaluate(() => ({ table: !document.getElementById('tableView').classList.contains('hidden'), drills: !document.getElementById('drills').classList.contains('hidden'), on: DR.on, timer: DR.timer, w: !!DR.w, url: !!DR.url, scan: !!DR.scanRec, whatIf: !!(T && T.whatIf) }));
+  check(gone.table && !gone.drills && !gone.on && !gone.timer && !gone.w && !gone.url && !gone.scan && gone.whatIf, `${vp}: Hand record > Play from here hides the screen, stops its scan and worker ${JSON.stringify(gone)}`);
+  await page.keyboard.press('Escape'); await sleep(200);
+  check(await page.isVisible('#tableView') && await page.isHidden('#home'), `${vp}: Escape then stays at the table`);
   check(!errs.length, `${vp}: no page errors ${errs.join(' | ')}`);
   await ctx.close();
 }

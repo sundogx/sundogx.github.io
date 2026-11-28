@@ -1531,6 +1531,7 @@ function closeTableMenus() {
 function showTableView() {
   if (typeof BP !== 'undefined' && BP.on) leaveBidPractice(); /* feature: bidpractice */
   if (typeof LT !== 'undefined' && LT.on) leaveLeadTrainer(false); /* feature: leadtrainer */
+  if (typeof DR !== 'undefined' && DR.on) leaveDrills(false); /* feature: drills */
   if (typeof bxHideScreens === 'function') bxHideScreens(); /* feature: explorer */
   $('home').classList.add('hidden'); $('tableView').classList.remove('hidden');
   clearInterval(lobbyTimer);
