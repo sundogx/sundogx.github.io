@@ -2,7 +2,7 @@
 
 ## Resume here
 - Status: working, committed on `r16-feat18` (based on `r16-feat17`). `npm test` passes, sim shows errors 0 and long 0, `node tests/drillbidtest.js` and `node tests/drilltest.js` pass, `tests/drillbid.pw.mjs` passes at 390 and 1280.
-- Half done: nothing. Next steps: (1) README section for the Bidding kind, (2) rerun feat17's `tests/drills.pw.mjs` to confirm nothing broke, (3) at merge add `['drilltest.js'], ['drillbidtest.js']` to `TESTS` in `tests/all.js`.
+- Half done: nothing. README has the Bidding section; feat17's `tests/drills.pw.mjs` still passes (27 checks at each width). Next steps: (1) at merge add `['drilltest.js'], ['drillbidtest.js']` to `TESTS` in `tests/all.js`.
 - Key numbers: checking one board's calls takes about 1.2 ms (node, 1,000 boards with real DD tables). With a human-like slip on about half the boards, 531 problems came from 1,000 boards.
 
 ## What it does

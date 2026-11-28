@@ -112,7 +112,9 @@ function drToScan() {
   return out;
 }
 function drStep() {
-  if (!DR.on || document.hidden || typeof playReview !== 'function') return;
+  if (!DR.on || document.hidden) return;
+  if (drBidStep()) drFound(); // the bidding check goes on while a play review runs
+  if (typeof playReview !== 'function') return;
   const s = drS();
   let changed = false;
   if (DR.scanRec) {
@@ -128,9 +130,10 @@ function drStep() {
     const next = drToScan()[0];
     if (next) { DR.scanRec = next; if (!playReview(next.h)) { DR.noSolver = true; DR.scanRec = null; } }
   }
-  if (drBidStep()) changed = true;
-  if (changed) { drSave(); if (!DR.cur) drNext(!document.activeElement || document.activeElement === document.body || drEl('drills').contains(document.activeElement)); else drRenderProgress(); }
+  if (changed) drFound();
 }
+// new problems found: save, and show the first one if nothing is shown
+function drFound() { drSave(); if (!DR.cur) drNext(!document.activeElement || document.activeElement === document.body || drEl('drills').contains(document.activeElement)); else drRenderProgress(); }
 
 // ---- Solving a position for every legal card ----
 function drWorker() {
@@ -472,7 +475,7 @@ function drBidBox() {
 // what the robots' system says a call in your seat means
 function drMeans(h, i, call, alert) {
   const by = h.auction[i].by;
-  return describeCall(h.auction.slice(0, i).concat([alert ? { call, by, alert } : { call, by }]), i, h.vul) || (call === 'P' ? 'No more to say' : '');
+  return describeCall(h.auction.slice(0, i).concat([alert ? { call, by, alert } : { call, by }]), i, h.vul) || '';
 }
 function drBidChoose(call) {
   const it = DR.cur; if (!it || it.kind !== 'bid' || DR.pick) return;
