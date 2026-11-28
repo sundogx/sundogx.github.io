@@ -42,7 +42,7 @@ async function probe(page) {
     const w = new Worker('js/dds-worker.js');
     const wr = await new Promise(res => { w.onmessage = e => { if (e.data && e.data.__probe) res(e.data); }; w.postMessage({ __probe: 1 }); setTimeout(() => res({}), 8000); });
     w.terminate();
-    const bsrc = `importScripts('${base}js/engine.js', '${base}js/ddplay.js'); fetch('${base}js/wasm/compiled.wasm').then(r => postMessage({ v: self.__V, wasm: r.headers.get('x-ver') }));`;
+    const bsrc = `importScripts('${base}js/min/engine.js', '${base}js/min/ddplay.js'); fetch('${base}js/wasm/compiled.wasm').then(r => postMessage({ v: self.__V, wasm: r.headers.get('x-ver') }));`;
     const b = new Worker(URL.createObjectURL(new Blob([bsrc], { type: 'text/javascript' })));
     const br = await new Promise(res => { b.onmessage = e => res(e.data); setTimeout(() => res({}), 8000); });
     b.terminate();

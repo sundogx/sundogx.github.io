@@ -88,7 +88,7 @@ const Learn = {
   worker() {
     if (Learn.w) return Learn.w;
     const u = p => JSON.stringify(new URL('js/' + p, location.href).href);
-    const src = `importScripts(${u('wasm/compiled.js')}, ${u('engine.js')}, ${u('ddplay.js')});
+    const src = `importScripts(${u('wasm/compiled.js')}, ${u('min/engine.js')}, ${u('min/ddplay.js')});
 let mod = null, solve = null;
 self.onmessage = async e => {
   const m = e.data;
