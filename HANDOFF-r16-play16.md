@@ -1,15 +1,12 @@
 # Round 16: play16 (robot card play: leads.js, bots.js botPlay, ddplay.js)
 
 ## Resume here
-- DONE: (1) botLead NT weights LEAD_WB.N (js/leads.js), held out on two fresh 30k sets: pooled +0.015 +- 0.005 DD,
-  +0.027 +- 0.007 played out IMPs/board. (2) DD_XPEN 0 in js/ddplay.js ddView: no trump minimum from a defender's double
-  of the final suit contract (lead and play samplers). ddacc XONLY seed p16xa (11,300 boards so far, run to 16,000 going
-  16,000 boards, 2,151 doubled): declX +0.0152 +- 0.0058, defX +0.0116 +- 0.0042, lead +0.017 +- 0.016 IMPs per decision.
-- Running (11:25): `XONLY=1 NEW='{"xpenH":1}' node tests/ddacc.js 16000 12 p16xb 2` > scratch p16/xb.log: knob opts.xpenH
-  (ddplay.js ddXpenHcp, off): the doubler's HCP minimum from its calls before the double. Pre-registered: ship if pooled
-  > 2 SE. Then on the same seed `NEW='{"xpen":-1}'` = fresh confirmation of DD_XPEN (sign flipped).
-- Next: put the final xa numbers in section 2; maybe a fresh-seed confirmation (`XONLY=1 NEW='{"xpen":-1}'` now measures
-  old vs new, sign flipped; new seed so the cache can't serve stale choices). Then fix commit trailers, final report.
+- DONE: (1) botLead NT weights LEAD_WB.N (js/leads.js): pooled two fresh 30k sets +0.015 +- 0.005 DD, +0.027 +- 0.007
+  played out IMPs/board. (2) DD_XPEN 0 (ddplay.js): seed p16xa declX +0.0152 +- 0.0058, defX +0.0116 +- 0.0042 per
+  decision. (3) DD_XPENH (ddplay.js ddXpenHcp): seed p16xb declX +0.0164 +- 0.0051, defX +0.0146 +- 0.0051.
+- Running (12:05): `XONLY=1 NEW='{"xpen":-1}' node tests/ddacc.js 16000 12 p16xb 2` > scratch p16/xc.log = fresh-seed
+  confirmation of DD_XPEN (sign flipped: negative = the new default is better; xpenH off in that process).
+- Next: put xc numbers in section 2, final report. Deadline 14:15 HKT.
 
 ## 1. botLead notrump refit (shipped)
 - Who: botLead is the lead of strangers-mode online robots (src/worker.js plays botPlay/botLead), Beginner robots and
@@ -56,3 +53,13 @@
   bridge/tests/fixtures/r16-viol.js). Largest groups: defenders who passed throughout over 1S-2S / 2S / 1H-2H with more
   than the 17 cap (62/53/47 cases), negative doubles (`pd1D op1S meX`) lengths, `op2S op4S meX` trump length. Each is
   small; most are shown() readings (bidding.js).
+
+## 3. No HCP minimum from a defender's double of the final contract either (shipped)
+- js/ddplay.js ddXpenHcp, DD_XPENH = true (opts.xpenH 0: off): the doubler's hcpMin becomes the minimum its calls before
+  the double showed (ddAuctionLimits on the auction up to the double, minimums only). Notrump doublers were below the
+  limit on 483 of 1,605 boards, suit doublers on 622 of 6,245 (p16a+b; scratch p16/xn.js, copy tests/fixtures/r16-xn.js).
+- Pre-registered on a fresh seed, on top of DD_XPEN: `XONLY=1 NEW='{"xpenH":1}' node tests/ddacc.js 16000 12 p16xb 2`
+  (2,077 doubled boards): declarer +0.0164 +- 0.0051 IMPs per decision (665 of 22,789 changed), defenders +0.0146 +- 0.0051
+  (358 of 18,914), lead +0.011 +- 0.020 (63 of 2,077). ms per decision unchanged (120 -> 118, 537 -> 530).
+- Main thread: one more shown() reading per ddView on doubled contracts only; with full=false the ddShownBalanced memo is
+  not evicted, so after the first call it is a cache hit (Node: 0.11 vs 0.09-0.12 ms per ddView, i.e. within noise).
