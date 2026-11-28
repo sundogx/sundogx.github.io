@@ -113,7 +113,9 @@ for (const [k] of D.DG_PRESETS) {
 ok(D.dgSeatText(D.dgPreset('nt').seats.S) === '15-17 HCP, balanced', 'seat text ' + D.dgSeatText(D.dgPreset('nt').seats.S));
 ok(D.dgSeatText(D.dgPreset('weak2').seats.S) === '5-10 HCP, ♠0-3, ♥6', 'seat text weak two');
 ok(D.dgSeatText(D.dgBlank().seats.N) === '', 'seat text blank');
-const bs = D.dgBoards(D.dgPreset('slam'), 5, 200, rand);
+const bs = D.dgBoards(D.dgPreset('slam'), 5, 1000, rand);
+{ const sp = D.dgBlank(); sp.seats.S.hcp = [37, 37]; sp.seats.N.hcp = [1, 37]; const t = Date.now(), r = D.dgBoards(sp, 32, 150, rand);
+  ok(r.boards.length === 0 && Date.now() - t < 400, 'boards: one total budget, stops at the first miss (' + (Date.now() - t) + ' ms)'); }
 ok(bs.boards.length === 5 && bs.boards[3].dealer === 'W' && bs.boards[3].vul === 'Both', 'boards');
 const pbn = D.dgPBN(bs.boards, 'My "slams"');
 ok(S.pbnBoards(pbn).join() === '1,2,3,4,5', 'pbn boards ' + S.pbnBoards(pbn).join());

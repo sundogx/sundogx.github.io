@@ -1,9 +1,18 @@
 # Round 16, feat16: Deal setup (a deal generator with constraints)
 
 ## Resume here
-- State: feature done, tested and committed. Nothing half-done.
-- If continuing: 1) merge-time: bump CACHE in sw.js (not done here, by the rules); 2) optional ideas under "Next"; 3) re-run the tests below after a merge.
-- Key numbers: dealing ~300-450 tries/ms (Node, desktop); presets fit 1 in 2 to 1 in 735 deals; practice budget 0.3 s.
+- State: review fixes (REVIEW-r16-feat16.md items 1-7) done, tested and committed. Nothing half-done.
+- If continuing: 1) at merge bump CACHE in sw.js; 2) optional ideas under "Tried / not done"; 3) re-run the tests below after a merge.
+- Key numbers: dealing ~300-650 tries/ms; status estimate 50 ms, sample <=80 ms (separate tasks); practice board budget 100 ms; PBN download 1.5 s total.
+
+## Review fixes (round 2)
+1. Download PBN: one total budget of 1.5 s (`dgBoards(spec, n, msTotal)`), stops at the first board that doesn't turn up; the button is off when no deal fits. Node test: 32 impossible boards return in <400 ms; Playwright: "nothing fits: Download PBN is off".
+2. Enter/Space on a sample-auction call opens its explanation (the screen's key handler does it, as the explorer's does). Playwright check added.
+3. Main thread: estimate 150 -> 50 ms, sample search 200 -> 80 ms, run as two tasks (setTimeout between); practice board budget 300 -> 100 ms (other deal types 80). Measured in Chrome: status 50-51 ms, sample 1-2 ms (1NT preset). The "rare" warning uses the new budget.
+4. `js/playfrom.js` pfDeal: one line, `Prefs.deals === 'gen'` -> `dgFind(DG.spec, { ms: 30 })` (Just declare/defend now honour the setup).
+5. Dead guard after startPractice removed.
+6. PBN file name and Date tag both use the local date (`dgDate`).
+7. Phones: Leave sits on the title's line at the right end (Playwright checks the two tops match).
 
 ## Why this feature
 Research (BBO, Funbridge, IntoBridge, RealBridge, BridgeTricks): the app already had practice deal types (South-only
@@ -36,6 +45,7 @@ charlesandgerry.com/bridge/constraints.html, intobridge.com/news/play-with-robot
 
 ## Hooks outside dealgen.js
 - `index.html`: script tag after learn.js (before app.js); home button; More menu button. All marked `feature: dealgen`.
+- `js/playfrom.js`: one line in pfDeal (review item 4).
 - `sw.js`: `js/min/dealgen.js` added to CORE (CACHE not bumped).
 - `style.css`: a `feature: dealgen` block at the end (plus phone rule: Leave at the right end, as the other practice screens).
 - `tests/all.js`: `dealgentest.js` added to npm test.

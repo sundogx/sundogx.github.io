@@ -186,21 +186,29 @@ function dgSeatText(a) {
   return parts.join(', ');
 }
 
+// today's local date, e.g. 2026.11.28 (the PBN Date tag) or 2026-11-28 (the file name)
+function dgDate(sep) { const d = new Date(); return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join(sep); }
 // Boards in PBN: [{ board, dealer, vul, hands }] -> text
 function dgPBN(boards, event = 'Deal setup') {
   const pv = { None: 'None', NS: 'NS', EW: 'EW', Both: 'All' };
   const hand = cs => SUITS.map(su => cs.filter(c => c[0] === su).map(c => c[1]).join('')).join('.');
-  const d = new Date(), date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  const date = dgDate('.');
   return '% PBN 2.1\n% Made by the Bridge app\'s deal setup\n\n' + boards.map(b => [
     `[Event "${event.replace(/["\\]/g, '')}"]`, '[Site ""]', `[Date "${date}"]`, `[Board "${b.board}"]`,
     `[Dealer "${b.dealer}"]`, `[Vulnerable "${pv[b.vul]}"]`, `[Deal "N:${['N', 'E', 'S', 'W'].map(s => hand(b.hands[s])).join(' ')}"]`,
   ].join('\n')).join('\n\n') + '\n';
 }
-// n boards numbered from 1 with their usual dealer and vulnerability; boards that don't turn up are left out
-function dgBoards(spec, n, msEach = 250, rand = Math.random) {
+// up to n boards numbered from 1 with their usual dealer and vulnerability, within msTotal milliseconds in all;
+// stops at the first board that doesn't turn up in the time left
+function dgBoards(spec, n, msTotal = 1500, rand = Math.random) {
   const c = dgCompile(spec); if (c.errors.length) return { errors: c.errors };
-  const boards = [];
-  for (let b = 1; b <= n; b++) { const r = dgFind(spec, { ms: msEach, rand, plan: c.plan }); if (r.hands) boards.push({ board: b, dealer: boardDealer(b), vul: boardVul(b), hands: r.hands }); }
+  const boards = [], end = Date.now() + msTotal;
+  for (let b = 1; b <= n; b++) {
+    const left = end - Date.now(); if (left <= 0) break;
+    const r = dgFind(spec, { ms: left, rand, plan: c.plan });
+    if (!r.hands) break;
+    boards.push({ board: b, dealer: boardDealer(b), vul: boardVul(b), hands: r.hands });
+  }
   return { boards };
 }
 
@@ -231,7 +239,7 @@ if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') dgLoad
 
 // Practice boards with Options > "Deals in practice" set to "My deal setup" (deals.js's practiceDeal, extended
 // here; table.js calls practiceDeal(t) for every new practice board)
-const DG_PRACTICE_MS = 300;
+const DG_PRACTICE_MS = 100; // a practice board waits for this at most (the other deal types: 80 ms)
 function dgPracticeDeal() {
   const r = dgFind(DG.spec, { ms: DG_PRACTICE_MS });
   if (r.hands) return r.hands;
@@ -328,18 +336,18 @@ function dgOnInput(e) {
 function dgChanged(delay) {
   dgSummaries();
   clearTimeout(DG.timer);
-  DG.timer = setTimeout(() => { dgStatus(); dgNewSample(); }, delay);
+  DG.timer = setTimeout(() => { dgStatus(); DG.timer = setTimeout(dgNewSample, 0); }, delay); // two short tasks, not one long one
 }
 function dgSummaries() {
   for (const seat of SEATS) { const el = document.querySelector(`[data-sum="${seat}"]`); if (el) el.innerHTML = dgSym(dgSeatText(DG.spec.seats[seat]) || 'any hand'); }
 }
 const dgFmt = n => n.toLocaleString('en-US');
 function dgStatus() {
-  const el = dgEl('dgStatus'), r = dgEstimate(DG.spec, 150);
+  const EST_MS = 50, el = dgEl('dgStatus'), r = dgEstimate(DG.spec, EST_MS);
   el.classList.toggle('dg-err', !!r.errors || !r.hits);
-  dgEl('dgPlay').disabled = !!r.errors; dgEl('dgPBN').disabled = !!r.errors;
+  dgEl('dgPlay').disabled = !!r.errors; dgEl('dgPBN').disabled = !!r.errors || !r.hits;
   if (r.errors) { el.innerHTML = r.errors.slice(0, 3).map(dgSym).join('<br>'); DG.rate = 0; return; }
-  DG.rate = r.hits / r.tries; DG.speed = r.tries / 150; // tries a millisecond
+  DG.rate = r.hits / r.tries; DG.speed = r.tries / EST_MS; // tries a millisecond
   if (!r.hits) { el.textContent = `None of ${dgFmt(r.tries)} random deals fit. Loosen something, or practice boards will be random.`; return; }
   const one = r.tries / r.hits;
   const pct = DG.rate >= 0.1 ? Math.round(DG.rate * 100) + '%' : DG.rate >= 0.001 ? (DG.rate * 100).toFixed(1) + '%' : (DG.rate * 100).toFixed(3) + '%';
@@ -348,7 +356,7 @@ function dgStatus() {
   if (sure < 0.95) el.classList.add('dg-err');
 }
 function dgNewSample() {
-  const r = dgFind(DG.spec, { ms: 200 });
+  const r = dgFind(DG.spec, { ms: 80 });
   DG.sampleBoard = DG.sampleBoard % 16 + 1;
   DG.sample = r.hands ? { board: DG.sampleBoard, dealer: boardDealer(DG.sampleBoard), vul: boardVul(DG.sampleBoard), hands: r.hands } : null;
   dgRenderSample(r.errors ? 'Fix the setup to see a deal.' : 'No deal fitting the setup turned up.');
@@ -401,10 +409,10 @@ function dgOnMenu(e) {
 }
 function dgDownload() {
   const n = +dgEl('dgCount').value || 16;
-  const r = dgBoards(DG.spec, n, 250);
+  const r = dgBoards(DG.spec, n, 1500);
   if (r.errors) return;
   if (!r.boards.length) { toast('No deal fitting the setup turned up'); return; }
-  downloadText(`deals-${new Date().toISOString().slice(0, 10)}.pbn`, dgPBN(r.boards, dgEl('dgSaved').value || 'Deal setup'));
+  downloadText(`deals-${dgDate('-')}.pbn`, dgPBN(r.boards, dgEl('dgSaved').value || 'Deal setup'));
   if (r.boards.length < n) toast(`Only ${r.boards.length} of ${n} boards turned up in time`);
 }
 // Practice with this setup: Options' "Deals in practice" becomes "My deal setup"; a practice board nobody has
@@ -414,7 +422,6 @@ function dgPlay() {
   if (typeof T !== 'undefined' && T && !T.local) { dgLeave(); toast('Practice boards will use your deal setup'); return; } // an online table stays open
   dgHide();
   startPractice(false);
-  if (typeof T === 'undefined' || !T || !T.local || T.daily || T.whatIf) return;
   if (T.phase === 'auction' && !T.auction.some(a => a.by === 'S')) {
     act(s => { if (s.phase !== 'auction') return false; sysMsg(s, `Board ${s.board} dealt again with your deal setup`); s.board -= 1; startBoard(s); });
   } else toast('Your deal setup starts with the next board');
@@ -426,7 +433,7 @@ function dgOpen() {
   dgFill(); dgSummaries();
   const on = typeof Prefs !== 'undefined' && Prefs.deals === 'gen';
   dgEl('dgPlayNote').textContent = on ? 'Practice boards use this setup now (Options > Deals in practice).' : 'Play these deals makes practice boards use this setup (Options > Deals in practice > My deal setup).';
-  dgStatus(); dgNewSample();
+  dgChanged(0);
   const f = dgEl('dgPreset'); if (f) f.focus({ preventScroll: true });
 }
 function dgHide() {
@@ -444,6 +451,9 @@ if (typeof document !== 'undefined') {
     if (!el || el.classList.contains('hidden') || (dgEl('modalRoot') && dgEl('modalRoot').firstChild)) return;
     e.stopPropagation();
     if (e.key === 'Escape') { if (dgEl('explainPop')) hideExplain(); else dgLeave(); }
+    else if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('#dealGen .agrid [data-alert]')) { // as a tap on the call
+      e.preventDefault(); if (dgEl('explainPop')) hideExplain(); else showExplain(e.target, e.target.dataset.alert);
+    }
   }, true);
 }
 

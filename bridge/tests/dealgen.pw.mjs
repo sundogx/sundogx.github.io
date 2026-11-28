@@ -58,6 +58,13 @@ for (const vp of ['phone', 'desktop']) {
   // tap a call in the sample auction: the explanation bubble
   const call = await page.$('#dgSample .agrid [data-alert]');
   if (call) { await call.click(); await sleep(150); check(await page.isVisible('#explainPop'), `${vp}: a sample call explains itself`); await page.mouse.click(5, 5); }
+  await sleep(300); const call2 = await page.$('#dgSample .agrid [data-alert]'); // the blur of the cards field dealt a new sample
+  if (call2) { await call2.focus(); await page.keyboard.press('Enter'); await sleep(150); check(await page.isVisible('#explainPop') && await page.isVisible('#dealGen'), `${vp}: Enter on a sample call explains it`); await page.keyboard.press('Escape'); await sleep(100); check(await page.isVisible('#dealGen'), `${vp}: Escape closes the bubble first`); }
+  { const tb = await page.$eval('#dealGen .topbar .tt', e => e.getBoundingClientRect().top), lb = await page.$eval('#dgLeave', e => e.getBoundingClientRect().top);
+    check(Math.abs(tb - lb) < 12, `${vp}: Leave on the title's line (${Math.round(tb)} / ${Math.round(lb)})`); }
+  // main-thread work per change: the status (estimate) and the sample are two separate tasks; time each
+  { const ms = await page.evaluate(() => { const T0 = performance.now(); dgStatus(); const T1 = performance.now(); dgNewSample(); const T2 = performance.now(); return [T1 - T0, T2 - T1]; });
+    check(ms[0] < 90 && ms[1] < 150, `${vp}: status ${Math.round(ms[0])} ms, sample ${Math.round(ms[1])} ms (separate tasks)`); }
   await tap('#dgAnother'); await sleep(300);
   check(fitsNT((await page.evaluate(() => DG.sample.hands)).S), `${vp}: Another deals another fitting sample`);
   check(await overflow() <= 0, `${vp}: no sideways scrolling (${await overflow()})`);
@@ -66,7 +73,10 @@ for (const vp of ['phone', 'desktop']) {
   await page.fill('.dg-seat[data-seat="N"] [data-f="cards"]', 'A - - -'); await sleep(700);
   check(/given to both North and South|given to both South and North/.test(await page.textContent('#dgStatus')) && await page.isDisabled('#dgPlay') && await page.$eval('#dgStatus', e => e.classList.contains('dg-err')), `${vp}: a card given twice is reported, Play is off`);
   if (shots) await page.screenshot({ path: path.join(shots, `${W}-dealgen-error.png`) });
-  await page.fill('.dg-seat[data-seat="N"] [data-f="cards"]', ''); await sleep(600);
+  // a valid setup that no deal fits: Download is off
+  await page.fill('.dg-seat[data-seat="N"] [data-f="cards"]', ''); await page.fill('.dg-seat[data-seat="N"] [data-f="hlo"]', '30'); await sleep(700);
+  check(await page.isDisabled('#dgPBN') && await page.isEnabled('#dgPlay') && /None of/.test(await page.textContent('#dgStatus')), `${vp}: nothing fits: Download PBN is off`);
+  await page.fill('.dg-seat[data-seat="N"] [data-f="hlo"]', '0'); await sleep(600);
   check(await page.isEnabled('#dgPlay'), `${vp}: fixed, Play is on again`);
   // save, reload, still there
   await tap('#dgSaveAs'); await sleep(200);
