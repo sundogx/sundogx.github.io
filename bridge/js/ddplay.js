@@ -63,6 +63,10 @@ function ddAuctionLimits(auction, seat, vul, full = true, keep2C = false, X = {}
 // Did the seat show a balanced hand (a natural notrump bid, by the system's own meanings)?
 let ddMetaMemo = { key: null, metas: null }; // the last auction's meanings (ddView asks for each hidden seat)
 function ddShownBalanced(auction, seat, vul) {
+  const metas = ddMetas(auction, vul);
+  return !!metas && auction.some((a, i) => a.by === seat && metas[i] && metas[i].bal);
+}
+function ddMetas(auction, vul) { // every call's meaning by the system (auctionMetas), memoised for the last auction
   const key = vul + ':' + auction.map(a => a.by + a.call).join(',') + ':' + JSON.stringify([globalThis.BID_OFF, globalThis.BID_K]); // (the bidding's test knobs too)
   let metas = ddMetaMemo.key === key ? ddMetaMemo.metas : null;
   if (!metas) {
@@ -72,7 +76,7 @@ function ddShownBalanced(auction, seat, vul) {
     } catch (e) { metas = null; }
     ddMetaMemo = { key, metas };
   }
-  return !!metas && auction.some((a, i) => a.by === seat && metas[i] && metas[i].bal);
+  return metas;
 }
 
 // The robot's view of the table: only what it is allowed to see.
@@ -94,7 +98,7 @@ function ddView(t, seat, opts = {}) {
   };
   if (!play.tricks.length && typeof leadView === 'function') leadView(view, t, opts); // opening lead: js/leads.js
   const xp = opts.xpen != null ? opts.xpen : DD_XPEN;
-  if (xp >= 0) ddXpenLimit(view, xp);
+  if (xp >= 0) ddXpenLimit(view, xp, t.vul, opts);
   if (opts.xpenH != null ? opts.xpenH : DD_XPENH) ddXpenHcp(view, t.vul, opts);
   return view;
 }
@@ -104,11 +108,24 @@ function ddView(t, seat, opts = {}) {
 // times, so the real hand broke the 3+ limit on 41% of these boards (round 12: 24% with an odd bidder). Round 16 reads
 // no trump minimum from the double (DD_XPEN 0), for the lead and the play: see HANDOFF-r16-play16.md for the measurement.
 const DD_XPEN = 0;
-function ddXpenLimit(view, n) {
+function ddXpenLimit(view, n, vul, opts = {}) {
   const c = view.contract, st = c.strain; if (!c.doubled || st === 'N') return;
-  const x = [...view.auction].reverse().find(a => a.call === 'X');
-  const lim = x && !sameSide(x.by, c.declarer) && view.limits[x.by];
-  if (lim && lim.lenMin[st] > n) lim.lenMin[st] = n;
+  const d = ddFinalPenX(view, vul, opts); if (!d) return;
+  // the trump length the doubler's earlier calls showed still counts (e.g. a suit it bid)
+  const lim = d.lim; n = Math.max(n, d.before().lenMin[st]);
+  if (lim.lenMin[st] > n) lim.lenMin[st] = n;
+}
+// The defenders' double of the final contract, when the system reads it as a penalty double (meaning tag 'xpen'; a
+// takeout, negative or responsive double that partner passed keeps its own reading): { lim: the doubler's limits,
+// before(): its limits from the calls before the double (minimums only) }, or null.
+function ddFinalPenX(view, vul, opts) {
+  const c = view.contract, a = view.auction, i = a.map(q => q.call).lastIndexOf('X'), x = a[i];
+  if (!x || sameSide(x.by, c.declarer) || !view.limits[x.by]) return null;
+  const m = ddMetas(a, vul);
+  if (!m || !m[i] || m[i].tag !== 'xpen') return null;
+  let b = null;
+  // (minimums only: full would also redo ddShownBalanced and evict its one-auction memo)
+  return { lim: view.limits[x.by], before: () => b || (b = ddAuctionLimits(a.slice(0, i), x.by, vul, false, false, opts.limx || DD_LIMX)) };
 }
 
 // A defender's double of the final contract sets no HCP minimum either (DD_XPENH; opts.xpenH 0: off): the doubler's minimum
@@ -118,12 +135,9 @@ function ddXpenLimit(view, n) {
 // defenders +0.015 +- 0.005 IMPs per decision.
 const DD_XPENH = true;
 function ddXpenHcp(view, vul, opts) {
-  const c = view.contract; if (!c.doubled) return;
-  const a = view.auction, i = a.map(q => q.call).lastIndexOf('X'), x = a[i];
-  if (!x || sameSide(x.by, c.declarer) || !view.limits[x.by] || (opts.xpenH === 'N' && c.strain !== 'N')) return;
-  const before = ddAuctionLimits(a.slice(0, i), x.by, vul, false, false, opts.limx || DD_LIMX); // (minimums only: full would also redo ddShownBalanced and evict its one-auction memo)
-  const lim = view.limits[x.by];
-  lim.hcpMin = Math.min(lim.hcpMin, before.hcpMin);
+  const c = view.contract; if (!c.doubled || (opts.xpenH === 'N' && c.strain !== 'N')) return;
+  const d = ddFinalPenX(view, vul, opts); if (!d) return;
+  d.lim.hcpMin = Math.min(d.lim.hcpMin, d.before().hcpMin);
 }
 
 function ddLegal(view) {

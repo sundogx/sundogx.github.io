@@ -1,8 +1,13 @@
 # Round 16: play16 (robot card play: leads.js, bots.js botPlay, ddplay.js)
 
 ## Resume here
-- Work complete (12:20 HKT). Three shipped changes, all measured on fresh seeds (summary below); nothing half done.
-- If continuing: see "Open findings" at the end.
+- Review fix pass (12:55-): done in code (js/ddplay.js ddFinalPenX): both readings now apply only when the final double's
+  meaning tag is 'xpen' (takeout/negative/responsive doubles passed for penalty keep their reading), and the trump
+  minimum keeps what the doubler's earlier calls showed (max with its limits before the double). Fixture scripts use
+  `process.env.R || path.join(__dirname, '../../js/')`.
+- Running: `XONLY=1 NEW='{"xpen":-1,"xpenH":0}' node tests/ddacc.js 12000 13 p16xd 2` > scratch p16/xd.log: the whole fixed
+  package against the pre-round reading on a fresh seed (negative = the new default is better).
+- Next: put the xd numbers in sections 2-3 and the summary, commit, report.
 
 ## Summary
 | change | file | held-out measurement |

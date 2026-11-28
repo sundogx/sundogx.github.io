@@ -1,5 +1,5 @@
 // node ver.js file.jsonl [play=0|1]: new botLead vs BOT_OFF lwb, DD IMPs; with play=1 also played out by botPlay (server mode)
-const R = process.env.R || '/Users/admin/Documents/sundogx.github.io/.claude/worktrees/r16-play16/bridge/js/';
+const R = process.env.R || require('path').join(__dirname, '../../js/');
 Object.assign(globalThis, require(R + 'engine.js')); const B = require(R + 'bots.js'); globalThis.shown = B.shown;
 Object.assign(globalThis, require(R + 'ddplay.js')); const L = require(R + 'leads.js');
 const fs = require('fs'); const recs = fs.readFileSync(process.argv[2], 'utf8').split('\n').filter(Boolean).map(JSON.parse).filter(r => r.ct);

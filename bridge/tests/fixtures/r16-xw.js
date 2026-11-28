@@ -1,4 +1,4 @@
-const R = '/Users/admin/Documents/sundogx.github.io/.claude/worktrees/r16-play16/bridge/js/';
+const R = process.env.R || require('path').join(__dirname, '../../js/');
 Object.assign(globalThis, require(R + 'engine.js')); const B = require(R + 'bots.js'); globalThis.shown = B.shown;
 const fs = require('fs'); const recs = process.argv.slice(2).flatMap(f => fs.readFileSync(f, 'utf8').split('\n').filter(Boolean).map(JSON.parse)).filter(r => r.ct && r.ct.doubled);
 let n = 0, weak = 0; const ex = [];

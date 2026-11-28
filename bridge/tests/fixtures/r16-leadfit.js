@@ -1,5 +1,5 @@
 // node fit.js train.jsonl[,..] test.jsonl[,..] variants...   (test may be 'cv' = odd g of train held out)
-const R = process.env.R || '/Users/admin/Documents/sundogx.github.io/.claude/worktrees/r16-play16/bridge/js/';
+const R = process.env.R || require('path').join(__dirname, '../../js/');
 Object.assign(globalThis, require(R + 'engine.js')); const B = require(R + 'bots.js'); globalThis.shown = B.shown;
 const D = require(R + 'ddplay.js'); Object.assign(globalThis, D); const L = require(R + 'leads.js');
 const fs = require('fs');
