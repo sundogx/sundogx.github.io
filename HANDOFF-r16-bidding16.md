@@ -47,7 +47,8 @@ scratchpad r16/cap.js). Fixes are in bridge/js/bidding.js, each behind a BID_OFF
 - js1n (1S-1NT-3H jump shift 19+) +3; js20 (jump shift with a 5-4-2-2 20+) -4; x4m (3x X P: 4M on four cards with 10+): noisy -32..+13;
   nrx (1NT (2x) P P X reopening with a doubleton, plus answers) +3; szo3 (NT-system key-card asks with an open suit) 0;
   q1/q2 (lighter quant after 1NT/2NT rebids) +1/+11; ntg/ntl (1NT responder long-minor points) +15..22; nts 30/29 -25/-153;
-  sp 29 -150; st 10 +9; g7/g5 grand thresholds +19/-11/+27.
+  sp 29 -150; st 10 +9; g7/g5 grand thresholds +19/-11/+27; r4t (4M on a doubleton over 1x-1y-2x) no board changed;
+  axj 20/22 (jump advance of a takeout double one point lighter/heavier) -8/-67.
 
 ## Open findings
 - The NT auctions remain the largest slam-loss group (2N 3N P, 1N 2C 2D 3N, 2C 2D 2N 3N, 1N 3N P): quant thresholds look
