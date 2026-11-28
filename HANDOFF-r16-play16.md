@@ -1,12 +1,15 @@
 # Round 16: play16 (robot card play: leads.js, bots.js botPlay, ddplay.js)
 
 ## Resume here
-- DONE: (1) botLead NT weights LEAD_WB.N (js/leads.js): pooled two fresh 30k sets +0.015 +- 0.005 DD, +0.027 +- 0.007
-  played out IMPs/board. (2) DD_XPEN 0 (ddplay.js): seed p16xa declX +0.0152 +- 0.0058, defX +0.0116 +- 0.0042 per
-  decision. (3) DD_XPENH (ddplay.js ddXpenHcp): seed p16xb declX +0.0164 +- 0.0051, defX +0.0146 +- 0.0051.
-- Running (12:05): `XONLY=1 NEW='{"xpen":-1}' node tests/ddacc.js 16000 12 p16xb 2` > scratch p16/xc.log = fresh-seed
-  confirmation of DD_XPEN (sign flipped: negative = the new default is better; xpenH off in that process).
-- Next: put xc numbers in section 2, final report. Deadline 14:15 HKT.
+- Work complete (12:20 HKT). Three shipped changes, all measured on fresh seeds (summary below); nothing half done.
+- If continuing: see "Open findings" at the end.
+
+## Summary
+| change | file | held-out measurement |
+|---|---|---|
+| botLead NT weights LEAD_WB.N | js/leads.js:150 | 2 x 30k fresh boards: +0.015 +- 0.005 DD, +0.027 +- 0.007 played out IMPs/board |
+| no trump minimum from a defender's double of the final suit contract (DD_XPEN 0) | js/ddplay.js:96-112 | doubled boards p16xa: decl +0.015 +- 0.006, def +0.012 +- 0.004 IMPs/decision; confirmed p16xb (old vs new): decl -0.014 +- 0.005, def -0.017 +- 0.005, lead -0.037 +- 0.019 |
+| no HCP minimum from that double either (DD_XPENH) | js/ddplay.js:114-127 | doubled boards p16xb, on top: decl +0.016 +- 0.005, def +0.015 +- 0.005 |
 
 ## 1. botLead notrump refit (shipped)
 - Who: botLead is the lead of strangers-mode online robots (src/worker.js plays botPlay/botLead), Beginner robots and
@@ -46,6 +49,15 @@
   +0.0152 +- 0.0058 IMPs per decision (1,000 of 23,247 changed), defenders +0.0116 +- 0.0042 (521 of 19,780), lead
   +0.017 +- 0.016 (93 of 2,151). Time per decision falls (decl 157 -> 145 ms, def 710 -> 647, lead 3,734 -> 3,398 in Node),
   as fewer layouts are rejected. Main thread: unchanged (one comparison in ddView).
+- Fresh-seed confirmation (seed p16xb, `XONLY=1 NEW='{"xpen":-1}'`, i.e. the old reading against the new default, xpenH
+  off): declarer -0.0141 +- 0.0051 (981 of 22,789 changed), defenders -0.0171 +- 0.0045 (462 of 18,914), lead -0.0371 +-
+  0.0193 (89 of 2,077): the old reading is worse on every kind of decision. (That run's ms column compares choices cached
+  from an earlier, more loaded run with fresh ones: not a speed measurement.)
+- Rough size: about 21 decisions per doubled board are solver decisions and 13% of robot boards end doubled, so roughly
+  +0.03-0.06 IMPs per board overall for the two limit changes together (extrapolated from per-decision DD losses, not a
+  played-out measurement).
+- Human doublers (practice with a human partner, friends mode) more often hold trumps for a penalty double; the looser
+  limit then only gives the sampler less information, it never excludes their real hand.
 - Earlier rounds saw the same sign with too few boards (r12 ddplay5 ODD=1: +0.008..+0.031; r13 lead-only: +0.017 +- 0.017).
 
 ## Other limit misreadings (audit, not acted on)
@@ -63,3 +75,15 @@
   (358 of 18,914), lead +0.011 +- 0.020 (63 of 2,077). ms per decision unchanged (120 -> 118, 537 -> 530).
 - Main thread: one more shown() reading per ddView on doubled contracts only; with full=false the ddShownBalanced memo is
   not evicted, so after the first call it is a cache hit (Node: 0.11 vs 0.09-0.12 ms per ddView, i.e. within noise).
+
+## Open findings
+- js/bidding.js judgeX (bidding agent's file): 0-5 HCP doubles of notrump games, -1.5 IMPs each, ~-0.009 IMPs/board overall
+  (section "Finding for bidding.js" above). Also js/bidding.js:181 reads a penalty double as 3+ trumps (`mn: { [st]: 3 }`),
+  which the robots' doubles don't meet 41% of the time; ddplay now ignores it, but shown() users elsewhere (leads.js
+  leadContext pLen, bots.js seatShown) still read it.
+- js/bots.js:174 endLimits0 (botPlay endgame, server strangers-mode robots) does not apply DD_XPEN / DD_XPENH. Probably small
+  (r13: DD_LIMX there was flat on 20k boards); heurstim has no XONLY filter to measure it cheaply.
+- tests/leadsim.js gen: K=0 now means no layouts (fixed; was 32). Fast data recipe for heuristic-lead work:
+  `node tests/leadsim.js gen F 30000 SEED 12 0 0` (~12 min).
+- The DD (page) lead could not be measured on enough boards here: 48 layouts per board runs < 0.5 boards/s under load.
+- Limit-violation audit (section above): 5.2% of seat readings break ddAuctionLimits; remaining groups are small.
