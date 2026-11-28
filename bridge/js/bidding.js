@@ -536,6 +536,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   if (c2 === '1N') {
     const nmf = t === 'C' ? '2D' : '2C';
     if (MAJ(r)) {
+      if (!BID_OFF('six6')) T.push(T_('6' + r, h => h.L[r] >= 6 && h.H >= (BID_K('six6') ?? 18), MM(BID_K('six6') ?? 18, 37, { mn: { [r]: 6 } }))); // slam values opposite 12-14 (4M was the only call, with no upper limit)
       T.push(T_('4' + r, h => h.L[r] >= 6 && h.H >= 13, MM(13, 17, { mn: { [r]: 6 } })));
       T.push(T_('3' + r, h => h.L[r] >= 6 && h.H >= 11, MM(11, 12, { mn: { [r]: 6 }, inv: true })));
       T.push(T_(nmf, h => h.H >= 11 && h.H <= 17 && (h.L[r] >= 5 || (r === 'S' && h.L.H >= 4)), MM(11, 37, { art: true, f: 1, a: 'New minor forcing: asks for 3-card support or the other major; invitational or better', t: 'nmf' })));
@@ -667,7 +668,7 @@ function ntSystem(ctx) {
   const trA = s => `Transfer: 5+ ${SNAME[s]}`;
   const rkS = (h, M) => h.H + (BID_K('ntf') ?? 0) >= quant && h.L[M] >= 6 && openSuits(ctx, h, M) === 0; // slam values in a 6+ major: Texas, then 4NT asks for key cards
   if (!isOpener && k === 1) {
-    const pts = h => h.H + Math.max(0, h.sh[0] - 5);
+    const pts = h => h.H + Math.max(0, h.sh[0] - 5) * (BID_K('ntl') ?? 1) + (h.sh[0] >= 6 && [...'CD'].some(m => h.L[m] >= 6 && hon(h, m, 'AKQ') >= 2) ? (BID_K('ntg') ?? 0) : 0);
     T.push(T_('6N', h => pts(h) >= six + 1 && h.sh[0] <= 6 && !(h.L.H >= 5 || h.L.S >= 5), MM(six + 1, 37)));
     T.push(T_('4N', h => pts(h) >= quant && h.H < six + 1 && h.semi && !(h.L.H >= 5 || h.L.S >= 5) && !(h.L.H === 4 || h.L.S === 4), MM(quant, six, { a: 'Quantitative: invites 6NT', t: 'quant' })));
     T.push(T_('4H', h => h.L.S >= 6 && h.H >= gf && (h.H < quant || rkS(h, 'S')), MM(gf, 37, { mn: { S: 6 }, art: true, a: 'Texas transfer: 6+ spades, game values', t: 'texas' })));
@@ -740,6 +741,7 @@ function ntSystem(ctx) {
         T.push(T_('P', h => h.H < inv, MM(0, inv - 1)));
         if (shown === 'H' && one) T.push(T_('2S', h => h.L.S >= 4 && h.H < gf, MM(inv, gf - 1, { mn: { S: 4 }, inv: true, a: '4 spades, invitational' })));
         if (one) T.push(T_('2N', h => h.H < gf, MM(inv, gf - 1, { inv: true })));
+        if (!BID_OFF('six4')) T.push(T_('6N', h => h.H >= six + 1, MM(six + 1, 37, { mx: { [shown]: 3 } }))); // too strong for the 4NT invite: bid the slam
         T.push(T_('4N', h => h.H >= quant, MM(quant, six, { t: 'quant', a: 'Quantitative: invites 6NT' })));
         T.push(T_('3N', () => true, MM(gf, quant - 1)));
         return T;
@@ -750,6 +752,7 @@ function ntSystem(ctx) {
       T.push(T_('3S', h => h.L.S === 4 && h.L.H === 5 && h.H >= gf, MM(gf, 37, { mn: { S: 4, H: 5 }, art: true, f: 2, a: 'Smolen: 4 spades here, 5 hearts, game forcing', t: 'smolen' })));
       if (one) for (const s of ['H', 'S']) T.push(T_('2' + s, h => h.L[s] >= 5 && h.H < gf, MM(inv, gf - 1, { mn: { [s]: 5 }, inv: true, a: `5 ${SNAME[s]} and 4 of the other major, invitational` })));
       if (one) T.push(T_('2N', h => h.H < gf, MM(inv, gf - 1, { inv: true })));
+      if (!BID_OFF('six4')) T.push(T_('6N', h => h.H >= six + 1, MM(six + 1, 37)));
       T.push(T_('4N', h => h.H >= quant, MM(quant, six, { t: 'quant', a: 'Quantitative: invites 6NT' })));
       T.push(T_('3N', () => true, MM(gf, quant - 1)));
       return T;
@@ -889,6 +892,7 @@ function resp2C2(ctx) { // responder after 2C - 2D - suit
   const neg = r === '3C' ? '3D' : '3C';
   if (bidValue(neg) > bidValue(r)) T.push(T_(neg, h => h.H <= 3, MM(0, 3, { art: true, a: 'Second negative: 0-3 points', t: 'neg2' })));
   for (const x of ['S', 'H', 'D']) if (x !== s && ctx.cheap(x) <= 3) T.push(T_(ctx.cheap(x) + x, h => h.L[x] >= 5 && hon(h, x) >= 1 && h.H >= 4, MM(4, 37, { mn: { [x]: 5 } })));
+  if (!BID_OFF('c26')) T.push(T_('6N', h => h.H >= (BID_K('c26') ?? 9) && h.semi && h.L[s] <= (MAJ(s) ? 2 : 3), MM(BID_K('c26') ?? 9, 37, { nt: true }))); // no fit, slam values opposite 22+ (the notrump call had no upper limit)
   T.push(T_(ctx.cheap('N') + 'N', () => true, MM(4, 37, { nt: true })));
   return T;
 }
