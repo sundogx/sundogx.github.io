@@ -1,11 +1,15 @@
 # Round 16: play16 (robot card play: leads.js, bots.js botPlay, ddplay.js)
 
 ## Resume here
-- DONE (10:50 HKT, committed): botLead notrump weights LEAD_WB.N (js/leads.js). Held out (seed p16b, 29,830 boards):
+- DONE (committed 4a5d0c2): botLead notrump weights LEAD_WB.N (js/leads.js). Held out (seed p16b, 29,830 boards):
   +0.018 +- 0.0066 DD IMPs/board overall (+0.059 +- 0.022 vs NT), played out by the heuristic robots +0.029 +- 0.010.
-- Now: testing a second NT model with 10 extra suit features (NmoreA: +0.080 +- 0.020 vs NT on p16b, but not
-  pre-registered) on a third fresh set p16c, against LEAD_WB.N refit on a+b.
-- Next: then look at the page DD lead / doubled contracts if time allows. Deadline 14:15 HKT.
+- Running (11:05 HKT): (a) scratch p16/c.jsonl, seed p16c, third fresh lead set: test NmoreA (10 extra NT features) refit on
+  a+b against shipped LEAD_WB.N (switch only if > 2 SE). (b) `XONLY=1 NEW='{"xpen":0}' node tests/ddacc.js 16000 12 p16xa 2`
+  -> scratch p16/xa.log: drop the trump minimum read from a defender's double of the final suit contract.
+- Finding behind (b): on 60k robot auctions (a+b), defenders who doubled the final suit contract held 0/1/2/3/4/5+ trumps
+  284/1151/1512/1402/1477/419 of 6,245; the samplers' lenMin is 3 on 5,453 of them, so the real hand breaks the limit on
+  41% of those boards (2,569). xpen was flat in r13 (303 leads) and leaned + in ddplay5 (small).
+- Next: if xa positive > 2 SE pooled, set xpen 0 by default in ddView (ddplay.js) and commit; else note it.
 
 ## 1. botLead notrump refit (shipped)
 - Who: botLead is the lead of strangers-mode online robots (src/worker.js plays botPlay/botLead), Beginner robots and
