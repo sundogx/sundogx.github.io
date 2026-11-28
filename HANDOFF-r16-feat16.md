@@ -64,7 +64,7 @@ Leave at the right end on phones.
 - Screenshots: screenshots/r16-feat16/ (390-/1280- dealgen, dealgen-error, dealgen-table, home).
 
 ## Tried / not done
-- Rejection sampling on strings via `deal()` was ~10x slower than card numbers; the loop uses Int8Array card numbers
+- Rejection sampling with `deal()` + `hcp`/`suitLengths` measured 18 deals/ms in Node against 300-450 for card numbers (about 20x); the loop uses Int8Array card numbers
   and checks seat by seat (early exit).
 - Not done: online tables with a setup (the server deals; would need the spec validated and dealt in src/worker.js
   within its CPU budget), dealer-relative constraints ("first seat to open"), losing-trick count or controls,
