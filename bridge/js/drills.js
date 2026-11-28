@@ -369,7 +369,11 @@ if (typeof document !== 'undefined') {
     const home = drEl('leadTrainerBtn');
     if (home && !drEl('drillsBtn')) home.insertAdjacentHTML('afterend', '<button class="btn" id="drillsBtn" data-drills="1">Your mistakes</button>');
     const more = drEl('ltMoreBtn');
-    if (more && !drEl('drMoreBtn')) more.insertAdjacentHTML('afterend', '<button class="btn small" id="drMoreBtn" data-drills="1">Your mistakes</button>');
+    if (more && !drEl('drMoreBtn')) {
+      // at practice tables only, like Lead practice (leaving an online table would empty your seat): mirror its button
+      more.insertAdjacentHTML('afterend', `<button class="btn small${more.classList.contains('hidden') ? ' hidden' : ''}" id="drMoreBtn" data-drills="1">Your mistakes</button>`);
+      if (typeof MutationObserver !== 'undefined') new MutationObserver(() => { const b = drEl('drMoreBtn'); if (b) b.classList.toggle('hidden', more.classList.contains('hidden')); }).observe(more, { attributes: true, attributeFilter: ['class'] });
+    }
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addBtns); else addBtns();
 }

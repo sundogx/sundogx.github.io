@@ -110,11 +110,10 @@ for (const vp of ['phone', 'desktop']) {
   // Play on from here
   await tap('[data-drplay]'); await sleep(800);
   const wi = await page.evaluate(() => ({ on: !!T && !!T.whatIf, phase: T && T.phase, hidden: document.getElementById('drills').classList.contains('hidden'), played: T && T.play.tricks.flatMap(t => t.cards).length }));
-  const want = await page.evaluate(() => DR.cur ? null : 'gone');
   check(wi.on && wi.phase === 'play' && wi.hidden, `${vp}: Play on from here opens a what-if table (${wi.played} cards played)`);
   if (shots) await page.screenshot({ path: path.join(shots, `${W}-drills-playon.png`) });
   // the table's More menu has it; Escape leaves to the home page
-  check(!!(await page.$('#moreBox #drMoreBtn')) || !!(await page.$('#drMoreBtn')), `${vp}: in the table's More menu`);
+  check(await page.evaluate(() => { const b = document.getElementById('drMoreBtn'), l = document.getElementById('ltMoreBtn'); return !!b && !b.classList.contains('hidden') && b.previousElementSibling === l; }), `${vp}: in a practice table's More menu, after Lead practice`);
   await page.evaluate(() => document.getElementById('drMoreBtn').click()); await sleep(500);
   check(await page.isVisible('#drills') && await page.isHidden('#tableView'), `${vp}: opens from the More menu`);
   await page.keyboard.press('Escape'); await sleep(200);
@@ -125,7 +124,6 @@ for (const vp of ['phone', 'desktop']) {
   const lead = await page.evaluate(() => ({ kind: DR.cur ? DR.cur.kind : null, txt: document.getElementById('drInfo').textContent }));
   check(lead.kind === 'lead' || /No mistakes of this kind|All caught up|learned/.test(lead.txt), `${vp}: Opening leads only (${lead.kind || lead.txt.slice(0, 50)})`);
   await page.selectOption('#drKind', 'all'); await sleep(200);
-  void want;
   check(!errs.length, `${vp}: no page errors ${errs.join(' | ')}`);
   await ctx.close();
 }
