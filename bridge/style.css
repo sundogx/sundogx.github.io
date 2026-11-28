@@ -718,3 +718,44 @@ select:focus-visible, summary:focus-visible, a:focus-visible, textarea:focus-vis
   .side, .benload > div, .benbar > div, .lt-prog > div { transition: none !important; }
 }
 #home .note:empty { display: none; } /* an empty note (storage warning) left a 26 px gap under the name box */
+
+/* feature: dealgen (Deal setup) */
+#dealGen { max-width: 1240px; margin: 0 auto; padding: 12px; }
+.dg-wrap { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.dg-main { flex: 1 1 560px; min-width: 0; }
+.dg-side { flex: 0 1 380px; min-width: 0; }
+.dg-top { margin: 8px 0 10px; gap: 8px; }
+.dg-top select { max-width: 100%; }
+.dg-seats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.dg-seat { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.dg-seat summary { cursor: pointer; padding: 2px 0 4px; }
+.dg-sum { margin-left: 4px; }
+.dg-line { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 4px 0; }
+.dg-lab { min-width: 2.2em; }
+.dg-lab2 { min-width: 7.5em; }
+.dg-lens { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 10px; margin: 4px 0 6px; }
+.dg-len { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.dg-len .dg-lab { min-width: 1.1em; font-size: 17px; }
+#dealGen input[type=number] { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 4px 4px; width: 3.4em; box-sizing: border-box; text-align: center; }
+#dealGen .red { color: #d32f2f; }
+.dg-cards { padding: 6px 8px !important; }
+.dg-both { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; margin-top: 10px; }
+.dg-fit { gap: 6px; }
+.dg-rot { gap: 8px; flex-wrap: nowrap; align-items: flex-start; margin-top: 6px; }
+.dg-rot input { margin-top: 4px; }
+.dg-status { margin: 10px 0 8px; min-height: 1.3em; }
+.dg-status.dg-err { color: var(--vul); }
+.dg-acts { gap: 8px; }
+.dg-pbn { gap: 6px; }
+.dg-sh { justify-content: space-between; margin-bottom: 4px; }
+.dg-sh h3 { margin: 0; font-size: 17px; }
+.dg-diag { display: grid; grid-template-columns: 1fr 1fr; grid-template-areas: "n n" "w e" "s s"; gap: 6px; background: #fff; color: #111; border: 1px solid #00000026; border-radius: 8px; padding: 8px 10px; font-size: 16px; }
+.dg-diag .note { color: #555; }
+.dg-h { min-width: 0; }
+.dg-N { grid-area: n; justify-self: center; } .dg-S { grid-area: s; justify-self: center; } .dg-W { grid-area: w; } .dg-E { grid-area: e; justify-self: end; }
+.dg-hn { font-weight: 600; font-size: 14px; }
+.dg-auc { margin-top: 10px; max-width: 320px; }
+@media (max-width: 760px) {
+  .dg-seats { grid-template-columns: minmax(0, 1fr); }
+  .dg-side { flex: 1 1 100%; }
+}
