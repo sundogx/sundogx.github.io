@@ -759,3 +759,4 @@ select:focus-visible, summary:focus-visible, a:focus-visible, textarea:focus-vis
   .dg-seats { grid-template-columns: minmax(0, 1fr); }
   .dg-side { flex: 1 1 100%; }
 }
+@media (max-width: 560px) { #dgLeave { margin-left: auto; } } /* like the other practice screens: Leave at the right end */

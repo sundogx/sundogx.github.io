@@ -23,6 +23,7 @@ Play bridge with friends or robots in the browser. Up to four people play from t
 | `js/benbridge.js` | The "Use BEN robots" option: starts the BEN worker, asks it for practice robots' calls and cards, falls back to the usual robots (see below). |
 | `ben/` | BEN robots (GPL-3.0, a separate program): the worker `ben-worker.js` and its models. The messages are in `ben/INTERFACE.md`. |
 | `js/minibridge.js`, `js/rubber.js` | MiniBridge and the New practice options; rubber and Chicago scoring and the score sheet (see below). |
+| `js/dealgen.js` | Deal setup: practice deals with constraints for all four hands, saved setups, PBN download (see below). |
 | `js/app.js` | Everything on screen: drawing the table, bidding box, options, keyboard, lobby. |
 | `js/dds-worker.js`, `js/wasm/` | The WebAssembly solver (see below); it also picks the practice robots' cards. |
 | `src/worker.js` | The Cloudflare Worker: one Durable Object per table, plus the lobby. |
@@ -200,6 +201,16 @@ Both are on the home page and in the table's More menu (`js/explorer.js`, `js/fl
 A lead within 0.05 tricks of the best counts as the best lead; the streak, the share of best leads and the average cost are kept in localStorage (`bridge-lt`).
 
 Speed: a 13-card lead solve is slow (median ~75 ms on one desktop core, with a tail of seconds), so the evaluation has a time budget, not just a count: each worker stops before a solve that would end after 11 s, and anything still running at 14.5 s is dropped. A desktop (4 workers) solves 200 layouts in 2-6 s; one desktop core alone manages ~145 in 11 s; a phone gets fewer layouts (roughly 50-150), never more than ~15 s. The note under the table gives the number of layouts and the time.
+
+## Deal setup (a deal generator with constraints)
+`js/dealgen.js`, from the home page ("Deal setup") or the table's More menu. Like BBO's "Deal source": you say what each hand holds and practice boards are dealt at random among the deals that fit.
+- **Each seat:** high-card points from-to, a shape (balanced 4333/4432/5332, semi-balanced also 5422/6322, unbalanced, a 6+ or 7+ card suit, two 5+ card suits, 4-4-4-1 or 5-4-4-0), each suit's length from-to, and cards it must hold (`AK - Q -`, `AK.Q..`, `S AK H Q` or `♠AK ♥Q`; the generator deals the rest).
+- **Both sides:** N-S points together, each side's best fit (8+ to 11+), and "turn the deal round at random" (half the time North gets the hand set for South and East the one set for West, as BBO's "rotate 180 degrees").
+- **Start from** a ready-made setup (you open 1NT, partner opens 1NT, a strong 2♣, a weak 2♥, a major fit with game values, games, slams, competitive deals, they overcall your 1NT, West preempts, a two-suiter, defending their game); **Save as…** keeps your own under a name (localStorage `bridge-dealgen`).
+- The screen says how often a random deal fits ("About 1 deal in 9 fits (11%)", or what is wrong with the setup: a card given twice, lengths that can't add up to 13, given cards above a limit) and shows a **sample deal** with the robots' auction (every call can be tapped for its meaning).
+- **Play these deals** sets Options > Deals in practice to "My deal setup" and opens practice. A practice board nobody has called on yet is dealt again (keeping its number); otherwise the setup starts with the next board. **Download PBN** writes 4-32 boards (numbered from 1 with their usual dealer and vulnerability) to play in other programs or print.
+- Dealing is rejection sampling on card numbers (no strings until a deal fits), about 300-450 deals a millisecond on a desktop, so a setup that fits 1 deal in 10,000 still deals in a practice board's 0.3 s budget; when nothing fits in time the board is random and a toast says so. Practice only (online tables deal on the server).
+- Tests: `node tests/dealgentest.js [n]` (in `npm test`: parsing, every check, n random setups whose deals are checked independently, the presets, rotation, PBN read back by `js/share.js`) and `NODE_PATH=<dir with playwright-core> node tests/dealgen.pw.mjs [--shots=dir]` (phone and desktop).
 
 ## MiniBridge, rubber and Chicago (practice)
 
