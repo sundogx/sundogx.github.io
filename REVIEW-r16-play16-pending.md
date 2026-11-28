@@ -1,0 +1,1 @@
+play16 DONE (935081d): botLead NT refit (+0.015±0.005 DD, +0.027±0.007 played pooled), DD_XPEN=0 (doubler trumps not assumed) and DD_XPENH (no HCP min from double): ~+0.015/decision each. Open: judgeX doubles NT with 0-5 HCP (bidding.js ~1984, -0.009/board); bots.js:174 endLimits0 not using new readings.
