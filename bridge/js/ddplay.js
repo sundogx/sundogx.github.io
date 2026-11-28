@@ -95,6 +95,7 @@ function ddView(t, seat, opts = {}) {
   if (!play.tricks.length && typeof leadView === 'function') leadView(view, t, opts); // opening lead: js/leads.js
   const xp = opts.xpen != null ? opts.xpen : DD_XPEN;
   if (xp >= 0) ddXpenLimit(view, xp);
+  if (opts.xpenH) ddXpenHcp(view, t.vul, opts);
   return view;
 }
 // The trump minimum read from a defender's penalty double of the final suit contract (opts.xpen: test knob, -1 = off).
@@ -108,6 +109,17 @@ function ddXpenLimit(view, n) {
   const x = [...view.auction].reverse().find(a => a.call === 'X');
   const lim = x && !sameSide(x.by, c.declarer) && view.limits[x.by];
   if (lim && lim.lenMin[st] > n) lim.lenMin[st] = n;
+}
+
+// opts.xpenH (test knob, off): a defender's double of the final contract sets no HCP minimum either: the doubler's minimum
+// is the one its calls before the double showed (notrump doublers had less than the limit on 30% of 1,605 boards).
+function ddXpenHcp(view, vul, opts) {
+  const c = view.contract; if (!c.doubled) return;
+  const a = view.auction, i = a.map(q => q.call).lastIndexOf('X'), x = a[i];
+  if (!x || sameSide(x.by, c.declarer) || !view.limits[x.by] || (opts.xpenH === 'N' && c.strain !== 'N')) return;
+  const before = ddAuctionLimits(a.slice(0, i), x.by, vul, true, false, opts.limx || DD_LIMX);
+  const lim = view.limits[x.by];
+  lim.hcpMin = Math.min(lim.hcpMin, before.hcpMin);
 }
 
 function ddLegal(view) {

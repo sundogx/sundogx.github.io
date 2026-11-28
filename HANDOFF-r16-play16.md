@@ -4,7 +4,10 @@
 - DONE: (1) botLead NT weights LEAD_WB.N (js/leads.js), held out on two fresh 30k sets: pooled +0.015 +- 0.005 DD,
   +0.027 +- 0.007 played out IMPs/board. (2) DD_XPEN 0 in js/ddplay.js ddView: no trump minimum from a defender's double
   of the final suit contract (lead and play samplers). ddacc XONLY seed p16xa (11,300 boards so far, run to 16,000 going
-  into scratch p16/xa.log): declX +0.0175 +- 0.0072, defX +0.0133 +- 0.0053, lead +0.013 +- 0.020 IMPs per decision.
+  16,000 boards, 2,151 doubled): declX +0.0152 +- 0.0058, defX +0.0116 +- 0.0042, lead +0.017 +- 0.016 IMPs per decision.
+- Running (11:25): `XONLY=1 NEW='{"xpenH":1}' node tests/ddacc.js 16000 12 p16xb 2` > scratch p16/xb.log: knob opts.xpenH
+  (ddplay.js ddXpenHcp, off): the doubler's HCP minimum from its calls before the double. Pre-registered: ship if pooled
+  > 2 SE. Then on the same seed `NEW='{"xpen":-1}'` = fresh confirmation of DD_XPEN (sign flipped).
 - Next: put the final xa numbers in section 2; maybe a fresh-seed confirmation (`XONLY=1 NEW='{"xpen":-1}'` now measures
   old vs new, sign flipped; new seed so the cache can't serve stale choices). Then fix commit trailers, final report.
 
@@ -42,9 +45,9 @@
   shown() reads the robots' judgement doubles as 3+ trumps; on 89k robot auctions the doubler had 0-2 trumps on 47% of
   doubled suit contracts (histogram in the ddplay.js comment), so the sampler excluded the real layout on 41% of them.
 - Measured (pre-registered: xpen 0 vs current, fresh seed, ship if > 2 SE): `XONLY=1 NEW='{"xpen":0}' node tests/ddacc.js
-  16000 12 p16xa 2` (only boards whose auction ended doubled; every second card). At 11,300 boards: declarer
-  +0.0175 +- 0.0072 IMPs per decision (741 of 16,441 changed), defenders +0.0133 +- 0.0053 (387 of 13,992), lead
-  +0.013 +- 0.020 (63 of 1,524). Time per decision falls (decl 164 -> 151 ms, def 740 -> 674, lead 3,893 -> 3,538 in Node),
+  16000 12 p16xa 2` (only boards whose auction ended doubled: 2,151 of 16,000; every second card): declarer
+  +0.0152 +- 0.0058 IMPs per decision (1,000 of 23,247 changed), defenders +0.0116 +- 0.0042 (521 of 19,780), lead
+  +0.017 +- 0.016 (93 of 2,151). Time per decision falls (decl 157 -> 145 ms, def 710 -> 647, lead 3,734 -> 3,398 in Node),
   as fewer layouts are rejected. Main thread: unchanged (one comparison in ddView).
 - Earlier rounds saw the same sign with too few boards (r12 ddplay5 ODD=1: +0.008..+0.031; r13 lead-only: +0.017 +- 0.017).
 
