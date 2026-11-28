@@ -518,6 +518,8 @@ function reb1m(ctx) { // opener after 1m - response
     if (ctx.ok('1' + s)) continue; // could have been bid at the one level
     T.push(T_('2' + s, h => h.L[s] >= 4 && h.L[t] > h.L[s] && h.H >= 16, MM(16, 21, { mn: { [s]: 4, [t]: 5 }, f: 1, t: 'reverse', a: 'Reverse: 16+ points, forcing one round' })));
   }
+  if (MAJ(t) && !BID_OFF('j4m')) T.push(T_('4' + t, h => h.L[t] >= 6 && h.H >= (BID_K('j4m') ?? 19), MM(BID_K('j4m') ?? 19, 21, { mn: { [t]: 6 } }))); // too strong for the 3M invitation
+  if (MIN(t) && !BID_OFF('j3n')) T.push(T_('3N', h => h.L[t] >= 6 && hon(h, t, 'AKQ') >= 2 && h.H >= (BID_K('j3n') ?? 19) && (BID_OFF('j3ns') || SUITS.filter(s => s !== t && s !== r).every(s => stopper(h, s))), MM(BID_K('j3n') ?? 19, 21, { mn: { [t]: 6 }, t: 'j3n' }))); // a long minor, too strong for the 3m invitation
   T.push(T_('3' + t, h => h.L[t] >= 6 && h.H >= 15, MM(15, 18, { mn: { [t]: 6 }, inv: true })));
   for (const s of ['C', 'D']) if (s !== t && s !== r && bidValue('2' + s) < bidValue('2' + t)) T.push(T_('2' + s, h => h.L[s] >= 4, MM(11, 18, { mn: { [s]: 4 } })));
   T.push(T_('3' + r, h => MIN(r) && h.L[r] >= 4 && h.H >= 15, MM(15, 18, { mn: { [r]: 4 }, agree: r, inv: true })));
@@ -541,8 +543,9 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
       T.push(T_(nmf, h => h.H >= 11 && h.H <= 17 && (h.L[r] >= 5 || (r === 'S' && h.L.H >= 4)), MM(11, 37, { art: true, f: 1, a: 'New minor forcing: asks for 3-card support or the other major; invitational or better', t: 'nmf' })));
       T.push(T_('2' + r, h => h.L[r] >= 6 && h.H <= 10, MM(6, 10, { mn: { [r]: 6 }, t: 'signoff' })));
     }
-    T.push(T_('4N', h => h.H >= 18 && h.H <= 19, MM(18, 19, { t: 'quant', a: 'Quantitative: invites 6NT' })));
-    T.push(T_('6N', h => h.H >= 20, MM(20, 37)));
+    const q1 = BID_K('q1') ?? 0;
+    T.push(T_('4N', h => h.H >= 18 + q1 && h.H <= 19 + q1, MM(18 + q1, 19 + q1, { t: 'quant', a: 'Quantitative: invites 6NT' })));
+    T.push(T_('6N', h => h.H >= 20 + q1, MM(20 + q1, 37)));
     T.push(T_('3N', h => h.H >= 13, MM(13, 17)));
     T.push(T_('2N', h => h.H >= 11, MM(11, 12, { inv: true })));
     T.push(T_('2' + t, h => h.L[t] >= (t === 'C' ? 5 : 4) && !h.semi && h.H <= 10, MM(6, 10, { mn: { [t]: 4 } })));
@@ -557,11 +560,13 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     return T;
   }
   if (c2 === '3' + r && MAJ(r)) return [T_('4N', h => supPts(h, r) + 16 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(17, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('4' + r, h => supPts(h, r) >= 8, MM(8, 16)), T_('P', () => true, MM(6, 7))];
-  if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
+  if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 - SD() && (openSuits(ctx, h, r) === 0 || (!BID_OFF('r4o') && supPts(h, r) >= (BID_K('r4o') ?? 15))), MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
   if (c2 === '2N') { // 18-19 balanced
+    if (MAJ(r) && !BID_OFF('six2n')) T.push(T_('6' + r, h => h.L[r] >= 6 && h.H >= (BID_K('six2n') ?? 13), MM(BID_K('six2n') ?? 13, 37, { mn: { [r]: 6 } }))); // slam values opposite 18-19 (4M had no upper limit)
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6, MM(6, 12, { mn: { [r]: 6 } })), T_('3' + r, h => h.L[r] >= 5 && !h.bal, MM(6, 37, { mn: { [r]: 5 }, f: 1 })));
     if (r === 'H') T.push(T_('3S', h => h.L.S >= 4 && h.H <= 14, MM(6, 37, { mn: { S: 4 }, f: 1, a: '4 spades (opener may have 4 too)' })));
-    T.push(T_('6N', h => h.H >= 15, MM(15, 37)), T_('4N', h => h.H >= 13, MM(13, 14, { t: 'quant', a: 'Quantitative: invites 6NT' })), T_('3N', () => true, MM(6, 12)));
+    const q2 = BID_K('q2') ?? 0;
+    T.push(T_('6N', h => h.H >= 15 + q2, MM(15 + q2, 37)), T_('4N', h => h.H >= 13 + q2, MM(13 + q2, 14 + q2, { t: 'quant', a: 'Quantitative: invites 6NT' })), T_('3N', () => true, MM(6, 12)));
     return T;
   }
   if (c2 === '3' + t) { // 16-18, six cards
@@ -574,6 +579,7 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     T.push(T_('P', () => true, MM(6, 9)));
     return T;
   }
+  if (c2 === '3N' && om.tag === 'j3n') return [T_('6N', h => h.H >= (BID_K('j3n6') ?? 11), MM(BID_K('j3n6') ?? 11, 37)), ...(MAJ(r) ? [T_('4' + r, h => h.L[r] >= 6 && h.H >= 8, MM(8, 10, { mn: { [r]: 6 } }))] : []), T_('P', () => true, MM(6, 10))];
   if (om.tag === 'reverse' || om.f === 2 || +c2[0] >= 3 && om.lo >= 18) return null; // forcing: natural bidding (it cannot pass)
   const f4 = fourth(ctx);
   // a new suit (or 1S over 1H): raise it, show values, or fourth suit forcing
@@ -594,7 +600,9 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
   // opener rebid his suit, or showed a lower suit: natural
   if (!BID_OFF('newsuitf')) for (const x of ['C', 'D', 'H', 'S']) if (x !== t && x !== r && x !== o && x !== f4 && ctx.cheap(x) <= 3 && !(+c2[0] === 1 && MAJ(x) && ctx.cheap(x) === 1)) // a new (third) suit by responder: forcing
     T.push(T_(ctx.cheap(x) + x, h => h.H >= 12 && h.L[x] >= (MAJ(x) ? 4 : 5) && !(h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s))) && !(MAJ(r) && h.L[r] >= 6), MM(12, 37, { mn: { [x]: MAJ(x) ? 4 : 5 }, f: 1, t: 'nsf' })));
+  if (!BID_OFF('sixn')) T.push(T_('6N', h => h.H >= (BID_K('sixn') ?? 19) && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(BID_K('sixn') ?? 19, 37, { nt: true })));
   T.push(T_('3N', h => h.H >= 13 && h.semi && SUITS.filter(s => s !== t && s !== r && s !== o).every(s => stopper(h, s)), MM(13, 16, { nt: true })));
+  if (o === t && !BID_OFF('r3n')) T.push(T_('3N', h => h.H >= 13 && h.L[t] <= 1 && !(MAJ(r) && h.L[r] >= 6) && SUITS.filter(s => s !== t && s !== r).every(s => stopper(h, s)), MM(13, 16, { nt: true }))); // short in opener's suit, the other suits stopped
   T.push(T_('4' + r, h => MAJ(r) && h.L[r] >= 6 && h.H >= 12, MM(12, 16, { mn: { [r]: 6 } })));
   T.push(T_('3' + r, h => h.L[r] >= 6 && h.H >= 10 && h.H <= 12, MM(10, 12, { mn: { [r]: 6 }, inv: true })));
   if (ctx.cheap('N') === 2) T.push(T_(ctx.cheap('N') + 'N', h => h.H >= 11 && h.H <= 12 && h.semi && ctx.cheap('N') === 2, MM(11, 12, { nt: true, inv: true })));
@@ -662,12 +670,12 @@ function ntSystem(ctx) {
   const k = after.length, isOpener = x.by === ctx.seat, c = i => after[i] ? after[i].call : null;
   if (b.interfered) { const lb = !BID_OFF('leb') && lebensohl(ctx, b, after); if (lb !== false) return lb; return (k === 1 && !isOpener) ? ntInterference(ctx, lo) : null; }
   const ovc2N = !one && !sameSide(ctx.first.by, x.by) && !BID_OFF('o2n'); // over their weak two the 2NT overcaller's partner raises with less
-  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), quant = (BID_K('ntq') ?? 31) - lo, six = (BID_K('ntq') ?? 31) + 1 - lo;
+  const lv = one ? 2 : 3, gf = Math.max(0, 25 - lo - (ovc2N ? (BID_K('o2n') ?? 2) : 0)), inv = Math.max(0, 23 - lo + (one ? 0 : 0)), ntq = BID_K('ntq') ?? 31, quant = ntq - lo, six = (BID_K('ntq6') ?? ntq) + 1 - lo; // round 16: ntq 30 gained +64/16,000 on tuning but lost -98/32,000 held out
   const T = [];
   const trA = s => `Transfer: 5+ ${SNAME[s]}`;
   const rkS = (h, M) => h.H + (BID_K('ntf') ?? 0) >= quant && h.L[M] >= 6 && openSuits(ctx, h, M) === 0; // slam values in a 6+ major: Texas, then 4NT asks for key cards
   if (!isOpener && k === 1) {
-    const pts = h => h.H + Math.max(0, h.sh[0] - 5);
+    const pts = h => h.H + Math.max(0, h.sh[0] - 5) * (BID_K('ntl') ?? 1) + (h.sh[0] >= 6 && [...'CD'].some(m => h.L[m] >= 6 && hon(h, m, 'AKQ') >= 2) ? (BID_K('ntg') ?? 0) : 0);
     T.push(T_('6N', h => pts(h) >= six + 1 && h.sh[0] <= 6 && !(h.L.H >= 5 || h.L.S >= 5), MM(six + 1, 37)));
     T.push(T_('4N', h => pts(h) >= quant && h.H < six + 1 && h.semi && !(h.L.H >= 5 || h.L.S >= 5) && !(h.L.H === 4 || h.L.S === 4), MM(quant, six, { a: 'Quantitative: invites 6NT', t: 'quant' })));
     T.push(T_('4H', h => h.L.S >= 6 && h.H >= gf && (h.H < quant || rkS(h, 'S')), MM(gf, 37, { mn: { S: 6 }, art: true, a: 'Texas transfer: 6+ spades, game values', t: 'texas' })));
@@ -1142,6 +1150,12 @@ function afterNegX(ctx) { // opener after 1x (overcall) X (pass)
   const nt = ctx.cheap('N');
   if (nt <= 2) T.push(T_(nt + 'N', h => h.semi && stopper(h, os) && (nt === 1 ? h.H <= 14 : h.H >= 15 && h.H <= 17), MM(nt === 1 ? 11 : 15, nt === 1 ? 14 : 17, { nt: true })));
   if (nt <= 3) T.push(T_('3N', h => h.semi && stopper(h, os) && h.H >= 18, MM(18, 19, { nt: true })));
+  if (!BID_OFF('nxj')) { // extras with a long suit of my own: the cheap rebid had no upper limit
+    const lt = ctx.cheap(t), lc = ctx.cheap(os);
+    if (lc <= 3) T.push(T_(lc + os, h => h.H >= (BID_K('nxc') ?? 19) && !(h.semi && stopper(h, os)), MM(BID_K('nxc') ?? 19, 37, { art: true, f: 2, a: 'Cue bid: 19+ points, game forcing', t: 'cue19' })));
+    if (lt + 1 <= 3) T.push(T_((lt + 1) + t, h => h.L[t] >= 6 && h.H >= 16, MM(16, 18, { mn: { [t]: 6 }, inv: true })));
+    if (lt === 3 && MAJ(t) && !BID_OFF('nxj4')) T.push(T_('4' + t, h => h.L[t] >= 6 && h.H >= (BID_K('nxj4') ?? 15), MM(BID_K('nxj4') ?? 15, 18, { mn: { [t]: 6 } }))); // no room to jump: game
+  }
   T.push(T_(ctx.cheap(t) + t, h => h.L[t] >= 6 || h.L[t] >= 5 && shown.every(s => h.L[s] <= 2), MM(11, 15, { mn: { [t]: 5 } })));
   for (const s of SUITS) if (s !== t && s !== os && !shown.includes(s) && ctx.cheap(s) <= 2) T.push(T_(ctx.cheap(s) + s, h => h.L[s] >= 4, MM(11, 17, { mn: { [s]: 4 } })));
   T.push(T_(ctx.cheap(t) + t, () => true, MM(11, 15)));
@@ -1633,7 +1647,7 @@ function slamZone(ctx, h, tr) { // worth a slam try: values, and no side suit wh
   if (BID_OFF('slamzone')) return false;
   const v = slamVal(ctx, h, tr);
   if (tr === 'N') return v.pts >= (BID_K('nts') ?? 31);
-  return slamValues(ctx, h, tr) && openSuits(ctx, h, tr) === 0;
+  return slamValues(ctx, h, tr) && (openSuits(ctx, h, tr) === 0 || (!BID_OFF('szo') && v.pts >= (BID_K('szo') ?? 34)));
 }
 function slamValues(ctx, h, tr) { const v = slamVal(ctx, h, tr); return v.pts >= SLAM_PTS + 2 || (v.pts >= SLAM_PTS && v.tricks >= SLAM_TR); }
 
@@ -1777,16 +1791,17 @@ function natural(ctx, h, reserved) {
     const m = natMean(ctx, cheapS + strain);
     if (m.tag === 'slow' && (openSuits(ctx, h, strain) > 0 || fourNTMeaning(ctx).trump !== strain)) return cheapS + strain;
   }
-  if (target >= 6 && strain !== 'N' && openSuits(ctx, h, strain) > 0) target = gl;
+  const bigSlam = strain !== 'N' && !BID_OFF('szo2') && slamVal(ctx, h, strain).pts >= (BID_K('szo2') ?? 34); // enough to risk an open side suit
+  if (target >= 6 && strain !== 'N' && openSuits(ctx, h, strain) > 0 && !bigSlam) target = gl;
   if (target >= 6 && pBid) {
-    if (strain !== 'N' && fit && ok('4N') && !ctx.ours.some(x => x.call === '4N') && openSuits(ctx, h, strain) === 0) {
+    if (strain !== 'N' && fit && ok('4N') && !ctx.ours.some(x => x.call === '4N') && (openSuits(ctx, h, strain) === 0 || bigSlam)) {
       const m4 = fourNTMeaning(ctx);
       if (m4.tag === 'rkcb' && m4.trump === strain) return '4N';
     }
     if (strain === 'N' && totLo >= 33 - SD() && ok('6N')) return '6N';
     if (strain === 'N' && ok('4N') && cheapS <= 4 && P.nt) return '4N';
     const c6 = (target === 7 && totLo >= 37 ? 7 : 6) + strain;
-    if (ok(c6) && (totLo >= 32 - SD() || fitLen >= 9)) return c6;
+    if (ok(c6) && (totLo >= 32 - SD() || fitLen >= 9) && !(strain !== 'N' && openSuits(ctx, h, strain) > 0 && !BID_OFF('szo2k'))) return c6; // szo2k: with an open side suit only via key cards
     target = gl;
   }
   if (ours) {
