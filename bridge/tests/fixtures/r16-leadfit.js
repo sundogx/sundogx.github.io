@@ -62,7 +62,7 @@ function fit(recs, v) {
       const mx = Array(F).fill(0); xs.forEach(x => x.forEach((q, i) => mx[i] += q / xs.length));
       xs.forEach((x0, j) => { const x = x0.map((q, i) => q - mx[i]), yy = y[j] - my; for (let i = 0; i < F; i++) { A[i][F] += x[i] * yy; for (let m = 0; m < F; m++) A[i][m] += x[i] * x[m]; } });
     }
-    for (let i = 0; i < F; i++) A[i][i] += v.lambda;
+    for (let i = 0; i < F; i++) { A[i][i] += v.lambda; if (v.to0) A[i][F] += v.lambda * ((L.LEAD_W[g] || [])[i] || 0) * (v.to0 || 1); }
     for (let i = 0; i < F; i++) { let q = i; for (let k = i + 1; k < F; k++) if (Math.abs(A[k][i]) > Math.abs(A[q][i])) q = k; [A[i], A[q]] = [A[q], A[i]]; for (let k = 0; k < F; k++) if (k !== i) { const f = A[k][i] / A[i][i]; for (let m = i; m <= F; m++) A[k][m] -= f * A[i][m]; } }
     W[g] = A.map((row, i) => row[F] / row[i]);
   }
@@ -106,6 +106,10 @@ const V = {
   dslimp300: { ext: 'dbl,slam,part', dblIdx: ALL, y: 'imp', lambda: 300, split: 'kind' },
   NimpA: { ext: 'none', y: 'imp', lambda: 300, split: 'kind', nOnly: 1 },
   NmoreA: { ext: 'more', y: 'tr', lambda: 100, split: 'kind', nOnly: 1 },
+  s0tr300: { ext: 'none', y: 'tr', lambda: 300, split: 'kind', to0: 1 },
+  s0tr1000: { ext: 'none', y: 'tr', lambda: 1000, split: 'kind', to0: 1 },
+  s0tr3000: { ext: 'none', y: 'tr', lambda: 3000, split: 'kind', to0: 1 },
+  s0imp1000: { ext: 'none', y: 'imp', lambda: 1000, split: 'kind', to0: 4 },
   more100: { ext: 'more', y: 'tr', lambda: 100, split: 'kind' },
   moreimp300: { ext: 'more', y: 'imp', lambda: 300, split: 'kind' },
   moreimp100: { ext: 'more', y: 'imp', lambda: 100, split: 'kind' },
