@@ -545,8 +545,9 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
       T.push(T_(nmf, h => h.H >= 11 && h.H <= 17 && (h.L[r] >= 5 || (r === 'S' && h.L.H >= 4)), MM(11, 37, { art: true, f: 1, a: 'New minor forcing: asks for 3-card support or the other major; invitational or better', t: 'nmf' })));
       T.push(T_('2' + r, h => h.L[r] >= 6 && h.H <= 10, MM(6, 10, { mn: { [r]: 6 }, t: 'signoff' })));
     }
-    T.push(T_('4N', h => h.H >= 18 && h.H <= 19, MM(18, 19, { t: 'quant', a: 'Quantitative: invites 6NT' })));
-    T.push(T_('6N', h => h.H >= 20, MM(20, 37)));
+    const q1 = BID_K('q1') ?? 0;
+    T.push(T_('4N', h => h.H >= 18 + q1 && h.H <= 19 + q1, MM(18 + q1, 19 + q1, { t: 'quant', a: 'Quantitative: invites 6NT' })));
+    T.push(T_('6N', h => h.H >= 20 + q1, MM(20 + q1, 37)));
     T.push(T_('3N', h => h.H >= 13, MM(13, 17)));
     T.push(T_('2N', h => h.H >= 11, MM(11, 12, { inv: true })));
     T.push(T_('2' + t, h => h.L[t] >= (t === 'C' ? 5 : 4) && !h.semi && h.H <= 10, MM(6, 10, { mn: { [t]: 4 } })));
@@ -561,12 +562,13 @@ function resp1mReb(ctx) { // responder's second call after 1m - 1x - rebid (oppo
     return T;
   }
   if (c2 === '3' + r && MAJ(r)) return [T_('4N', h => supPts(h, r) + 16 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(17, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('4' + r, h => supPts(h, r) >= 8, MM(8, 16)), T_('P', () => true, MM(6, 7))];
-  if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 - SD() && openSuits(ctx, h, r) === 0, MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
+  if (c2 === '4' + r) return [T_('4N', h => supPts(h, r) + 19 >= 33 - SD() && (openSuits(ctx, h, r) === 0 || (!BID_OFF('r4o') && supPts(h, r) >= (BID_K('r4o') ?? 15))), MM(14, 37, { t: 'rkcb', trump: r, art: true, f: 1, a: `Roman Key Card Blackwood (1430) for ${SNAME[r]}: asks for key cards (4 aces and the trump king)` })), T_('P', () => true, ANY())];
   if (c2 === '2N') { // 18-19 balanced
     if (MAJ(r) && !BID_OFF('six2n')) T.push(T_('6' + r, h => h.L[r] >= 6 && h.H >= (BID_K('six2n') ?? 13), MM(BID_K('six2n') ?? 13, 37, { mn: { [r]: 6 } }))); // slam values opposite 18-19 (4M had no upper limit)
     if (MAJ(r)) T.push(T_('4' + r, h => h.L[r] >= 6, MM(6, 12, { mn: { [r]: 6 } })), T_('3' + r, h => h.L[r] >= 5 && !h.bal, MM(6, 37, { mn: { [r]: 5 }, f: 1 })));
     if (r === 'H') T.push(T_('3S', h => h.L.S >= 4 && h.H <= 14, MM(6, 37, { mn: { S: 4 }, f: 1, a: '4 spades (opener may have 4 too)' })));
-    T.push(T_('6N', h => h.H >= 15, MM(15, 37)), T_('4N', h => h.H >= 13, MM(13, 14, { t: 'quant', a: 'Quantitative: invites 6NT' })), T_('3N', () => true, MM(6, 12)));
+    const q2 = BID_K('q2') ?? 0;
+    T.push(T_('6N', h => h.H >= 15 + q2, MM(15 + q2, 37)), T_('4N', h => h.H >= 13 + q2, MM(13 + q2, 14 + q2, { t: 'quant', a: 'Quantitative: invites 6NT' })), T_('3N', () => true, MM(6, 12)));
     return T;
   }
   if (c2 === '3' + t) { // 16-18, six cards
