@@ -1,7 +1,7 @@
 # r16-stab3: UI and online stability (branch r16-stab3)
 
 ## Resume here
-- State: all fixes below committed; online tests done. Last step: final soaks (phone + desktop) and handback.
+- State: done. All fixes committed; online tests, final soaks (phone + desktop, 0 findings), stab.pw and ui-stab run. Only open items below remain.
 - Playwright: `NODE_PATH=/private/tmp/claude-501/-Users-admin/c95d256f-4c77-4778-9fcf-01deefc13883/scratchpad/pw/node_modules` (playwright-core installed there). `bridge/node_modules` is an untracked symlink to the main checkout's; don't commit it.
 - Server: `npx wrangler dev --port 8979 --inspector-port 9311 --var TEST_TIME_SCALE:0.0167 --var TEST_STALE_MS:3000` (give each wrangler its own --inspector-port, or a second one fails with "Address already in use"), then `BRIDGE_URL=http://localhost:8979 STALE_MS=3000 node tests/online*.test.mjs`.
 
@@ -53,13 +53,19 @@
    second run "FAIL 20 tables in a row (0/20)" and "FAIL 30 at once: 0 open". Now each run uses a random IPv6 /64 in 2001:db8::/32 (2^32 choices): 3 runs in a row pass.
 
 ## Not fixed (other agents' files) / open
-- **Offline worker errors reach window.onerror** (`js/analysis.js:63, 186, 374, 474`, also `js/learn.js:114`, `js/leadtrainer.js:112`; perf10 owns these).
-  ui-stab `--only=offline` mode "imports" FAILS on main and on this branch: 5+ `Uncaught NetworkError: Failed to execute 'importScripts' ... js/wasm/compiled.js` window `error` events
-  from `js/dds-worker.js` (also seen in the soak, phone seed 32, from the blob worker after "Claim 7"). The handlers drop the worker
-  but don't call `e.preventDefault()`, so the error is also reported as uncaught. Tried `w.onerror = e => { e.preventDefault(); ... }` on the 4 analysis.js handlers:
-  5+ -> 1 left (a worker whose `onerror` was nulled by `ddDropWorkers()` before its error arrived). Not committed (not my file).
-  A full fix: preventDefault in every handler, plus a no-op handler that preventDefaults in `ddDropWorkers()` / `robotDDDrop()` instead of `null`;
-  or a try/catch round `importScripts` in dds-worker.js that posts an error. Mode "all" (worker script itself unreachable) passes.
+- **Offline worker errors reach window.onerror** (`js/analysis.js`, perf10's file; not committed here).
+  ui-stab `--only=offline` mode "imports" FAILS on main and on this branch (phone and desktop): 5+ window `error` events
+  `Uncaught NetworkError: Failed to execute 'importScripts' ... js/wasm/compiled.js` from `js/dds-worker.js` (also seen in the soak,
+  phone seed 32, from a blob worker after "Claim 7"). The pools' `onerror` handlers drop the worker but don't `preventDefault()`, and
+  `ddDropWorkers()` nulls `onerror` before late errors arrive. Verified fix (mode "imports" then passes, mode "all" still passes),
+  for whoever owns analysis.js / learn.js:
+  ```
+  // analysis.js ddNewWorker(), after `const w = new Worker('js/dds-worker.js');`  (covers DD, RobotDD, LeadDD, lead trainer)
+  w.addEventListener('error', e => e.preventDefault()); // handled by each pool's onerror: not an uncaught page error
+  // analysis.js after `const w = PlayDD.w = new Worker(url);`, and the same in learn.js after `const w = Learn.w = new Worker(...)`
+  w.addEventListener('error', e => e.preventDefault());
+  ```
+  Tried first: `e.preventDefault()` inside the 4 analysis.js `onerror` handlers: 5+ errors -> 1 (the nulled-handler case).
 - Explorer on phones: shift 0.16 (`bx-main`, `exList`) 787 ms after choosing a dealer (soak phone seed 32). The render is synchronous on the change, so this
   is the input's own change painted late at CPU x4 (`exRender`), not a stray shift. Perf, not layout.
 - Home fix residual: if the scripts take more than 3 s to load, the home screen shows with the default labels and can still shift once.
@@ -70,6 +76,11 @@ online all passed, online-multi all passed, online-adv all passed, online-stab a
 online-net: 2c "the robot doesn't wait for an answer from a tab that went silent" is flaky on main too: fresh servers, branch 3/3 passed,
 main 1st run FAIL (0 tries); on a long-running branch server that had already run all suites, 2b/2c failed 3 of 5. My server change is
 only the three error strings, so this is not from the branch. Open: make 2c robust (it depends on which tab is asked and when).
+
+## Final soaks (CPU x4, chaos on)
+desktop mix seeds 41, 42 (180 s), desktop practice seed 25 (120 s), phone mix seeds 41, 42 (180 s), phone lead practice seed 32 (120 s):
+0 findings, no console/page errors, CLS 0.000-0.002, listeners flat (w14 d32). stab.pw.mjs phone and desktop: all ok.
+ui-stab.pw.mjs: api, offline (all), history ok; offline (imports) fails until the analysis.js patch above.
 
 ## Checks
 `node build.mjs && npm test` all ok; `node tests/sim.js | tail -1` errors 0, long 0.
