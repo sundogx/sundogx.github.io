@@ -32,7 +32,7 @@ function board(seed, g) {
 
 if (isMainThread && process.argv[2] === 'gen') {
   const file = process.argv[3], N = +process.argv[4] || 1000, seed = process.argv[5] || 'leads';
-  const W = Math.max(1, +process.argv[6] || os.cpus().length - 2), K = +process.argv[7] || 32, Kold = process.argv[8] !== undefined ? +process.argv[8] : 24;
+  const W = Math.max(1, +process.argv[6] || os.cpus().length - 2), K = process.argv[7] !== undefined ? +process.argv[7] : 32, Kold = process.argv[8] !== undefined ? +process.argv[8] : 24;
   const out = fs.createWriteStream(file);
   let next = 0, done = 0, live = W; const t0 = Date.now();
   for (let w = 0; w < W; w++) {
