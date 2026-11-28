@@ -142,9 +142,18 @@ function leadPrior(hand, auction, contract, seat, W, vul) {
   }
   return out;
 }
+// The heuristic robot's lead against notrump uses its own weights (round 16): LEAD_W's features refitted to the IMPs of each
+// lead against the average lead from the same hand (ridge, lambda 300) on 30,000 robot auctions (seed p16a). Held out on
+// 30,000 fresh boards (seed p16b): +0.059 +- 0.022 IMPs a board against notrump (+0.018 +- 0.0065 over all boards), 31% of
+// notrump leads changed. Refits for suit contracts measured worse than LEAD_W.S, so those stay. The double-dummy lead's prior
+// keeps LEAD_W (in tricks; a refit gained nothing there, round 10). BOT_OFF 'lwb' (test knob): the old notrump weights.
+const LEAD_WB = {
+  N: [0.119, 0.45, -0.006, 0.084, 0.029, 0.409, -0.076, 0.735, 0.006, -0.418, -0.466, -0.261, -0.131, 0.15, 1.071, -0.045, -0.275, -0.364, 0.179, 0.217, 0, 0, 0, 0, -0.288],
+};
 // The heuristic robot's opening lead.
 function botLead(hand, auction, contract, seat, vul) {
-  const p = leadPrior(hand, auction, contract, seat, null, vul);
+  const off = typeof globalThis !== 'undefined' && globalThis.BOT_OFF && globalThis.BOT_OFF.includes('lwb');
+  const p = leadPrior(hand, auction, contract, seat, contract.strain === 'N' && !off ? LEAD_WB.N : null, vul);
   let best = null;
   for (const s in p) if (best === null || p[s] > p[best]) best = s;
   return leadCardOf(hand.filter(c => c[0] === best), contract.strain);
@@ -222,4 +231,4 @@ function leadPick(view, cands, results, opts = {}) {
 // better on 1,330 boards (DBL=1 node tests/leadsim.js tunex): ~48 layouts estimate tricks more steadily than the score.
 const LEAD_METRIC = 'tricks', LEAD_PRIOR_W = 2;
 
-if (typeof module !== 'undefined') module.exports = { leadCardOf, leadCards, leadLimits, leadFeatures, leadContext, leadPrior, botLead, leadValues, leadView, leadChoose, leadSample, leadPick, LEAD_FEATURES, LEAD_W };
+if (typeof module !== 'undefined') module.exports = { leadCardOf, leadCards, leadLimits, leadFeatures, leadContext, leadPrior, botLead, leadValues, leadView, leadChoose, leadSample, leadPick, LEAD_FEATURES, LEAD_W, LEAD_WB };
