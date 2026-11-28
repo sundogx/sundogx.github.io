@@ -12,7 +12,7 @@
 ## Summary
 | change | file | held-out measurement |
 |---|---|---|
-| botLead NT weights LEAD_WB.N | js/leads.js:150 | 2 x 30k fresh boards: +0.015 +- 0.005 DD, +0.027 +- 0.007 played out IMPs/board |
+| botLead NT weights LEAD_WB.N | js/leads.js:150 | 2 x 30k fresh boards: +0.015 +- 0.005 DD, +0.027 +- 0.007 played out IMPs/board (review reproduced +0.027 DD, +0.021 played out) |
 | no trump minimum from a defender's double of the final suit contract (DD_XPEN 0) | js/ddplay.js:96-112 | doubled boards p16xa: decl +0.015 +- 0.006, def +0.012 +- 0.004 IMPs/decision; confirmed p16xb (old vs new): decl -0.014 +- 0.005, def -0.017 +- 0.005, lead -0.037 +- 0.019 |
 | no HCP minimum from that double either (DD_XPENH) | js/ddplay.js:114-127 | doubled boards p16xb, on top: decl +0.016 +- 0.005, def +0.015 +- 0.005 |
 
@@ -58,9 +58,11 @@
   off): declarer -0.0141 +- 0.0051 (981 of 22,789 changed), defenders -0.0171 +- 0.0045 (462 of 18,914), lead -0.0371 +-
   0.0193 (89 of 2,077): the old reading is worse on every kind of decision. (That run's ms column compares choices cached
   from an earlier, more loaded run with fresh ones: not a speed measurement.)
-- Rough size: about 21 decisions per doubled board are solver decisions and 13% of robot boards end doubled, so roughly
-  +0.03-0.06 IMPs per board overall for the two limit changes together (extrapolated from per-decision DD losses, not a
-  played-out measurement).
+- Size: measured only per decision on doubled boards (ddacc). An earlier per-board extrapolation (+0.03-0.06 IMPs/board
+  overall) was withdrawn: decisions are not independent and ddacc does not play the boards out.
+- Independent review (round 16) reproduced: doubled boards, defenders +0.024, declarer +0.013 +- 0.007 IMPs per decision,
+  lead flat; and a sampler side effect (the changed limits also change which layouts the other decisions are dealt)
+  measured flat, -0.004 +- 0.007.
 - Human doublers (practice with a human partner, friends mode) more often hold trumps for a penalty double; the looser
   limit then only gives the sampler less information, it never excludes their real hand.
 - Earlier rounds saw the same sign with too few boards (r12 ddplay5 ODD=1: +0.008..+0.031; r13 lead-only: +0.017 +- 0.017).
