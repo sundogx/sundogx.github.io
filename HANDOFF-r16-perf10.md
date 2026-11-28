@@ -3,8 +3,8 @@
 ## Resume here
 - Branch r16-perf10, worktree .claude/worktrees/r16-perf10. Done: changes 1-3 below, committed. Render items measured flat and not
   shipped (section "Tried"). Nothing half-done. bridge/node_modules is an untracked symlink to the main folder's; never add it.
-- Next steps if someone continues: (1) update tests/swupdate.pw.js's blob probe to js/min/ paths (see Open, owner of tests/);
-  (2) feltGeom forced layout needs a felt-size cache with a redraw on resize (see Open); (3) style.css minify needs index.html.
+- tests/swupdate.pw.js:45 blob probe now imports js/min/engine.js and js/min/ddplay.js (coordinator assigned it): 27/27 ok.
+- Next steps if someone continues: (1) feltGeom forced layout needs a felt-size cache with a redraw on resize (see Open); (2) style.css minify needs index.html.
 - Harness (scratchpad, may be cleared): /private/tmp/claude-501/-Users-admin/c95d256f-4c77-4778-9fcf-01deefc13883/scratchpad/perf10/
   serve.js (gzip server, byte log, optional shared slow link), load.js (first/repeat visit bytes, offline reload + DD + blob workers),
   early.js (first visit on a 180 kB/s + 562 ms RTT link, 4x CPU, Practice pressed at DOMContentLoaded), rbench.js <root> time|dom|bench|prof|inv
@@ -66,8 +66,8 @@ once per new auction state); scrollIntoView 5.8% (render(): bidding box into vie
 Forced layouts per 298 renders: feltGeom 36, render()'s scrollIntoView 19, renderChatPane's scrollHeight 12.
 
 ## Open
-- tests/swupdate.pw.js:45 (not my file): the blob probe imports `js/engine.js`, `js/ddplay.js`; change to `js/min/engine.js`,
-  `js/min/ddplay.js` (what the app's blob workers now import), or it reports 5 false failures on this branch.
+- Fixed: tests/swupdate.pw.js:45's blob probe imported raw `js/engine.js`, `js/ddplay.js` (5 false failures); it now imports
+  `js/min/engine.js`, `js/min/ddplay.js`, as the app's blob workers do. Rerun: 27/27 ok.
 - ben/ben-worker.js:13 imports raw ../js/*.js (BEN is optional). They are no longer in CORE: the fetch handler caches them on
   first BEN use, as it already does for ben/*.js. After a deploy, a first BEN use may get them from the HTTP cache (GitHub
   Pages max-age 600) like ben-core.js already can. Switching ben-worker.js to ../js/min/ would match the page exactly.
