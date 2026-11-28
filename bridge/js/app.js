@@ -1479,10 +1479,14 @@ $('practiceNew').addEventListener('click', () => typeof PracticeModes !== 'undef
 const API_TIMEOUT_MS = 15000;
 async function api(path, body) {
   const o = body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {};
-  if (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) o.signal = AbortSignal.timeout(API_TIMEOUT_MS); // a server that never answers mustn't leave the button disabled
-  const r = await fetch(API_BASE + path, o);
-  if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; try { e.serverMsg = (await r.json()).error; } catch (_) {} throw e; } /* the server's own message (e.g. the hourly table limit) reaches the toast */
-  return r.json();
+  // a server that never answers mustn't leave the button disabled (AbortController, not AbortSignal.timeout: Safari 15)
+  const ac = typeof AbortController === 'function' ? new AbortController() : null, timer = ac && setTimeout(() => ac.abort(), API_TIMEOUT_MS);
+  if (ac) o.signal = ac.signal;
+  try {
+    const r = await fetch(API_BASE + path, o);
+    if (!r.ok) { const e = new Error('HTTP ' + r.status); e.status = r.status; try { e.serverMsg = (await r.json()).error; } catch (_) {} throw e; } /* the server's own message (e.g. the hourly table limit) reaches the toast */
+    return await r.json();
+  } finally { clearTimeout(timer); }
 }
 $('createBtn').addEventListener('click', async () => {
   if (!needName()) return;

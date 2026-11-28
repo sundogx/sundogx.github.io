@@ -380,12 +380,14 @@ input[type=checkbox] { flex: none; } /* a long label beside it must not squeeze 
 .alertrow label.row { flex-wrap: nowrap; flex: none; }
 .topbar .more { display: contents; }
 #moreBtn, #sideBtn, .sidehead, #dailyLeave { display: none; }
-/* stab3: on a wide screen the table's buttons that come and go (Last trick, Undo, Claim; Skip deal at a practice table)
-   keep their place while hidden, so the top bar doesn't change between one and two rows during a board. At 1280 px it
-   wrapped when Last trick or Undo showed and unwrapped when they went, moving the whole table 37 px (layout shift up to
-   0.58). Phones and phones held sideways put these in More (below), so it isn't needed there. */
+/* stab3: at a practice table on a wide screen the buttons that come and go (Last trick, Undo, Claim, Skip deal) keep
+   their place while hidden, so the top bar doesn't change between one and two rows during a board. At 1280 px it
+   wrapped when Last trick showed and unwrapped when the board ended, moving the whole table 37 px (layout shift up to
+   0.58). The bar is then two rows throughout, so the table is 37 px lower (same height in auction and play) and the
+   bidding box still fits the window. Online tables: unchanged. Phones and phones held sideways put these in More. */
 @media (min-width: 561px) and (not ((orientation: landscape) and (max-height: 520px))) {
-  .topbar :is(#lastTrickBtn, #undoBtn, #claimBtn).hidden, .topbar:has(#ltMoreBtn:not(.hidden)) #skipBtn.hidden { display: inline-block !important; visibility: hidden; }
+  .topbar:has(#ltMoreBtn:not(.hidden)) :is(#lastTrickBtn, #undoBtn, #claimBtn, #skipBtn).hidden { display: inline-block !important; visibility: hidden; }
+  #tableView:has(#ltMoreBtn:not(.hidden)), #tableView.bidding:has(#ltMoreBtn:not(.hidden)) { --feltH: clamp(320px, calc(var(--vh) - 417px), 530px); }
 }
 @media (max-width: 560px) { #dailyLeave:not(.hidden) { display: inline-block; order: 1; } } /* ux3: after More, at the right end */
 @media (max-width: 560px) {

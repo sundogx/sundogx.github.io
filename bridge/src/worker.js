@@ -103,7 +103,7 @@ const handle = async (req, env) => {
 
     if (path === '/api/tables' && req.method === 'POST') {
       const body = await readJson(req);
-      if (!body || typeof body !== 'object') return json({ error: 'bad request' }, 400);
+      if (!body || typeof body !== 'object') return json({ error: 'Could not open the table: the request was not understood. Reload the page and try again.' }, 400);
       const secret = String(body.secret || '');
       const name = cleanName(body.name);
       if (secret.length < 16 || !name) return json({ error: 'Enter your name first, then open the table.' }, 400); // checked first: a bad request doesn't use up the hourly allowance

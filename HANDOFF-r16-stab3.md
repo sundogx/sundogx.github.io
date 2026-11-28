@@ -1,9 +1,20 @@
 # r16-stab3: UI and online stability (branch r16-stab3)
 
 ## Resume here
-- State: done. All fixes committed; online tests, final soaks (phone + desktop, 0 findings), stab.pw and ui-stab run. Only open items below remain.
+- State: review fixes (REVIEW-r16-stab3.md items 1-4) done and committed; see "Review fixes" below. Nothing half-done.
+- If resuming: only the open items at the end remain (offline worker patch belongs in analysis.js; online-net 2c flake).
 - Playwright: `NODE_PATH=/private/tmp/claude-501/-Users-admin/c95d256f-4c77-4778-9fcf-01deefc13883/scratchpad/pw/node_modules` (playwright-core installed there). `bridge/node_modules` is an untracked symlink to the main checkout's; don't commit it.
 - Server: `npx wrangler dev --port 8979 --inspector-port 9311 --var TEST_TIME_SCALE:0.0167 --var TEST_STALE_MS:3000` (give each wrangler its own --inspector-port, or a second one fails with "Address already in use"), then `BRIDGE_URL=http://localhost:8979 STALE_MS=3000 node tests/online*.test.mjs`.
+
+## Review fixes (after REVIEW-r16-stab3.md)
+1. Desktop auction fits again: where the top bar keeps its places (practice tables, >560 px) the table height is
+   `--feltH: clamp(320px, calc(var(--vh) - 417px), 530px)` (was -380 px, which assumed a one-row bar).
+   Measured (probe, practice, auction then play): 1280x800: bar 66, felt 383 in auction and play, bidding box bottom 792 <= 800, scrollY 0
+   (main: felt 420, box bottom 792). 1366x768: bar 66, felt 351 in both, box bottom 760 <= 768, scrollY 0.
+   Screenshots: scratchpad/probe/fit-after-1280x800-{auction,play}.png, fit-after-1366x768-{auction,play}.png.
+2. The reserved places now apply only at practice tables (`.topbar:has(#ltMoreBtn:not(.hidden))`) for all four buttons; online tables are as on main.
+3. api(): AbortController + setTimeout (15 s) instead of AbortSignal.timeout (Safari < 16); the timer also covers reading the body and is cleared.
+4. worker.js: the create route's 'bad request' is a sentence ("Could not open the table: the request was not understood. Reload the page and try again.").
 
 ## New test: `bridge/tests/ui-stab.pw.mjs`
 `NODE_PATH=<dir>/node_modules node tests/ui-stab.pw.mjs [--vp=phone|desktop] [--only=api,offline,history]`
@@ -36,8 +47,8 @@
    row in the auction (1088 of 1156 px) but needs two once Last trick shows (1239 px), and goes back to one row when the board ends
    (Skip deal, Undo, Claim hide). Each change moved the whole table 37 px; when it follows a robot's card it is not near an input,
    so it counts (0.58 at 1280 CPU x4, soak seed 25 "after: background tab"; 0.029 seed 22).
-   Fix: on screens wider than 560 px (and not a phone held sideways) Last trick, Undo and Claim keep their place while hidden
-   (`visibility: hidden` instead of `display: none`), and Skip deal too at a practice table (`:has(#ltMoreBtn:not(.hidden))`).
+   Fix: at practice tables on screens wider than 560 px (and not a phone held sideways) Last trick, Undo, Claim and Skip deal keep their place while hidden
+   (`visibility: hidden` instead of `display: none`), and the table height allows for the two-row bar (review fix 1).
    Measured top-bar height (auction / +Undo / +Claim / +Last trick / board over): before 29/29/29/66/29 px at 1280, 1366 and 1440; after 66 throughout.
    Effect: the desktop practice table is 37 px lower in the auction than before, the same as in the play (matches the owner's "the table keeps one height in auction and play").
    The hidden places sit next to the title's free space, so they don't show as gaps, except Undo hidden between Last trick and Claim.
